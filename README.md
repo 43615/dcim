@@ -18,7 +18,7 @@ Currently missing planned features: different modes like file input, more conver
 - Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
 - Digits too high for the input base (such as `'G` when base is 16) no longer default to the highest possible digit, but cause an error message instead.
 ## Precision and number output changes
-- The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision ('m'/'M').
+- The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`m`/`M`).
 - Output precision now applies correctly regardless of output base.
 - If output precision is negative (default: -1), numbers are printed with enough precision to be exact.
 - Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 77 decimal digits accurately, an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
