@@ -124,6 +124,8 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"pi" => {Some(Float::with_val(prec, Constant::Pi))}
 		"gamma" => {Some(Float::with_val(prec, Constant::Euler))}
 		"phi" => {Some((Float::with_val(prec, 5).sqrt()+1)/2)}
+		"deg"|"°" => {Some(Float::with_val(prec, Constant::Pi)/180)}
+		"gon"|"grad" => {Some(Float::with_val(prec, Constant::Pi)/200)}
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
