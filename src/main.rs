@@ -970,7 +970,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
 						if int>=1 && int<=u32::MAX {
-							ENVSTK.last_mut().unwrap().2 = int.to_i32().unwrap();
+							WPREC = int.to_u32().unwrap();
 						}
 						else {
 							eprintln!("! Working precision must be between {} and {} (inclusive)", 1, u32::MAX);
