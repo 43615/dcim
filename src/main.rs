@@ -344,6 +344,31 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 					}
 				}
 			},
+
+			//print register
+			'F' => {
+				if cmds.is_empty() {
+					eprintln!("! No register name provided");
+				}
+				else {
+					let rn=cmds.remove(0);
+					if REGS_SIZE>rn as usize {
+						if !REGS[rn as usize].is_empty(){
+							for i in (0..REGS[rn as usize].len()).rev() {
+								if REGS[rn as usize][i].o.t {
+									println!("{}", REGS[rn as usize][i].o.s.clone());
+								}
+								else {
+									println!("{}", flt_to_str(REGS[rn as usize][i].o.n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+								}
+							}
+						}
+					}
+					else {
+						eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+					}
+				}
+			},
 			/*----------------
 				ARITHMETIC
 			----------------*/
@@ -1227,16 +1252,25 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				}
 			},
 
-			//convert least significant 32 bits to one-char string
+			//convert least significant 32 bits to one-char string or isolate first char of string
 			'a' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let mut a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						MSTK.push(Obj {
-							t: true,
-							n: Float::new(WPREC),
-							s: String::from(char::from_u32_unchecked(a.n.to_integer_round(Round::Zero).unwrap().0.to_u32_wrapping()))
-						});
+						if a.t {
+							MSTK.push(Obj {
+								t: true,
+								n: Float::new(WPREC),
+								s: String::from(a.s.remove(0))
+							});
+						}
+						else {
+							MSTK.push(Obj {
+								t: true,
+								n: Float::new(WPREC),
+								s: String::from(char::from_u32_unchecked(a.n.to_integer_round(Round::Zero).unwrap().0.to_u32_wrapping()))
+							});
+						}
 					}
 				}
 			},
