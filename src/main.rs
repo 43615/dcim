@@ -1,7 +1,4 @@
-#![allow(unused_imports)]
-#![allow(unused_labels)]
-#![allow(dead_code)]
-use rug::{Assign, Complete, Integer, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
+use rug::{Integer, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 
@@ -33,8 +30,6 @@ static mut REGS: Vec<Vec<RegObj>> = Vec::new();	//array of registers
 const REGS_SIZE: usize = 65536;	//amount of available registers
 
 static mut QLEVEL: usize = 0;	//for exiting macros
-
-static mut EXECS: Integer = Integer::ZERO;	//counts calls of exec()
 
 fn main() {
 	unsafe{
