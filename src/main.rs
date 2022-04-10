@@ -1271,6 +1271,59 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				}
 			},
 
+			//conditionally execute macro
+			'!'|'<'|'='|'>' => {
+				//handle inversion
+				let inv = cmd=='!';
+				if inv {
+					if cmds.is_empty() {
+						eprintln!("! Missing comparison operator after '!'");
+						cmd = ' ';
+					}
+					else {
+						cmd = cmds.remove(0);
+					}
+				}
+				if check_n(cmd, MSTK.len()) {
+					let a=MSTK.pop().unwrap();	//deliberately reverse order
+					let b=MSTK.pop().unwrap();
+					if check_t(cmd, a.t, b.t, false) {
+						let mut mac = String::new();
+						if cmds.is_empty() {
+							eprintln!("! No register name provided");
+						}
+						else {
+							let rn = cmds.remove(0);
+							if REGS_SIZE>rn as usize {
+								if REGS[rn as usize].is_empty() {
+									eprintln!("! Register '{}'({}) is empty", rn, rn as usize);
+								}
+								else {
+									mac = REGS[rn as usize].last().unwrap().o.clone().s;	//get macro if possible
+								}
+							}
+							else {
+								eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+							}
+						}
+						if !mac.is_empty() {
+							if inv != match cmd {
+								'<' => { a.n < b.n },
+								'=' => { a.n == b.n },
+								'>' => { a.n > b.n },
+								_ => {
+									eprintln!("! Invalid comparison operator '{}'", cmd);
+									true	//only possible with inv, which xors it to false
+								},
+							}
+							{
+								exec(mac, &mut rng);
+							}
+						}
+					}
+				}
+			},
+
 			//quit dcim
 			'q' => {
 				std::process::exit(0);
@@ -1290,6 +1343,14 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						}
 					}
 				}
+			},
+
+			//prompt and execute
+			'?' => {
+				let mut prompt_in = String::new();
+				stdin().read_line(&mut prompt_in).expect("Unable to read input");
+				prompt_in = prompt_in.trim_end_matches(char::is_whitespace).to_owned();		//trim trailing LF
+				exec(prompt_in, &mut rng);
 			},
 
 			//stop on comment
