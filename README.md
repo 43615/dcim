@@ -50,8 +50,8 @@ Currently missing planned features: manual rounding, different modes like file i
 - `a` now uses the least significant 32 bits.
 - `A` converts a number to a string in 32-bit blocks corresponding to characters, similarly to `P`(which parses bytes as UTF-8).
 ## Macro changes
-- `q` now always exits dc.
-- `Q` may behave slightly differently.
+- `q` now always exits.
+- `Q` may behave slightly differently, TODO: test.
 ## New: Library of constants and conversion factors
 TODO: List all factors
 - `"` pushes the constant or conversion factor with name a.
