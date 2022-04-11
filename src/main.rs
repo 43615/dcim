@@ -1217,6 +1217,13 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 								else {
 									let int = a.n.to_integer_round(Round::Zero).unwrap().0;
 									if let Some(rai) = int.to_usize() {
+										if rai>=REGS[rn as usize].last().unwrap().a.len() {
+											REGS[rn as usize].last_mut().unwrap().a.resize(rai+1, Obj {
+												t: false,
+												n: Float::with_val(WPREC, 0),	//extend if required, initialize with default objects
+												s: String::new()
+											});
+										}
 										MSTK.push(REGS[rn as usize].last().unwrap().a[rai].clone());
 									}
 									else {
