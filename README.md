@@ -13,6 +13,7 @@ Currently missing planned features: manual rounding, different modes like file i
 - When numbers are rounded, the fractional part is discarded (all rounding is towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
 - The default value when saving or loading uninitialized array objects is the number 0.
+- The `!` command for executing OS commands is deliberately not implemented.
 ## Number input changes
 - Both the input and output bases are now in the range 2-36 (inclusive).
 - Capital A-F are no longer used for number input, higher-base numbers are escaped with `'`.
