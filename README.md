@@ -41,6 +41,7 @@ Currently missing planned features: manual rounding, different modes like file i
 - `Z`\<reg\> now pushes the depth of a register.
 - `F`\<reg\> now prints an entire register.
 - `R` rotates the top abs(a) elements: upward if a is positive, downward if negative.
+  - For example: `1 2 3 4 3R` results in 1 4 2 3
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
@@ -49,10 +50,10 @@ Currently missing planned features: manual rounding, different modes like file i
 - `a` now uses the least significant 32 bits.
 - `A` converts a number to a string in 32-bit blocks corresponding to characters, similarly to `P`(which parses bytes as UTF-8).
 ## Macro changes
-- `q` now always exits dc.
-- `Q` may behave slightly differently.
+- `q` now always exits.
+- `Q` may behave slightly differently, TODO: test.
 ## New: Library of constants and conversion factors
 TODO: List all factors
 - `"` pushes the constant or conversion factor with name a.
-- For example: `90[deg]"*` converts 90° to radians, `10 6^[in]"*[nmi]"/` converts 1 million inches to nautical miles.
+  - For example: `90[deg]"*` converts 90° to radians, `10 6^[in]"*[nmi]"/` converts 1 million inches to nautical miles.
 - All constants and units are stored in amounts of their respective international standard units.
