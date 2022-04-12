@@ -1,4 +1,4 @@
-# dcim
+# dcim [WIP]
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
 This readme is currently incomplete.
 
