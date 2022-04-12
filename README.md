@@ -2,7 +2,7 @@
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
 This readme is currently incomplete.
 
-Features present in GNU dc are not listed unless different.
+Features present in GNU dc are not listed unless different. [Familiarize yourself first.](https://linux.die.net/man/1/dc)
 
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
