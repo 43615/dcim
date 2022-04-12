@@ -991,7 +991,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 			},
 
 			//set working precision
-			'm' => {
+			'w' => {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
@@ -1034,7 +1034,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 			},
 
 			//push working precision
-			'M' => {
+			'W' => {
 				MSTK.push(Obj {
 					t: false,
 					n: Float::with_val(WPREC, WPREC),
