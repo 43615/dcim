@@ -36,7 +36,7 @@ Currently missing planned features: manual rounding, different modes like file i
 - `g`: natural log of a.
 - `G`: bth log of a.
 - `uyt`, `UYT`: sin, cos, tan, asin, acos, atan. Arguments in radians.
-- All modulo operators (`%`, `~`, `|`) now round their inputs.
+- All modulo operators (`%`, `~`, `|`) now round their arguments.
 - `N` pushes a random integer in range \[0;a).
 ## New stack/register manipulation commands
 - `C` deletes the top a elements.
