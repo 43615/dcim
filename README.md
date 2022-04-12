@@ -9,15 +9,15 @@ This is my first real Rust project, please expect low quality and report anythin
 Currently missing planned features: manual rounding, different modes like file input, more conversion factors, global reduction modulus
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
-- Error messages are prefixed with `!`.
-- When numbers are rounded, the fractional part is discarded (all rounding is towards zero).
+- Error messages are (hopefully) more helpful and always prefixed with `!`.
+- Commands that need integers always explicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
 - The default value when saving or loading uninitialized array objects is the number 0.
 - The `!` command for executing OS commands is deliberately not implemented.
 ## Number input changes
 - Both the input and output bases are now in the range 2-36 (inclusive).
-- Capital A-F are no longer used for number input in the normal way, higher-base numbers need to be escaped with `'`. This change frees A-F up as commands and allows for bases over 16.
-- Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
+- Capital A-F are no longer used for number input in the normal way, base-11+ numbers now need to be escaped with `'`. This change frees A-F up as commands and allows for bases over 16.
+  - Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
 - Digits too high for the input base (such as `'G` when base is 16) no longer default to the highest possible digit, but cause an error message instead.
 ## Precision and number output changes
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
