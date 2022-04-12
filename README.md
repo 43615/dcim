@@ -23,7 +23,8 @@ Currently missing planned features: manual rounding, different modes like file i
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`m`/`M`).
 - Output precision now applies correctly regardless of output base.
 - If output precision is negative (default: -1), numbers are printed with enough precision to be exact.
-- Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 77 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
+- Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
+  - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
 - Attention: M applies to the whole number, so large integers may be represented incorrectly.
 ## New: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
