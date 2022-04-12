@@ -16,7 +16,7 @@ Currently missing planned features: manual rounding, different modes like file i
 - The `!` command for executing OS commands is deliberately not implemented.
 ## Number input changes
 - Both the input and output bases are now in the range 2-36 (inclusive).
-- Capital A-F are no longer used for number input, higher-base numbers are escaped with `'`.
+- Capital A-F are no longer used for number input in the normal way, higher-base numbers need to be escaped with `'`. This change frees A-F up as commands and allows for bases over 16.
 - Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
 - Digits too high for the input base (such as `'G` when base is 16) no longer default to the highest possible digit, but cause an error message instead.
 ## Precision and number output changes
