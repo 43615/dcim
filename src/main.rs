@@ -339,8 +339,13 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						stdout().flush().unwrap();
 					}
 					else {
-						print!("{}", String::from_utf8_unchecked(a.n.to_integer_round(Round::Zero).unwrap().0.to_digits::<u8>(Order::Msf)));
-						stdout().flush().unwrap();
+						if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap().0.to_digits::<u8>(Order::Msf)) {
+							print!("{}", res);
+							stdout().flush().unwrap();
+						}
+						else {
+							eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", a.n.to_integer_round(Round::Zero).unwrap().0);
+						}
 					}
 				}
 			},
