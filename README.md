@@ -1,6 +1,6 @@
 # dcim [WIP]
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
-This readme is currently incomplete.
+This readme is currently incomplete. TODO: Add memory model diagram
 
 Features present in GNU dc are not listed unless different. [Familiarize yourself first.](https://linux.die.net/man/1/dc)
 
@@ -12,7 +12,7 @@ Currently missing planned features: manual rounding, different modes like file i
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
 - Commands that need integers always explicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
-- The default value when saving or loading uninitialized array objects is the number 0.
+- The default value when saving or loading uninitialized array objects is the number 0. This fixes the issue with `0d:ala`.
 - The `!` command for executing OS commands is deliberately not implemented.
 ## Number input changes
 - Both the input and output bases are now in the range 2-36 (inclusive).
