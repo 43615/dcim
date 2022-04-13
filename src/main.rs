@@ -193,10 +193,7 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 	
 	'STOP_EXEC: while !cmds.is_empty() {
-		if QLEVEL>0 {
-			QLEVEL-=1;
-			break 'STOP_EXEC;
-		}
+		if QLEVEL>0 { break 'STOP_EXEC; }	//exit prematurely
 		let mut cmd = cmds.remove(0);	//isolate first character as command
 
 		//defines behavior of all commands
@@ -1412,5 +1409,5 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 			},
 		}
 	}
-	if QLEVEL>0 { QLEVEL-=1; }	//decrement if going to quit anyway
+	if QLEVEL>0 { QLEVEL-=1; }	//decrement when about to quit
 }
