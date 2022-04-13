@@ -1,6 +1,6 @@
 # dcim [WIP]
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
-This readme is currently incomplete. TODO: Add memory model diagram
+This readme is currently incomplete.
 
 Features present in GNU dc are not listed unless different. [Familiarize yourself first.](https://linux.die.net/man/1/dc)
 
@@ -12,7 +12,7 @@ Currently missing planned features: manual rounding, different modes like file i
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
 - Commands that need integers always explicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
-- The default value when saving or loading uninitialized array objects is the number 0. This fixes the issue with `0d:ala`.
+- The default value when saving or loading uninitialized array objects is the number 0. This fixes the issue with `123d:ala`.
 - The `!` command for executing OS commands is deliberately not implemented.
 ## Number input changes
 - Both the input and output bases are now in the range 2-36 (inclusive).
@@ -60,3 +60,42 @@ TODO: List all factors
 - `"` pushes the constant or conversion factor with name a.
   - For example: `90[deg]"*` converts 90° to radians, `10 6^[in]"*[nmi]"/` converts 1 million inches to nautical miles.
 - All constants and units are stored in amounts of their respective international standard units.
+# Memory model diagram
+dc's manpage doesn't do a great job at explaining it, so here's a diagram:
+```
+Basic object "Obj":
++--------+
+| String |
++--------+
+| Number |
++--------+
+|  Type  |
++--------+
+Boolean "Type" (true iff string) solely determines how an object is treated. The thereby "activated" field must not be empty, the other one is never used.
+
+Main stack:
++-----+-----+-----+----
+| Obj | Obj | Obj | ... no theoretical size limit
++-----+-----+-----+----
+
+Register object "RegObj":
++-----+
+| Obj | principal object (s/S, l/L)
++-----+-----+-----+----
+| Obj | Obj | Obj | ... array of objects (:, ;), no theoretical size limit
++-----+-----+-----+----
+Each RegObj has its own array.
+Note that arrays are continuous (all lower indices are always valid to read from).
+Writing to or reading from an uninitialized array element initializes all previously nonexistent "Obj"s with the number 0.
+
+Register:
++--------+--------+--------+----
+| RegObj | RegObj | RegObj | ... no theoretical size limit
++--------+--------+--------+----
+s and l overwrite and copy the top RegObj's Obj, S and L push and pop it.
+
+Array of all registers:
++----------+----------+----------+-----+----------+
+| Register | Register | Register | ... | Register | size fixed to 65536
++----------+----------+----------+-----+----------+
+```
