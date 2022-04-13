@@ -353,21 +353,22 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 					eprintln!("! No register name provided");
 				}
 				else {
-					let rn=cmds.remove(0);
-					if REGS_SIZE>rn as usize {
-						if !REGS[rn as usize].is_empty(){
-							for i in (0..REGS[rn as usize].len()).rev() {
-								if REGS[rn as usize][i].o.t {
-									println!("{}", REGS[rn as usize][i].o.s.clone());
+					let rn = cmds.remove(0);
+					let ri = rn as usize;
+					if REGS_SIZE>ri {
+						if !REGS[ri].is_empty(){
+							for i in (0..REGS[ri].len()).rev() {
+								if REGS[ri][i].o.t {
+									println!("{}", REGS[ri][i].o.s.clone());
 								}
 								else {
-									println!("{}", flt_to_str(REGS[rn as usize][i].o.n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+									println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
 								}
 							}
 						}
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+						eprintln!("! Register '{}'({}) is not available", rn, ri);
 					}
 				}
 			},
@@ -1071,14 +1072,15 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 					}
 					else {
 						let rn = cmds.remove(0);
-						if REGS_SIZE>rn as usize {
-							if !REGS[rn as usize].is_empty() {
-								REGS[rn as usize].pop();	//remove old top, effectively overwrite
+						let ri = rn as usize;
+						if REGS_SIZE>ri {
+							if !REGS[ri].is_empty() {
+								REGS[ri].pop();	//remove old top, effectively overwrite
 							}
-							REGS[rn as usize].push(a);
+							REGS[ri].push(a);
 						}
 						else {
-							eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+							eprintln!("! Register '{}'({}) is not available", rn, ri);
 						}
 					}
 				}
@@ -1099,11 +1101,12 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 					}
 					else {
 						let rn = cmds.remove(0);
-						if REGS_SIZE>rn as usize {
-							REGS[rn as usize].push(a);
+						let ri = rn as usize;
+						if REGS_SIZE>ri {
+							REGS[ri].push(a);
 						}
 						else {
-							eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+							eprintln!("! Register '{}'({}) is not available", rn, ri);
 						}
 					}
 				}
@@ -1119,16 +1122,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				}
 				else {
 					let rn = cmds.remove(0);
-					if REGS_SIZE>rn as usize {
-						if REGS[rn as usize].is_empty() {
-							eprintln!("! Register '{}'({}) is empty", rn, rn as usize);
+					let ri = rn as usize;
+					if REGS_SIZE>ri {
+						if REGS[ri].is_empty() {
+							eprintln!("! Register '{}'({}) is empty", rn, ri);
 						}
 						else {
-							MSTK.push(REGS[rn as usize].last().unwrap().o.clone());
+							MSTK.push(REGS[ri].last().unwrap().o.clone());
 						}
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+						eprintln!("! Register '{}'({}) is not available", rn, ri);
 					}
 				}
 			},
@@ -1140,16 +1144,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				}
 				else {
 					let rn = cmds.remove(0);
-					if REGS_SIZE>rn as usize {
-						if REGS[rn as usize].is_empty() {
-							eprintln!("! Register '{}'({}) is empty", rn, rn as usize);
+					let ri = rn as usize;
+					if REGS_SIZE>ri {
+						if REGS[ri].is_empty() {
+							eprintln!("! Register '{}'({}) is empty", rn, ri);
 						}
 						else {
-							MSTK.push(REGS[rn as usize].pop().unwrap().o);
+							MSTK.push(REGS[ri].pop().unwrap().o);
 						}
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+						eprintln!("! Register '{}'({}) is not available", rn, ri);
 					}
 				}
 			},
@@ -1165,9 +1170,10 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						}
 						else {
 							let rn = cmds.remove(0);
-							if REGS_SIZE>rn as usize {
-								if REGS[rn as usize].is_empty() {
-									REGS[rn as usize].push(RegObj {
+							let ri = rn as usize;
+							if REGS_SIZE>ri {
+								if REGS[ri].is_empty() {
+									REGS[ri].push(RegObj {
 										o: Obj {
 											t: false,
 											n: Float::with_val(WPREC, 0),	//create default register object if empty
@@ -1178,21 +1184,21 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 								}
 								let int = b.n.to_integer_round(Round::Zero).unwrap().0;
 								if let Some(rai) = int.to_usize() {
-									if rai>=REGS[rn as usize].last().unwrap().a.len() {
-										REGS[rn as usize].last_mut().unwrap().a.resize(rai+1, Obj {
+									if rai>=REGS[ri].last().unwrap().a.len() {
+										REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj {
 											t: false,
 											n: Float::with_val(WPREC, 0),	//extend if required, initialize with default objects
 											s: String::new()
 										});
 									}
-									REGS[rn as usize].last_mut().unwrap().a[rai] = a;
+									REGS[ri].last_mut().unwrap().a[rai] = a;
 								}
 								else {
 									eprintln!("! Cannot possibly save to array index {}", int);
 								}
 							}
 							else {
-								eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+								eprintln!("! Register '{}'({}) is not available", rn, ri);
 							}
 						}
 					}
@@ -1212,29 +1218,35 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						}
 						else {
 							let rn = cmds.remove(0);
-							if REGS_SIZE>rn as usize {
-								if REGS[rn as usize].is_empty() {
-									eprintln!("! Register '{}'({}) is empty", rn, rn as usize);
+							let ri = rn as usize;
+							if REGS_SIZE>ri {
+								if REGS[ri].is_empty() {
+									REGS[ri].push(RegObj {
+										o: Obj {
+											t: false,
+											n: Float::with_val(WPREC, 0),	//create default register object if empty
+											s: String::new()
+										},
+										a: Vec::new()
+									});
+								}
+								let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+								if let Some(rai) = int.to_usize() {
+									if rai>=REGS[ri].last().unwrap().a.len() {
+										REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj {
+											t: false,
+											n: Float::with_val(WPREC, 0),	//extend if required, initialize with default objects
+											s: String::new()
+										});
+									}
+									MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
 								}
 								else {
-									let int = a.n.to_integer_round(Round::Zero).unwrap().0;
-									if let Some(rai) = int.to_usize() {
-										if rai>=REGS[rn as usize].last().unwrap().a.len() {
-											REGS[rn as usize].last_mut().unwrap().a.resize(rai+1, Obj {
-												t: false,
-												n: Float::with_val(WPREC, 0),	//extend if required, initialize with default objects
-												s: String::new()
-											});
-										}
-										MSTK.push(REGS[rn as usize].last().unwrap().a[rai].clone());
-									}
-									else {
-										eprintln!("! Cannot possibly load from array index {}", int);
-									}
+									eprintln!("! Cannot possibly load from array index {}", int);
 								}
 							}
 							else {
-								eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+								eprintln!("! Register '{}'({}) is not available", rn, ri);
 							}
 						}
 					}
@@ -1248,15 +1260,16 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				}
 				else {
 					let rn = cmds.remove(0);
-					if REGS_SIZE>rn as usize {
+					let ri = rn as usize;
+					if REGS_SIZE>ri {
 						MSTK.push(Obj {
 							t: false,
-							n: Float::with_val(WPREC, REGS[rn as usize].len()),
+							n: Float::with_val(WPREC, REGS[ri].len()),
 							s: String::new()
 						});
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+						eprintln!("! Register '{}'({}) is not available", rn, ri);
 					}
 				}
 			},
@@ -1339,16 +1352,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						}
 						else {
 							let rn = cmds.remove(0);
-							if REGS_SIZE>rn as usize {
-								if REGS[rn as usize].is_empty() {
-									eprintln!("! Register '{}'({}) is empty", rn, rn as usize);
+							let ri = rn as usize;
+							if REGS_SIZE>ri {
+								if REGS[ri].is_empty() {
+									eprintln!("! Register '{}'({}) is empty", rn, ri);
 								}
 								else {
-									mac = REGS[rn as usize].last().unwrap().o.clone().s;	//get macro if possible
+									mac = REGS[ri].last().unwrap().o.clone().s;	//get macro if possible
 								}
 							}
 							else {
-								eprintln!("! Register '{}'({}) is not available", rn, rn as usize);
+								eprintln!("! Register '{}'({}) is not available", rn, ri);
 							}
 						}
 						if !mac.is_empty() {
