@@ -34,7 +34,7 @@ Currently missing planned features: manual rounding, different cmdline parameter
 - `^` no longer rounds the exponent.
 - `V`: bth root of a.
 - `g`: natural log of a.
-- `G`: bth log of a.
+- `G`: bth log of a, effectively a shorthand for `<a>g <b>g /`.
 - `uyt`, `UYT`: sin, cos, tan, asin, acos, atan. Arguments in radians.
 - All modulo operators (`%`, `~`, `|`) now round their arguments.
 - `N` pushes a random integer in range \[0;a).
