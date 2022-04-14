@@ -30,7 +30,7 @@ static mut REGS: Vec<Vec<RegObj>> = Vec::new();	//array of registers
 const REGS_SIZE: usize = 65536;	//amount of available registers
 
 static mut MRI: usize = 0;	//manual register index
-static mut MR: bool = false;	//MRI valid?
+static mut MRI_EN: bool = false;	//MRI valid?
 
 static mut ESTK: Vec<String> = Vec::new();	//macro instructions
 
@@ -358,12 +358,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//print register
 			'F' => {
-				if ESTK.last().unwrap().is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MR {
-						MR = false;
+					let ri = if MRI_EN {
+						MRI_EN = false;
 						MRI
 					}
 					else {
@@ -1081,12 +1081,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
 					};
-					if ESTK.last().unwrap().is_empty()&&!MR {
+					if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 						eprintln!("! No register number provided");
 					}
 					else {
-						let ri = if MR {
-							MR = false;
+						let ri = if MRI_EN {
+							MRI_EN = false;
 							MRI
 						}
 						else {
@@ -1115,12 +1115,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
 					};
-					if ESTK.last().unwrap().is_empty()&&!MR {
+					if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 						eprintln!("! No register number provided");
 					}
 					else {
-						let ri = if MR {
-							MR = false;
+						let ri = if MRI_EN {
+							MRI_EN = false;
 							MRI
 						}
 						else {
@@ -1141,12 +1141,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//load from top of register
 			'l' => {
-				if ESTK.last().unwrap().is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MR {
-						MR = false;
+					let ri = if MRI_EN {
+						MRI_EN = false;
 						MRI
 					}
 					else {
@@ -1168,12 +1168,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//pop from top of register
 			'L' => {
-				if ESTK.last().unwrap().is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MR {
-						MR = false;
+					let ri = if MRI_EN {
+						MRI_EN = false;
 						MRI
 					}
 					else {
@@ -1199,12 +1199,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						if ESTK.last().unwrap().is_empty()&&!MR {
+						if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 							eprintln!("! No register number provided");
 						}
 						else {
-							let ri = if MR {
-								MR = false;
+							let ri = if MRI_EN {
+								MRI_EN = false;
 								MRI
 							}
 							else {
@@ -1252,12 +1252,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if MSTK.len()>=1 {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						if ESTK.last().unwrap().is_empty()&&!MR {
+						if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 							eprintln!("! No register number provided");
 						}
 						else {
-							let ri = if MR {
-								MR = false;
+							let ri = if MRI_EN {
+								MRI_EN = false;
 								MRI
 							}
 							else {
@@ -1299,12 +1299,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//push register depth
 			'Z' => {
-				if ESTK.last().unwrap().is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MRI_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MR {
-						MR = false;
+					let ri = if MRI_EN {
+						MRI_EN = false;
 						MRI
 					}
 					else {
@@ -1332,7 +1332,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						if let Some(ri) = int.to_usize() {
 							if REGS_SIZE>ri {
 								MRI = ri;
-								MR = true;
+								MRI_EN = true;
 							}
 							else {
 								eprintln!("! Register {} is not available", ri);
