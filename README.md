@@ -6,7 +6,7 @@ Features present in GNU dc are not listed unless different. [Familiarize yoursel
 
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
-Currently missing planned features: manual rounding, different modes like file input, more conversion factors, global reduction modulus
+Currently missing planned features: manual rounding, different cmdline parameteres and modes like file input, more conversion factors, global reduction modulus
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
