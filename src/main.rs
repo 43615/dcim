@@ -193,7 +193,7 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 //core execution engine
 //unsafe for accessing static mut objects across different runs regardless of where it's called from
 //single-threaded so idgaf
-unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
+unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 	
 	'STOP_EXEC: while !cmds.is_empty() {
 		if QLEVEL>0 { break 'STOP_EXEC; }	//exit prematurely
@@ -1389,7 +1389,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if a.t {
-						exec(a.s, &mut rng);
+						cmds = a.s + &cmds;
 					}
 					else {
 						MSTK.push(a);
@@ -1444,7 +1444,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 								},
 							}
 							{
-								exec(mac, &mut rng);
+								cmds = mac + &cmds;
 							}
 						}
 					}
@@ -1477,7 +1477,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				let mut prompt_in = String::new();
 				stdin().read_line(&mut prompt_in).expect("Unable to read input");
 				prompt_in = prompt_in.trim_end_matches(char::is_whitespace).to_owned();		//trim trailing LF
-				exec(prompt_in, &mut rng);
+				cmds = prompt_in + &cmds;
 			},
 
 			//stop on comment
