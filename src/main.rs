@@ -29,6 +29,9 @@ static mut MSTK: Vec<Obj> = Vec::new();	//main stack
 static mut REGS: Vec<Vec<RegObj>> = Vec::new();	//array of registers
 const REGS_SIZE: usize = 65536;	//amount of available registers
 
+static mut MRI: usize = 0;	//manual register index
+static mut MR: bool = false;	//MRI valid?
+
 static mut QLEVEL: usize = 0;	//for exiting macros
 
 fn main() {
@@ -349,12 +352,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 
 			//print register
 			'F' => {
-				if cmds.is_empty() {
-					eprintln!("! No register name provided");
+				if cmds.is_empty()&&!MR {
+					eprintln!("! No register number provided");
 				}
 				else {
-					let rn = cmds.remove(0);
-					let ri = rn as usize;
+					let ri = if MR {
+						MR = false;
+						MRI
+					}
+					else {
+						cmds.remove(0) as usize
+					};
 					if REGS_SIZE>ri {
 						if !REGS[ri].is_empty(){
 							for i in (0..REGS[ri].len()).rev() {
@@ -368,7 +376,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						}
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, ri);
+						eprintln!("! Register {} is not available", ri);
 					}
 				}
 			},
@@ -1067,12 +1075,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
 					};
-					if cmds.is_empty() {
-						eprintln!("! No register name provided");
+					if cmds.is_empty()&&!MR {
+						eprintln!("! No register number provided");
 					}
 					else {
-						let rn = cmds.remove(0);
-						let ri = rn as usize;
+						let ri = if MR {
+							MR = false;
+							MRI
+						}
+						else {
+							cmds.remove(0) as usize
+						};
 						if REGS_SIZE>ri {
 							if !REGS[ri].is_empty() {
 								REGS[ri].pop();	//remove old top, effectively overwrite
@@ -1080,7 +1093,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 							REGS[ri].push(a);
 						}
 						else {
-							eprintln!("! Register '{}'({}) is not available", rn, ri);
+							eprintln!("! Register {} is not available", ri);
 						}
 					}
 				}
@@ -1096,17 +1109,22 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
 					};
-					if cmds.is_empty() {
-						eprintln!("! No register name provided");
+					if cmds.is_empty()&&!MR {
+						eprintln!("! No register number provided");
 					}
 					else {
-						let rn = cmds.remove(0);
-						let ri = rn as usize;
+						let ri = if MR {
+							MR = false;
+							MRI
+						}
+						else {
+							cmds.remove(0) as usize
+						};
 						if REGS_SIZE>ri {
 							REGS[ri].push(a);
 						}
 						else {
-							eprintln!("! Register '{}'({}) is not available", rn, ri);
+							eprintln!("! Register {} not available", ri);
 						}
 					}
 				}
@@ -1117,44 +1135,54 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 
 			//load from top of register
 			'l' => {
-				if cmds.is_empty() {
-					eprintln!("! No register name provided");
+				if cmds.is_empty()&&!MR {
+					eprintln!("! No register number provided");
 				}
 				else {
-					let rn = cmds.remove(0);
-					let ri = rn as usize;
+					let ri = if MR {
+						MR = false;
+						MRI
+					}
+					else {
+						cmds.remove(0) as usize
+					};
 					if REGS_SIZE>ri {
 						if REGS[ri].is_empty() {
-							eprintln!("! Register '{}'({}) is empty", rn, ri);
+							eprintln!("! Register {} is empty", ri);
 						}
 						else {
 							MSTK.push(REGS[ri].last().unwrap().o.clone());
 						}
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, ri);
+						eprintln!("! Register {} is not available", ri);
 					}
 				}
 			},
 
 			//pop from top of register
 			'L' => {
-				if cmds.is_empty() {
-					eprintln!("! No register name provided");
+				if cmds.is_empty()&&!MR {
+					eprintln!("! No register number provided");
 				}
 				else {
-					let rn = cmds.remove(0);
-					let ri = rn as usize;
+					let ri = if MR {
+						MR = false;
+						MRI
+					}
+					else {
+						cmds.remove(0) as usize
+					};
 					if REGS_SIZE>ri {
 						if REGS[ri].is_empty() {
-							eprintln!("! Register '{}'({}) is empty", rn, ri);
+							eprintln!("! Register {} is empty", ri);
 						}
 						else {
 							MSTK.push(REGS[ri].pop().unwrap().o);
 						}
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, ri);
+						eprintln!("! Register {} is not available", ri);
 					}
 				}
 			},
@@ -1165,12 +1193,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						if cmds.is_empty() {
-							eprintln!("! No register name provided");
+						if cmds.is_empty()&&!MR {
+							eprintln!("! No register number provided");
 						}
 						else {
-							let rn = cmds.remove(0);
-							let ri = rn as usize;
+							let ri = if MR {
+								MR = false;
+								MRI
+							}
+							else {
+								cmds.remove(0) as usize
+							};
 							if REGS_SIZE>ri {
 								if REGS[ri].is_empty() {
 									REGS[ri].push(RegObj {
@@ -1198,7 +1231,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 								}
 							}
 							else {
-								eprintln!("! Register '{}'({}) is not available", rn, ri);
+								eprintln!("! Register {} is not available", ri);
 							}
 						}
 					}
@@ -1213,12 +1246,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 				if MSTK.len()>=1 {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						if cmds.is_empty() {
-							eprintln!("! No register name provided");
+						if cmds.is_empty()&&!MR {
+							eprintln!("! No register number provided");
 						}
 						else {
-							let rn = cmds.remove(0);
-							let ri = rn as usize;
+							let ri = if MR {
+								MR = false;
+								MRI
+							}
+							else {
+								cmds.remove(0) as usize
+							};
 							if REGS_SIZE>ri {
 								if REGS[ri].is_empty() {
 									REGS[ri].push(RegObj {
@@ -1246,7 +1284,7 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 								}
 							}
 							else {
-								eprintln!("! Register '{}'({}) is not available", rn, ri);
+								eprintln!("! Register {} is not available", ri);
 							}
 						}
 					}
@@ -1255,12 +1293,17 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 
 			//push register depth
 			'Z' => {
-				if cmds.is_empty() {
-					eprintln!("! No register name provided");
+				if cmds.is_empty()&&!MR {
+					eprintln!("! No register number provided");
 				}
 				else {
-					let rn = cmds.remove(0);
-					let ri = rn as usize;
+					let ri = if MR {
+						MR = false;
+						MRI
+					}
+					else {
+						cmds.remove(0) as usize
+					};
 					if REGS_SIZE>ri {
 						MSTK.push(Obj {
 							t: false,
@@ -1269,10 +1312,35 @@ unsafe fn exec(mut cmds: String, mut rng: &mut RandState) {
 						});
 					}
 					else {
-						eprintln!("! Register '{}'({}) is not available", rn, ri);
+						eprintln!("! Register {} is not available", ri);
 					}
 				}
 			},
+
+			//specify manual register index
+			',' => {
+				if check_n(cmd, MSTK.len()) {
+					let a=MSTK.pop().unwrap();
+					if check_t(cmd, a.t, false, false) {
+						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						if let Some(ri) = int.to_usize() {
+							if REGS_SIZE>ri {
+								MRI = ri;
+								MR = true;
+							}
+							else {
+								eprintln!("! Register {} is not available", ri);
+							}
+						}
+						else {
+							eprintln!("! Register {} cannot possibly exist", int);
+						}
+					}
+				}
+			},
+			/*------------
+				MACROS
+			------------*/
 
 			//convert least significant 32 bits to one-char string or isolate first char of string
 			'a' => {
