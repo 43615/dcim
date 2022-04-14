@@ -6,7 +6,7 @@ Features present in GNU dc are not listed unless different. [Familiarize yoursel
 
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
-Currently missing planned features: manual rounding, different modes like file input, more conversion factors, global reduction modulus, manual register number specification
+Currently missing planned features: manual rounding, different modes like file input, more conversion factors, global reduction modulus
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
@@ -52,6 +52,16 @@ Currently missing planned features: manual rounding, different modes like file i
 - `/` removes characters from string a such that abs(b) remain: from the back if b is positive, from the front if negative.
 - `a` now uses the least significant 32 bits.
 - `A` converts a number to a string in 32-bit blocks corresponding to characters, similarly to `P`(which parses bytes as UTF-8).
+## Manual register number selection
+- `,` writes a number to a single-use manual register number selector.
+- This selector can only be written to and expires (becomes invalid) at the next call of any register command.
+- When it's valid, register commands don't process the next character as a register name.
+- Example: `[test] sa 97,l p` (assuming input base is 10).
+- If no register name is provided and the selector is marked as invalid, an error message is displayed.
+- Advantages/use cases:
+  - Enables scripts to select registers automatically without having to convert the number to a string first (`97,s` is shorter than `97a[s]r+x`).
+  - Register numbers can be input in any base because the number is parsed like any other.
+  - All register numbers in the allowed range can be used, not just valid/inputtable Unicode characters.
 ## Macro changes
 - `q` now always exits regardless of where it's called from.
 - `Q` may behave slightly differently, TODO: test.
