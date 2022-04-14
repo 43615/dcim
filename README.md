@@ -28,7 +28,7 @@ Currently missing planned features: manual rounding, different cmdline parameter
 - Attention: W applies to the whole number, so large integers may be represented incorrectly.
 ## New: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
-- `}` restores the previous context or resets the parameters to default if no older context exists.
+- `}` restores the previous context or resets the parameters to default if no previous context exists.
 - Working precision is unaffected.
 ## New mathematical commands and changes
 - `^` no longer rounds the exponent.
