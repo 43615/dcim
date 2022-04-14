@@ -32,7 +32,7 @@ const REGS_SIZE: usize = 65536;	//amount of available registers
 static mut MRI: usize = 0;	//manual register index
 static mut MR: bool = false;	//MRI valid?
 
-static mut QLEVEL: usize = 0;	//for exiting macros
+static mut ESTK: Vec<String> = Vec::new();	//macro instructions
 
 fn main() {
 	unsafe{
@@ -58,6 +58,7 @@ fn interactive_mode(mut rng: &mut RandState) {
 		stdin().read_line(&mut input).expect("Unable to read input");
 
 		input = input.trim_end_matches(char::is_whitespace).to_owned();		//trim trailing LF
+		input = input.split_once('#').unwrap_or((&input, "")).0.to_string();	//trim # comment
 
 		unsafe {
 			exec(input, &mut rng);
@@ -191,13 +192,18 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 }
 
 //core execution engine
-//unsafe for accessing static mut objects across different runs regardless of where it's called from
+//unsafe for accessing static mut objects across different runs
 //single-threaded so idgaf
-unsafe fn exec(mut cmds: String, rng: &mut RandState) {
-	
-	'STOP_EXEC: while !cmds.is_empty() {
-		if QLEVEL>0 { break 'STOP_EXEC; }	//exit prematurely
-		let mut cmd = cmds.remove(0);	//isolate first character as command
+unsafe fn exec(input: String, rng: &mut RandState) {
+	ESTK.push(input);
+	while !ESTK.is_empty() {
+		
+		let mut cmd = if ESTK.last().unwrap().is_empty() {
+			break;
+		}
+		else {
+			ESTK.last_mut().unwrap().remove(0)	//isolate first character as command
+		};
 
 		//defines behavior of all commands
 		match cmd {
@@ -212,7 +218,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 				let mut alpha = false;	//letters are used
 				if cmd == '\'' {
 					alpha = true;
-					cmd = if cmds.is_empty() {' '} else {cmds.remove(0)};
+					cmd = if ESTK.last().unwrap().is_empty() {' '} else {ESTK.last_mut().unwrap().remove(0)};
 				}
 				//keep adding to numstr until number is finished
 				'STDNUM_FINISHED: loop {
@@ -238,9 +244,9 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 					else {
 						break 'STDNUM_FINISHED;
 					}
-					cmd = if cmds.is_empty() {' '} else {cmds.remove(0)};
+					cmd = if ESTK.last().unwrap().is_empty() {' '} else {ESTK.last_mut().unwrap().remove(0)};
 				}
-				cmds.insert(0, cmd);	//restore first char that isn't part of the number
+				ESTK.last_mut().unwrap().insert(0, cmd);	//restore first char that isn't part of the number
 				if numstr.starts_with(".")||numstr.starts_with("-.") { numstr = numstr.replace(".", "0."); }	//add implied zero before fractional separator
 				if numstr.ends_with(".")||numstr.ends_with("-")||numstr.is_empty() { numstr = "0".to_string(); }	//assume 0 if no digits provided
 				if let Ok(res) = Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1) {		
@@ -260,13 +266,13 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 				let mut res = String::new();	//result string
 				let mut nest: usize = 1;	//nesting level
 				let mut err = false;
-				if !cmds.is_empty() {
-					cmd = cmds.remove(0);
+				if !ESTK.last().unwrap().is_empty() {
+					cmd = ESTK.last_mut().unwrap().remove(0);
 					while nest>0 {
 						res.push(cmd);
 						if cmd == '[' { nest+=1; }
 						if cmd == ']' { nest-=1; }
-						if cmds.is_empty() {
+						if ESTK.last().unwrap().is_empty() {
 							if nest>0 {
 								//only reached on improper string
 								eprintln!("! Unable to parse string \"{}\": missing closing bracket", res);
@@ -274,9 +280,9 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 								nest = 0;
 							}
 						}
-						else { cmd = cmds.remove(0); }
+						else { cmd = ESTK.last_mut().unwrap().remove(0); }
 					}
-					cmds.insert(0, cmd);	//restore first char that isn't part of the string
+					ESTK.last_mut().unwrap().insert(0, cmd);	//restore first char that isn't part of the string
 					if !err {
 						MSTK.push(Obj {
 							t: true,
@@ -352,7 +358,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 
 			//print register
 			'F' => {
-				if cmds.is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MR {
 					eprintln!("! No register number provided");
 				}
 				else {
@@ -361,7 +367,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 						MRI
 					}
 					else {
-						cmds.remove(0) as usize
+						ESTK.last_mut().unwrap().remove(0) as usize
 					};
 					if REGS_SIZE>ri {
 						if !REGS[ri].is_empty(){
@@ -1075,7 +1081,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
 					};
-					if cmds.is_empty()&&!MR {
+					if ESTK.last().unwrap().is_empty()&&!MR {
 						eprintln!("! No register number provided");
 					}
 					else {
@@ -1084,7 +1090,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 							MRI
 						}
 						else {
-							cmds.remove(0) as usize
+							ESTK.last_mut().unwrap().remove(0) as usize
 						};
 						if REGS_SIZE>ri {
 							if !REGS[ri].is_empty() {
@@ -1109,7 +1115,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
 					};
-					if cmds.is_empty()&&!MR {
+					if ESTK.last().unwrap().is_empty()&&!MR {
 						eprintln!("! No register number provided");
 					}
 					else {
@@ -1118,7 +1124,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 							MRI
 						}
 						else {
-							cmds.remove(0) as usize
+							ESTK.last_mut().unwrap().remove(0) as usize
 						};
 						if REGS_SIZE>ri {
 							REGS[ri].push(a);
@@ -1135,7 +1141,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 
 			//load from top of register
 			'l' => {
-				if cmds.is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MR {
 					eprintln!("! No register number provided");
 				}
 				else {
@@ -1144,7 +1150,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 						MRI
 					}
 					else {
-						cmds.remove(0) as usize
+						ESTK.last_mut().unwrap().remove(0) as usize
 					};
 					if REGS_SIZE>ri {
 						if REGS[ri].is_empty() {
@@ -1162,7 +1168,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 
 			//pop from top of register
 			'L' => {
-				if cmds.is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MR {
 					eprintln!("! No register number provided");
 				}
 				else {
@@ -1171,7 +1177,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 						MRI
 					}
 					else {
-						cmds.remove(0) as usize
+						ESTK.last_mut().unwrap().remove(0) as usize
 					};
 					if REGS_SIZE>ri {
 						if REGS[ri].is_empty() {
@@ -1193,7 +1199,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						if cmds.is_empty()&&!MR {
+						if ESTK.last().unwrap().is_empty()&&!MR {
 							eprintln!("! No register number provided");
 						}
 						else {
@@ -1202,7 +1208,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 								MRI
 							}
 							else {
-								cmds.remove(0) as usize
+								ESTK.last_mut().unwrap().remove(0) as usize
 							};
 							if REGS_SIZE>ri {
 								if REGS[ri].is_empty() {
@@ -1246,7 +1252,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 				if MSTK.len()>=1 {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						if cmds.is_empty()&&!MR {
+						if ESTK.last().unwrap().is_empty()&&!MR {
 							eprintln!("! No register number provided");
 						}
 						else {
@@ -1255,7 +1261,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 								MRI
 							}
 							else {
-								cmds.remove(0) as usize
+								ESTK.last_mut().unwrap().remove(0) as usize
 							};
 							if REGS_SIZE>ri {
 								if REGS[ri].is_empty() {
@@ -1293,7 +1299,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 
 			//push register depth
 			'Z' => {
-				if cmds.is_empty()&&!MR {
+				if ESTK.last().unwrap().is_empty()&&!MR {
 					eprintln!("! No register number provided");
 				}
 				else {
@@ -1302,7 +1308,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 						MRI
 					}
 					else {
-						cmds.remove(0) as usize
+						ESTK.last_mut().unwrap().remove(0) as usize
 					};
 					if REGS_SIZE>ri {
 						MSTK.push(Obj {
@@ -1389,7 +1395,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if a.t {
-						cmds = a.s + &cmds;
+						ESTK.push(a.s);
 					}
 					else {
 						MSTK.push(a);
@@ -1402,12 +1408,12 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 				//handle inversion
 				let inv = cmd=='!';
 				if inv {
-					if cmds.is_empty() {
+					if ESTK.last().unwrap().is_empty() {
 						eprintln!("! Missing comparison operator after '!'");
 						cmd = ' ';
 					}
 					else {
-						cmd = cmds.remove(0);
+						cmd = ESTK.last_mut().unwrap().remove(0);
 					}
 				}
 				if check_n(cmd, MSTK.len()) {
@@ -1415,11 +1421,11 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						let mut mac = String::new();
-						if cmds.is_empty() {
+						if ESTK.last().unwrap().is_empty() {
 							eprintln!("! No register name provided");
 						}
 						else {
-							let rn = cmds.remove(0);
+							let rn = ESTK.last_mut().unwrap().remove(0);
 							let ri = rn as usize;
 							if REGS_SIZE>ri {
 								if REGS[ri].is_empty() {
@@ -1444,7 +1450,7 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 								},
 							}
 							{
-								cmds = mac + &cmds;
+								ESTK.push(mac);
 							}
 						}
 					}
@@ -1463,7 +1469,14 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
 						if let Some(num) = int.to_usize() {
-							QLEVEL = num;
+							for _ in 0..num {
+								if !ESTK.is_empty() {
+									ESTK.pop();
+								}
+							}
+							if ESTK.is_empty() {
+								ESTK.push(String::new());
+							}
 						}
 						else {
 							eprintln!("! Cannot possibly quit {} levels", int);
@@ -1477,19 +1490,16 @@ unsafe fn exec(mut cmds: String, rng: &mut RandState) {
 				let mut prompt_in = String::new();
 				stdin().read_line(&mut prompt_in).expect("Unable to read input");
 				prompt_in = prompt_in.trim_end_matches(char::is_whitespace).to_owned();		//trim trailing LF
-				cmds = prompt_in + &cmds;
+				ESTK.push(prompt_in);
 			},
-
-			//stop on comment
-			'#' => {
-				break 'STOP_EXEC;
-			}
 
 			//notify on invalid command, keep going
 			_ => {
 				if !cmd.is_whitespace()&&cmd!=']' { eprintln!("! Invalid command: {}", cmd); }
 			},
 		}
+		if ESTK.last().unwrap().is_empty() {
+			ESTK.pop();
+		}
 	}
-	if QLEVEL>0 { QLEVEL-=1; }	//decrement when about to quit
 }
