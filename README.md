@@ -59,7 +59,7 @@ Currently missing planned features: manual rounding, different modes like file i
 - Example: `[test] sa 97,l p` (assuming input base is 10).
 - If no register name is provided and the selector is marked as invalid, an error message is displayed.
 - Advantages/use cases:
-  - Enables scripts to select registers automatically without having to convert the number to a string first (`97,s` is shorter than `97a[s]r+x`).
+  - Enables scripts to select registers automatically without having to convert the number to a string first (`123,s` is shorter than `123a[s]r+x`).
   - Register numbers can be input in any base because the number is parsed like any other.
   - All register numbers in the allowed range can be used, not just valid/inputtable Unicode characters.
 ## Macro changes
