@@ -61,6 +61,8 @@ fn interactive_mode(mut rng: &mut RandState) {
 		input = input.split_once('#').unwrap_or((&input, "")).0.to_string();	//trim # comment
 
 		unsafe {
+			ESTK.clear();
+			ESTK.shrink_to_fit();
 			exec(input, &mut rng);
 		}
 	}
@@ -1395,6 +1397,9 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if a.t {
+						if ESTK.last().unwrap().is_empty() {
+							ESTK.pop();	//optimize tail call
+						}
 						ESTK.push(a.s);
 					}
 					else {
@@ -1450,6 +1455,9 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								},
 							}
 							{
+								if ESTK.last().unwrap().is_empty() {
+									ESTK.pop();	//optimize tail call
+								}
 								ESTK.push(mac);
 							}
 						}
@@ -1471,11 +1479,11 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						if let Some(num) = int.to_usize() {
 							for _ in 0..num {
 								if !ESTK.is_empty() {
-									ESTK.pop();
+									ESTK.pop();	//remove top num macro calls
 								}
 							}
 							if ESTK.is_empty() {
-								ESTK.push(String::new());
+								ESTK.push(String::new());	//guarantee at least one element
 							}
 						}
 						else {
@@ -1490,6 +1498,9 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				let mut prompt_in = String::new();
 				stdin().read_line(&mut prompt_in).expect("Unable to read input");
 				prompt_in = prompt_in.trim_end_matches(char::is_whitespace).to_owned();		//trim trailing LF
+				if ESTK.last().unwrap().is_empty() {
+					ESTK.pop();	//optimize tail call
+				}
 				ESTK.push(prompt_in);
 			},
 
