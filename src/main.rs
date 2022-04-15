@@ -195,19 +195,22 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 			if oprec<0 {	//remove exponential notation unless rounding is applied
 				if exp>0 {
 					let (lpart, rpart) = mpart.split_once('.').unwrap();
-					outstr = lpart.to_string()+rpart+
-					&"0".repeat(exp.to_usize().unwrap()-rpart.len());
+					outstr = lpart.to_string()+rpart+&"0".repeat(exp.to_usize().unwrap()-rpart.len());	//assemble large number
 				}
 				else {
-					outstr = String::from("0.")+&"0".repeat(exp.abs().to_usize().unwrap()-1)+&mpart.replace('.', "");
+					outstr = String::from("0.")+&"0".repeat(exp.abs().to_usize().unwrap()-1)+&mpart.replace('.', "");	//assemble small number
 				}
 				if outstr.contains('-') {
 					outstr = String::from('-')+&outstr.replace('-', "");	//move negative sign to front
 				}
-				outstr = outstr.trim_end_matches('0').trim_end_matches('.').to_string();
 			}
 		}
-		outstr
+		if let Some((lpart, rpart)) = outstr.split_once('@') {
+			lpart.trim_end_matches('0').trim_end_matches('.').to_string()+"@"+rpart	//remove trailing zeros from mantissa
+		}
+		else {
+			outstr.trim_end_matches('0').trim_end_matches('.').to_string()	//remove trailing zeros
+		}
 	}
 }
 
