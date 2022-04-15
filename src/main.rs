@@ -1,4 +1,4 @@
-use rug::{Integer, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
+use rug::{Integer, Complete, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 
@@ -178,18 +178,36 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 	}
 }
 
-//custom printing function
+//custom printing function to remove exponential notation
 fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
-	let ipart = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase);
-	let ilen = if ipart.starts_with('-') { ipart.len()-1 } else { ipart.len() };
+	let ipart = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase);	//integer part
+	let ilen = ipart.trim_start_matches('-').len();	//length of integer part without negative sign
 	if num.is_zero() {
-		"0".to_string()	//zero would get trimmed to ""
+		"0".to_string()	//possibly awkward to deal with, always "0" regardless of obase
 	}
 	else {
-		num.to_string_radix(
-			obase,
-			if oprec>=0 { Some(oprec as usize + ilen) } else { None }
-			).trim_end_matches('0').trim_end_matches('.').to_string()
+		let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });
+		if obase<=10 {
+			outstr = outstr.replace('e', "@");	//unify exponent symbol
+		}
+		if let Some((mpart, epart)) = outstr.split_once('@') {	//split into mantissa (obase) and exponent (decimal)
+			let exp = Integer::parse(epart).unwrap().complete();
+			if oprec<0 {	//remove exponential notation unless rounding is applied
+				if exp>0 {
+					let (lpart, rpart) = mpart.split_once('.').unwrap();
+					outstr = lpart.to_string()+rpart+
+					&"0".repeat(exp.to_usize().unwrap()-rpart.len());
+				}
+				else {
+					outstr = String::from("0.")+&"0".repeat(exp.abs().to_usize().unwrap()-1)+&mpart.replace('.', "");
+				}
+				if outstr.contains('-') {
+					outstr = String::from('-')+&outstr.replace('-', "");	//move negative sign to front
+				}
+				outstr = outstr.trim_end_matches('0').trim_end_matches('.').to_string();
+			}
+		}
+		outstr
 	}
 }
 
