@@ -221,12 +221,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 	ESTK.push(input);
 	while !ESTK.is_empty() {
 		
-		let mut cmd = if ESTK.last().unwrap().is_empty() {
-			break;
-		}
-		else {
-			ESTK.last_mut().unwrap().remove(0)	//isolate first character as command
-		};
+		let mut cmd = ESTK.last_mut().unwrap().remove(0);	//isolate first character as command
 
 		//defines behavior of all commands
 		match cmd {
