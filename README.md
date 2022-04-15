@@ -7,7 +7,6 @@ Features present in GNU dc are not listed unless different. [Familiarize yoursel
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
 Planned upcoming features/changes:
-- Manual rounding
 - Different cmdline parameteres and modes like file input
 - More conversion factors
 - Global reduction modulus
@@ -31,6 +30,7 @@ Planned upcoming features/changes:
 - Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
 - Attention: W applies to the whole number, so large integers may be represented incorrectly.
+- `X` is not implemented because it doesn't make sense for binary floats.
 ## New: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
