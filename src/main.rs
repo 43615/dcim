@@ -220,7 +220,8 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 unsafe fn exec(input: String, rng: &mut RandState) {
 	ESTK.push(input);
 	while !ESTK.is_empty() {
-		
+	
+		if ESTK.last().unwrap().is_empty() {break;}
 		let mut cmd = ESTK.last_mut().unwrap().remove(0);	//isolate first character as command
 
 		//defines behavior of all commands
