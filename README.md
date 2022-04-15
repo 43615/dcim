@@ -7,7 +7,6 @@ Features present in GNU dc are not listed unless different. [Familiarize yoursel
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
 Planned upcoming features/changes:
-- Number output format rework
 - Manual rounding
 - Different cmdline parameteres and modes like file input
 - More conversion factors
@@ -27,7 +26,8 @@ Planned upcoming features/changes:
 ## Precision and number output changes
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
-- If output precision is negative (default: -1), numbers are printed with enough precision to be exact.
+- If output precision is negative (default: -1), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
+- If it's not, K digits are always printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `123.456@-789`.
 - Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
 - Attention: W applies to the whole number, so large integers may be represented incorrectly.
