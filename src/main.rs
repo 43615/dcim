@@ -7,7 +7,7 @@ const KDEF: i32 = -1;	//output precision
 const IDEF: i32 = 10;	//input base
 const ODEF: i32 = 10;	//output base
 static mut ENVSTK: Vec<(i32, i32, i32)> = Vec::new();	//stores (k,i,o) tuples, used by '{' and '}'
-static mut WPREC: u32 = 256;	//wokring precision (rug Float mantissa length)
+static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
 
 //basic object on a dc stack, need to differentiate between numbers and strings
 #[derive(Clone)]
