@@ -152,6 +152,7 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"in" => {Some(Float::with_val(prec, 0.0254))}
 		"ft" => {Some(Float::with_val(prec, 0.3048))}
 		"yd" => {Some(Float::with_val(prec, 0.9144))}
+		"m" => {Some(Float::with_val(prec, 1))}
 		"mi" => {Some(Float::with_val(prec, 1609.344))}
 		"nmi" => {Some(Float::with_val(prec, 1852))}
 		"AU" => {Some(Float::with_val(prec, 149597870700i64))}
@@ -163,16 +164,18 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"ct" => {Some(Float::with_val(prec, 0.0002))}
 		"oz" => {Some(Float::with_val(prec, 0.028349523125))}
 		"lb" => {Some(Float::with_val(prec, 0.45359237))}
+		"kg" => {Some(Float::with_val(prec, 1))}
 		"st" => {Some(Float::with_val(prec, 6.35029318))}
 		/*----------------
 			TIME UNITS
 		----------------*/
+		"s" => {Some(Float::with_val(prec, 1))}
 		"min" => {Some(Float::with_val(prec, 60))}
 		"h" => {Some(Float::with_val(prec, 3600))}
 		"d" => {Some(Float::with_val(prec, 86400))}
 		"w" => {Some(Float::with_val(prec, 604800))}
 		_ => {
-			eprintln!("! Constant/factor \"{}\" not found", key);
+			eprintln!("! Constant/conversion factor \"{}\" not found", key);
 			None
 		}
 	}
@@ -859,13 +862,32 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						MSTK.push(Obj {
-							t: false,
-							n: Float::with_val(WPREC,
-								if let Some(num) = constants(WPREC, a.s) { num }
-								else { Float::with_val(WPREC, 1) }),
-							s: String::new()
-						});
+						match a.s.matches(' ').count() {
+							0 => {
+								if let Some(res) = constants(WPREC, a.s) {
+									MSTK.push(Obj {
+										t: false,
+										n: Float::with_val(WPREC, res),
+										s: String::new()
+									});
+								}
+							},
+							1 => {
+								let (sfrom, sto) = a.s.split_once(' ').unwrap();
+								if let Some(nfrom) = constants(WPREC, sfrom.to_string()) {
+									if let Some(nto) = constants(WPREC, sto.to_string()) {
+										MSTK.push(Obj {
+											t: false,
+											n: Float::with_val(WPREC, nfrom/nto),
+											s: String::new()
+										});
+									}
+								}
+							},
+							_ => {
+								eprintln!("! Invalid unit conversion string: \"{}\"", a.s);
+							},
+						}
 					}
 				}
 			},
