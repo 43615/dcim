@@ -95,19 +95,19 @@ Main stack:
 
 Register object "RegObj":
 +-----+
-| Obj | principal object (s/S, l/L)
+| Obj | principal object (s/l)
 +-----+-----+-----+----
-| Obj | Obj | Obj | ... array of objects (:, ;), no theoretical size limit
+| Obj | Obj | Obj | ... array of objects (:/;), no theoretical size limit
 +-----+-----+-----+----
 Each RegObj has its own array.
 Note that arrays are continuous (all lower indices are always valid to read from).
-Writing to or reading from an uninitialized array element initializes all previously nonexistent "Obj"s with the number 0.
+Writing to or reading from an uninitialized array element initializes all previously nonexistent Objs with the number 0.
 
 Register:
 +--------+--------+--------+----
 | RegObj | RegObj | RegObj | ... no theoretical size limit
 +--------+--------+--------+----
-s and l overwrite and copy the top RegObj's Obj, S and L push and pop it.
+s and l overwrite and copy the top RegObj's Obj, S and L push and pop the whole RegObj.
 
 Array of all registers:
 +----------+----------+----------+-----+----------+
