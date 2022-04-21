@@ -136,24 +136,24 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 			PHYSICAL CONSTANTS
 		------------------------*/
 		"c" => {Some(Float::with_val(prec, 299792458))}
-		"hbar" => {Some(Float::with_val(prec, 6.62607015)*ten.pow(-34)/(2*pi))}
-		"G" => {Some(Float::with_val(prec, 6.674))}
-		"qe" => {Some(Float::with_val(prec, 1.602176634)*ten.pow(-19))}
-		"NA" => {Some(Float::with_val(prec, 6.02214076)*ten.pow(23))}
-		"kB" => {Some(Float::with_val(prec, 1.380649)*ten.pow(-23))}
-		"u" => {Some(Float::with_val(prec, 1.660539066)*ten.pow(-27))}
-		"lp" => {Some(Float::with_val(prec, 1.6162)*ten.pow(-35))}
-		"tp" => {Some(Float::with_val(prec, 5.391)*ten.pow(-44))}
-		"mp" => {Some(Float::with_val(prec, 2.1764)*ten.pow(-8))}
-		"Tp" => {Some(Float::with_val(prec, 1.4167)*ten.pow(32))}
+		"hbar" => {Some(Float::with_val(prec, 662607015)*ten.pow(-42)/(2*pi))}
+		"G" => {Some(Float::with_val(prec, 6674)*ten.pow(-3))}
+		"qe" => {Some(Float::with_val(prec, 1602176634)*ten.pow(-28))}
+		"NA" => {Some(Float::with_val(prec, 602214076)*ten.pow(31))}
+		"kB" => {Some(Float::with_val(prec, 1380649)*ten.pow(-29))}
+		"u" => {Some(Float::with_val(prec, 1660539066)*ten.pow(-36))}
+		"lp" => {Some(Float::with_val(prec, 16162)*ten.pow(-39))}
+		"tp" => {Some(Float::with_val(prec, 5391)*ten.pow(-47))}
+		"mp" => {Some(Float::with_val(prec, 21764)*ten.pow(-12))}
+		"Tp" => {Some(Float::with_val(prec, 14167)*ten.pow(28))}
 		/*------------------
 			LENGTH UNITS
 		------------------*/
-		"in" => {Some(Float::with_val(prec, 0.0254))}
-		"ft" => {Some(Float::with_val(prec, 0.3048))}
-		"yd" => {Some(Float::with_val(prec, 0.9144))}
+		"in" => {Some(Float::with_val(prec, 254)*ten.pow(-4))}
+		"ft" => {Some(Float::with_val(prec, 3048)*ten.pow(-4))}
+		"yd" => {Some(Float::with_val(prec, 9144)*ten.pow(-4))}
 		"m" => {Some(Float::with_val(prec, 1))}
-		"mi" => {Some(Float::with_val(prec, 1609.344))}
+		"mi" => {Some(Float::with_val(prec, 1609344)*ten.pow(-3))}
 		"nmi" => {Some(Float::with_val(prec, 1852))}
 		"AU" => {Some(Float::with_val(prec, 149597870700i64))}
 		"ly" => {Some(Float::with_val(prec, 9460730472580800i64))}
@@ -161,11 +161,11 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		/*----------------
 			MASS UNITS
 		----------------*/
-		"ct" => {Some(Float::with_val(prec, 0.0002))}
-		"oz" => {Some(Float::with_val(prec, 0.028349523125))}
-		"lb" => {Some(Float::with_val(prec, 0.45359237))}
+		"ct" => {Some(Float::with_val(prec, 2)*ten.pow(-4))}
+		"oz" => {Some(Float::with_val(prec, 28349523125i64)*ten.pow(-12))}
+		"lb" => {Some(Float::with_val(prec, 45359237)*ten.pow(-8))}
 		"kg" => {Some(Float::with_val(prec, 1))}
-		"st" => {Some(Float::with_val(prec, 6.35029318))}
+		"st" => {Some(Float::with_val(prec, 635029318)*ten.pow(-8))}
 		/*----------------
 			TIME UNITS
 		----------------*/
