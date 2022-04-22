@@ -29,10 +29,10 @@ Planned upcoming features/changes:
 - If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `-123.456@-789`.
 - Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
-- Floating-point rounding artifacts are guaranteed unless the number is a binary fraction or the output base is a power of 2. This is an unavoidable problem, GNU dc just hid it from view by storing numbers in base 10.
-- Attention: W applies to the whole number, so large integers may be represented incorrectly.
+- Floating-point rounding artifacts are guaranteed unless the number is a binary fraction or the output base is a power of 2. This is an unavoidable problem, GNU dc just hid it from view by storing numbers in the base they were created in.
+- Attention: W applies to the whole number, so large integers may be represented incorrectly. The default corresponds to a generous "i257".
 - `X` is not implemented because it doesn't make sense for binary floats.
-## New: Parameter stack
+## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
 - Working precision is unaffected.
@@ -50,7 +50,7 @@ Planned upcoming features/changes:
 - `Z`\<reg\> now pushes the depth of a register.
 - `F`\<reg\> now prints an entire register.
 - `R` rotates the top abs(a) elements: upward if a is positive, downward if negative.
-  - For example: `1 2 3 4 3R` results in 1 4 2 3
+  - Example: `1 2 3 4 3R` results in 1 4 2 3
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
@@ -59,7 +59,7 @@ Planned upcoming features/changes:
 - `a` now uses the least significant 32 bits.
 - `A` converts a number to a string in 32-bit blocks corresponding to characters, similarly to `P`(which parses bytes as UTF-8).
 ## Manual register number selection
-- `,` writes a number to a single-use manual register number selector.
+- `,` writes a number to a single-use manual register number selector and marks it as valid.
 - This selector can only be written to and expires (becomes invalid) at the next call of any register command.
 - When it's valid, register commands don't process the next character as a register name.
 - Example: `[test] sa 97,l p` (assuming input base is 10).
@@ -71,11 +71,11 @@ Planned upcoming features/changes:
 ## Macro changes
 - `q` now always exits regardless of where it's called from.
 - `Q` may behave slightly differently, TODO: test.
-## New: Library of constants and conversion factors
+## New feature: Library of constants and conversion factors
 TODO: List all factors
 - `"` pushes the constant or conversion factor with name a.
 - The name may also be two names separated by a space. This is a shorthand for converting from one unit to another.
-  - For example: `90[deg]"*` converts 90° to radians, `10 6^[in nmi]"*` converts 1 million inches to nautical miles.
+  - Example: `90[deg]"*` converts 90° to radians, `10 6^[in nmi]"*` converts 1 million inches to nautical miles.
 - All constants and units are stored in amounts of their respective international standard units.
 # Memory model diagram
 dc's manpage doesn't do a great job at explaining it, so here's a diagram:
