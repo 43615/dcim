@@ -50,12 +50,14 @@ Planned upcoming features/changes:
 - `Z`\<reg\> now pushes the depth of a register.
 - `F`\<reg\> now prints an entire register.
 - `R` rotates the top abs(a) elements: upward if a is positive, downward if negative.
-  - Example: `1 2 3 4 3R` results in 1 4 2 3
+  - Example: `1 2 3 4 3R` results in 1 4 2 3.
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
+  - Example: `[abcde]_2-` results in "cde".
 - `*` repeats string a abs(b) times, flipping it if b is negative.
 - `/` removes characters from string a such that abs(b) remain: from the back if b is positive, from the front if negative.
+  - Example: `[vwxyz]_2-` results in "yz".
 - `a` now uses the least significant 32 bits.
 - `A` converts a number to a string in 32-bit blocks corresponding to characters, similarly to `P`(which parses bytes as UTF-8).
 ## Manual register number selection
