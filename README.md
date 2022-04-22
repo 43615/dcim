@@ -26,9 +26,10 @@ Planned upcoming features/changes:
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
 - If output precision is negative (default: -1), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
-- If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `123.456@-789`.
+- If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `-123.456@-789`.
 - Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
+- Floating-point rounding artifacts are guaranteed unless the number is a binary fraction or the output base is a power of 2. This is an unavoidable problem, GNU dc just hid it from view by storing numbers in base 10.
 - Attention: W applies to the whole number, so large integers may be represented incorrectly.
 - `X` is not implemented because it doesn't make sense for binary floats.
 ## New: Parameter stack
