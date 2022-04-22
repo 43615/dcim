@@ -1465,22 +1465,27 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						let mut mac = String::new();
-						if CMDSTK.last().unwrap().is_empty() {
+						if CMDSTK.last().unwrap().is_empty()&&!MRI_EN {
 							eprintln!("! No register name provided");
 						}
 						else {
-							let rn = CMDSTK.last_mut().unwrap().remove(0);
-							let ri = rn as usize;
+							let ri = if MRI_EN {
+								MRI_EN = false;
+								MRI
+							}
+							else {
+								CMDSTK.last_mut().unwrap().remove(0) as usize
+							};
 							if REGS_SIZE>ri {
 								if REGS[ri].is_empty() {
-									eprintln!("! Register '{}'({}) is empty", rn, ri);
+									eprintln!("! Register {} is empty", ri);
 								}
 								else {
-									mac = REGS[ri].last().unwrap().o.clone().s;	//get macro if possible
+									mac = REGS[ri].last().unwrap().clone().o.s;	//get macro if possible
 								}
 							}
 							else {
-								eprintln!("! Register '{}'({}) is not available", rn, ri);
+								eprintln!("! Register {} is not available", ri);
 							}
 						}
 						if !mac.is_empty() {
@@ -1536,7 +1541,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			'?' => {
 				let mut prompt_in = String::new();
 				stdin().read_line(&mut prompt_in).expect("Unable to read input");
-				prompt_in = prompt_in.trim_end_matches(char::is_whitespace).to_owned();		//trim trailing LF
+				prompt_in = prompt_in.trim_end_matches(char::is_whitespace).to_string();	//trim trailing LF
 				if CMDSTK.last().unwrap().is_empty() {
 					CMDSTK.pop();	//optimize tail call
 				}
