@@ -153,13 +153,17 @@ fn file_mode(files: Vec<String>, mut rng: &mut RandState) {
 			else {
 				match std::fs::read_to_string(files[i].clone()) {
 					Ok(script) => {
-						for line in script.split_inclusive("\n") {	//split into lines to handle #comments
-							unsafe {
-								CMDSTK.clear();
-								CMDSTK.shrink_to_fit();
-								exec(line.to_string(), &mut rng);
-							}
+						let mut script_nc = String::new();	//script with comments removed
+						for line in script.split_inclusive("\n") {
+							script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);
+							script_nc+="\n";
 						}
+						unsafe {
+							CMDSTK.clear();
+							CMDSTK.shrink_to_fit();
+							exec(script_nc, &mut rng);
+						}
+								
 					},
 					Err(error) => {
 						eprintln!("! File read error: {}", error);
