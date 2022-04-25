@@ -295,6 +295,8 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 	let ipart = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase);	//integer part
 	let ilen = ipart.trim_start_matches('-').len();	//length of integer part without negative sign
+	num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None })
+	/*
 	if num.is_zero() {
 		"0".to_string()	//possibly awkward to deal with, always "0" regardless of obase
 	}
@@ -325,6 +327,7 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 			outstr.trim_end_matches('0').trim_end_matches('.').to_string()	//remove trailing zeros
 		}
 	}
+	*/
 }
 
 //core execution engine
