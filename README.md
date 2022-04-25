@@ -1,17 +1,16 @@
 # dcim [WIP]
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
-This readme is currently incomplete.
 
 Features present in GNU dc are not listed unless different. [Familiarize yourself first.](https://linux.die.net/man/1/dc)
 
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
 Planned upcoming features/changes:
-- Different cmdline parameteres and modes like file input
+- Number output fix
 - More conversion factors
-- Global reduction modulus
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
+- The file and expression modes now accept and execute any number of arguments. If the last expression or filename is `?`, it will enter interactive mode after finishing.
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
 - Commands that need integers always explicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
@@ -19,9 +18,9 @@ Planned upcoming features/changes:
 - The `!` command for executing OS commands is deliberately not implemented.
 ## Number input changes
 - Both the input and output bases are now in the range 2-36 (inclusive).
-- Capital A-F are no longer used for number input in the normal way, base-11+ numbers now need to be escaped with `'`. This change frees A-F up as commands and allows for bases over 16.
+- Capital A-F are no longer used for number input in the normal way, base-11+ numbers now need to be escaped with `'`. This change frees up A-F to be used as commands and allows for bases over 16.
   - Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
-- Digits too high for the input base (such as `'G` when base is 16) no longer default to the highest possible digit, but cause an error message instead.
+- Digits too high for the input base (such as `'G` when base is 16) are not parsed, but always cause an error message instead.
 ## Precision and number output changes
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
@@ -57,7 +56,7 @@ Planned upcoming features/changes:
   - Example: `[abcde]_2-` results in "cde".
 - `*` repeats string a abs(b) times, flipping it if b is negative.
 - `/` removes characters from string a such that abs(b) remain: from the back if b is positive, from the front if negative.
-  - Example: `[vwxyz]_2-` results in "yz".
+  - Example: `[vwxyz]_2/` results in "yz".
 - `a` now uses the least significant 32 bits.
 - `A` converts a number to a string in 32-bit blocks corresponding to characters, similarly to `P`(which parses bytes as UTF-8).
 ## Manual register number selection
