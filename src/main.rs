@@ -115,6 +115,10 @@ fn interactive_mode(mut rng: &mut RandState) {
 				eprintln!("! Unable to read standard input: {}", error);
 			}
 		}
+		if input.is_empty() {
+			print!("\r\r");
+			std::process::exit(0);	//stop on end of pipe input
+		}
 
 		unsafe {
 			CMDSTK.clear();
