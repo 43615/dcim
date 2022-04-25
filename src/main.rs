@@ -2,6 +2,34 @@ use rug::{Integer, Complete, integer::Order, Float, float::{Round, Constant}, op
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 
+const HELPMSG: &str = "
+╔════════════════════════╗
+║                        ║
+║    █        █          ║
+║    █                   ║
+║  ███  ███   █   ████   ║
+║  █ █  █     █   █ █ █  ║
+║  ███  ███  ███  █ █ █  ║
+║                        ║
+╚════════════════════════╝
+dc improved - Feature-added rewrite of an RPN calculator/stack machine language from 1970-72
+Documentation at https://github.com/43615/dcim
+
+Options and syntax:
+
+<nothing> | --interactive | -i | i
+	Interactive mode, standard prompt loop.
+
+(--expression | -e | e) expr1 expr2 expr3 ... [?]
+	Expression mode, executes expressions in order. If the last argument is \"?\", enters interactive mode after expressions are done.
+
+(--file | -f | f) file1 file2 file3 ... [?]
+	File mode, executes contents of files in order. \"?\" behaves the same as with -e.
+
+--help | -h | h
+	Print this help message.
+";
+
 //environment parameters with default values:
 const KDEF: i32 = -1;	//output precision
 const IDEF: i32 = 10;	//input base
@@ -35,6 +63,9 @@ static mut MRI_EN: bool = false;	//MRI valid?
 static mut CMDSTK: Vec<String> = Vec::new();	//instructions/commands, logical stack structure for pseudorecursion on heap
 
 fn main() {
+	let mut args: Vec<String> = std::env::args().collect();
+	args.remove(0);
+
 	unsafe{
 		ENVSTK.push((KDEF, IDEF, ODEF));	//initialize env params
 		REGS.resize(REGS_SIZE, Vec::new());	//initialize registers
@@ -44,7 +75,30 @@ fn main() {
 	let mut rng = RandState::new();
 	rng.seed(&(Integer::from(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::MAX).as_nanos()) * std::process::id()));
 
-	interactive_mode(&mut rng);
+	if args.is_empty() {
+		interactive_mode(&mut rng);	//default to interactive
+	}
+	else {
+		let mode = args.remove(0);
+		match mode.as_str() {
+			"--interactive"|"-i"|"i" => {
+				//ability to force interactive mode just in case
+				interactive_mode(&mut rng);
+			},
+			"--expression"|"-e"|"e" => {
+				expression_mode(args, &mut rng);
+			},
+			"--file"|"-f"|"f" => {
+				file_mode(args, &mut rng);
+			},
+			"--help"|"-h"|"h" => {
+				println!("{}", HELPMSG);
+			},
+			_ => {
+				eprintln!("! Invalid operating mode \"{}\"", mode);
+			},
+		}
+	}
 }
 
 //interactive/shell mode, the default
@@ -55,15 +109,63 @@ fn interactive_mode(mut rng: &mut RandState) {
 		print!("> ");
 		stdout().flush().unwrap();
 		let mut input = String::new();
-		stdin().read_line(&mut input).expect("Unable to read input");
-
-		input = input.trim_end_matches(char::is_whitespace).to_owned();		//trim trailing LF
-		input = input.split_once('#').unwrap_or((&input, "")).0.to_string();	//trim # comment
+		match stdin().read_line(&mut input) {
+			Ok(_) => {},
+			Err(error) => {
+				eprintln!("! Unable to read standard input: {}", error);
+			}
+		}
 
 		unsafe {
 			CMDSTK.clear();
 			CMDSTK.shrink_to_fit();
 			exec(input, &mut rng);
+		}
+	}
+}
+
+fn expression_mode(exprs: Vec<String>, mut rng: &mut RandState) {
+	if !exprs.is_empty() {
+		for i in 0..exprs.len() {
+			if i==exprs.len()-1&&exprs[i]=="?" {
+				interactive_mode(&mut rng);	//if last expression is "?", enter prompt loop
+			}
+			else {
+				unsafe {
+					CMDSTK.clear();
+					CMDSTK.shrink_to_fit();
+					exec(exprs[i].clone(), &mut rng);
+				}
+			}
+		}
+	}
+}
+
+fn file_mode(files: Vec<String>, mut rng: &mut RandState) {
+	if files.is_empty() {
+		eprintln!("! No file name provided");
+	}
+	else {
+		for i in 0..files.len() {
+			if i==files.len()-1&&files[i]=="?"{
+				interactive_mode(&mut rng);	//if last filename is "?", enter prompt loop
+			}
+			else {
+				match std::fs::read_to_string(files[i].clone()) {
+					Ok(script) => {
+						for line in script.split_inclusive("\n") {	//split into lines to handle #comments
+							unsafe {
+								CMDSTK.clear();
+								CMDSTK.shrink_to_fit();
+								exec(line.to_string(), &mut rng);
+							}
+						}
+					},
+					Err(error) => {
+						eprintln!("! File read error: {}", error);
+					},
+				}
+			}
 		}
 	}
 }
@@ -1546,6 +1648,11 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					CMDSTK.pop();	//optimize tail call
 				}
 				CMDSTK.push(prompt_in);
+			},
+
+			//stop on beginning of #comment
+			'#' => {
+				CMDSTK.last_mut().unwrap().clear();
 			},
 
 			//notify on invalid command, keep going
