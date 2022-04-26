@@ -513,6 +513,16 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								else {
 									println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
 								}
+								if !REGS[ri][i].a.is_empty() {
+									for ai in 0..REGS[ri][i].a.len() {
+										if REGS[ri][i].a[ai].t {
+											println!("\t{}:\t{}", ai, REGS[ri][i].a[ai].s);
+										}
+										else {
+											println!("\t{}:\t{}", ai, flt_to_str(REGS[ri][i].a[ai].n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+										}
+									}
+								}
 							}
 						}
 					}
