@@ -48,7 +48,7 @@ Planned upcoming features/changes:
 - `C` deletes the top a elements.
 - `D` duplicates the top a elements.
 - `Z`\<reg\> now pushes the depth of a register.
-- `F`\<reg\> now prints an entire register.
+- `F`\<reg\> now prints an entire register including array contents.
 - `R` rotates the top abs(a) elements: upward if a is positive, downward if negative.
   - Example: `1 2 3 4 3R` results in 1 4 2 3.
 ## New/overloaded string manipulation commands
