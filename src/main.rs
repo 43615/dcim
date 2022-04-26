@@ -1250,10 +1250,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			//save to top of register
 			's' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=RegObj {
-						o: MSTK.pop().unwrap(),
-						a: Vec::new()
-					};
+					let a=MSTK.pop().unwrap();					
 					if CMDSTK.last().unwrap().is_empty()&&!MRI_EN {
 						eprintln!("! No register number provided");
 					}
@@ -1266,10 +1263,15 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							CMDSTK.last_mut().unwrap().remove(0) as usize
 						};
 						if REGS_SIZE>ri {
-							if !REGS[ri].is_empty() {
-								REGS[ri].pop();	//remove old top, effectively overwrite
+							if REGS[ri].is_empty() {
+								REGS[ri].push(RegObj {
+									o: a,
+									a: Vec::new()
+								});
 							}
-							REGS[ri].push(a);
+							else {
+								REGS[ri].last_mut().unwrap().o = a;
+							}
 						}
 						else {
 							eprintln!("! Register {} is not available", ri);
