@@ -51,6 +51,9 @@ Planned upcoming features/changes:
 - `F`\<reg\> now prints an entire register including array contents.
 - `R` rotates the top abs(a) elements: upward if a is positive, downward if negative.
   - Example: `1 2 3 4 3R` results in 1 4 2 3.
+- To enable copying of register arrays, a buffer for register objects has been added.
+  - `j`\<reg\> and `J`\<reg\> are like `l` and `L`, but copy and pop to the buffer instead of the main stack.
+  - `h`\<reg\> and `H`\<reg\> are like `s` and `S`, but overwrite and push ditto.
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
@@ -111,7 +114,8 @@ Register:
 +--------+--------+--------+----
 | RegObj | RegObj | RegObj | ... no theoretical size limit
 +--------+--------+--------+----
-s and l overwrite and copy the top RegObj's Obj, S and L push and pop the whole RegObj.
+s and l overwrite and copy the top RegObj's Obj, S and L push and pop the whole RegObj (which wastes the array).
+There is also a buffer for one RegObj, which is accessed by `j`/`J` and `h`/`H` (preserving the array).
 
 Array of all registers:
 +----------+----------+----------+-----+----------+
