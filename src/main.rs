@@ -56,6 +56,7 @@ static mut MSTK: Vec<Obj> = Vec::new();	//main stack
 
 static mut REGS: Vec<Vec<RegObj>> = Vec::new();	//array of registers
 const REGS_SIZE: usize = 65536;	//amount of available registers
+static mut RO_BUF: Vec<RegObj> = Vec::new();
 
 static mut MRI: usize = 0;	//manual register index
 static mut MRI_EN: bool = false;	//MRI valid?
@@ -69,6 +70,14 @@ fn main() {
 	unsafe{
 		ENVSTK.push((KDEF, IDEF, ODEF));	//initialize env params
 		REGS.resize(REGS_SIZE, Vec::new());	//initialize registers
+		RO_BUF.push(RegObj{
+			a: Vec::new(),
+			o: Obj {
+				t: false,
+				n: Float::with_val(WPREC, 0),
+				s: String::new()
+			}
+		});
 	}
 
 	//initialize RNG with system time (* PID for a bit less predictability)
@@ -1294,7 +1303,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							REGS[ri].push(a);
 						}
 						else {
-							eprintln!("! Register {} not available", ri);
+							eprintln!("! Register {} is not available", ri);
 						}
 					}
 				}
@@ -1457,6 +1466,107 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								eprintln!("! Register {} is not available", ri);
 							}
 						}
+					}
+				}
+			},
+
+			//load top-of-reg into buffer
+			'j' => {
+				if CMDSTK.last().unwrap().is_empty()&&!MRI_EN {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = if MRI_EN {
+						MRI_EN = false;
+						MRI
+					}
+					else {
+						CMDSTK.last_mut().unwrap().remove(0) as usize
+					};
+					if REGS_SIZE>ri {
+						if REGS[ri].is_empty() {
+							eprintln!("! Register {} is empty", ri);
+						}
+						else {
+							RO_BUF[0] = REGS[ri].last().unwrap().clone();
+						}
+					}
+					else {
+						eprintln!("! Register {} is not available", ri);
+					}
+				}
+			},
+
+			//pop top-of-reg into buffer
+			'J' => {
+				if CMDSTK.last().unwrap().is_empty()&&!MRI_EN {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = if MRI_EN {
+						MRI_EN = false;
+						MRI
+					}
+					else {
+						CMDSTK.last_mut().unwrap().remove(0) as usize
+					};
+					if REGS_SIZE>ri {
+						if REGS[ri].is_empty() {
+							eprintln!("! Register {} is empty", ri);
+						}
+						else {
+							RO_BUF[0] = REGS[ri].pop().unwrap();
+						}
+					}
+					else {
+						eprintln!("! Register {} is not available", ri);
+					}
+				}
+			},
+
+			//save buffer to top-of-reg
+			'h' => {
+				if CMDSTK.last().unwrap().is_empty()&&!MRI_EN {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = if MRI_EN {
+						MRI_EN = false;
+						MRI
+					}
+					else {
+						CMDSTK.last_mut().unwrap().remove(0) as usize
+					};
+					if REGS_SIZE>ri {
+						if !REGS[ri].is_empty() {
+							REGS[ri].pop();	//remove old top, effectively overwrite
+						}
+						REGS[ri].push(RO_BUF[0].clone());
+					}
+					else {
+						eprintln!("! Register {} is not available", ri);
+					}
+				}
+			},
+
+			//push buffer to register
+			'H' => {
+				if CMDSTK.last().unwrap().is_empty()&&!MRI_EN {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = if MRI_EN {
+						MRI_EN = false;
+						MRI
+					}
+					else {
+						CMDSTK.last_mut().unwrap().remove(0) as usize
+					};
+					if REGS_SIZE>ri {
+						REGS[ri].push(RO_BUF[0].clone());
+					}
+					else {
+						eprintln!("! Register {} is not available", ri);
 					}
 				}
 			},
