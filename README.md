@@ -54,6 +54,7 @@ Planned upcoming features/changes:
 - To enable copying of register arrays, a buffer for register objects has been added. Refer to the memory diagram below.
   - `j`\<reg\> and `J`\<reg\> are like `l` and `L`, but copy and pop to the buffer instead of the main stack.
   - `h`\<reg\> and `H`\<reg\> are like `s` and `S`, but overwrite and push ditto.
+  - Example: `jaHa` copies the top object of reg 97, `JaHb` moves the top object of reg 97 to reg 98.
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
