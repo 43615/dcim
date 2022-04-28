@@ -1465,6 +1465,9 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						}
 					}
 				}
+				else {
+					eprintln!("! Loading from an array requires an index");
+				}
 			},
 
 			//load top-of-reg into buffer
