@@ -6,7 +6,6 @@ Features present in GNU dc are not listed unless different. [Familiarize yoursel
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
 Planned upcoming features/changes:
-- Number output fix
 - More conversion factors
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
@@ -22,6 +21,7 @@ Planned upcoming features/changes:
 - Capital A-F are no longer used for number input in the normal way, base-11+ numbers now need to be escaped with `'`. This change frees up A-F to be used as commands and allows for bases over 16.
   - Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
 - Digits too high for the input base (such as `'G` when base is 16) are not parsed, but always cause an error message instead.
+- Exponential notation shorthand using input base: `<a> <b>@` is equivalent to `<a> <b>I^*`.
 ## Precision and number output changes
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
