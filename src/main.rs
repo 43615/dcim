@@ -1,4 +1,4 @@
-use rug::{Integer, Complete, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
+use rug::{Integer, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 
@@ -127,6 +127,7 @@ fn interactive_mode(mut rng: &mut RandState) {
 			print!("\r\r");
 			std::process::exit(0);	//stop on end of pipe input
 		}
+		input = input.trim_end_matches('\n').to_string();	//remove trailing LF
 
 		unsafe {
 			exec(input, &mut rng);
