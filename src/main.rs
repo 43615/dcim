@@ -1,4 +1,4 @@
-use rug::{Integer, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
+use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 
@@ -188,7 +188,7 @@ fn check_n(op: char, n: usize) -> bool {
 		'|' => n>=3,
 
 		//dyadic
-		'+'|'-'|'*'|'/'|'^'|'V'|'G'|'%'|'~'|':'|'='|'<'|'>' => n>=2,
+		'+'|'-'|'*'|'/'|'^'|'V'|'G'|'%'|'~'|'@'|':'|'='|'<'|'>' => n>=2,
 
 		//monadic unless specified
 		_ => n>=1,
@@ -294,49 +294,39 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 	}
 }
 
-//custom printing function to remove exponential notation
+//custom number printing function
 fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
+	if num.is_zero() {
+		return String::from("0");	//causes issues, always "0" regardless of parameters
+	}
 	let ipart = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase);	//integer part
 	let ilen = ipart.trim_start_matches('-').len();	//length of integer part without negative sign
-	num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None })
-	/*
-	if num.is_zero() {
-		"0".to_string()	//possibly awkward to deal with, always "0" regardless of obase
+	let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });	//generate string, oprec=fractional digits
+	if obase <= 10 {
+		outstr = outstr.replace('e', "@");	//unify exponent symbol
 	}
-	else {
-		let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });
-		if obase<=10 {
-			outstr = outstr.replace('e', "@");	//unify exponent symbol
-		}
-		if let Some((mpart, epart)) = outstr.split_once('@') {	//split into mantissa (obase) and exponent (decimal)
-			let exp = Integer::parse(epart).unwrap().complete();
-			if oprec<0 {	//remove exponential notation unless rounding is applied
-				if exp>0 {
-					let (lpart, rpart) = mpart.split_once('.').unwrap();
-					outstr = lpart.to_string()+rpart+&"0".repeat(exp.to_usize().unwrap()-rpart.len());	//assemble large number
-				}
-				else {
-					outstr = String::from("0.")+&"0".repeat(exp.abs().to_usize().unwrap()-1)+&mpart.replace('.', "");	//assemble small number
-				}
-				if outstr.contains('-') {
-					outstr = String::from('-')+&outstr.replace('-', "");	//move negative sign to front
-				}
-			}
-		}
-		if let Some((lpart, rpart)) = outstr.split_once('@') {
-			lpart.trim_end_matches('0').trim_end_matches('.').to_string()+"@"+rpart	//remove trailing zeros from mantissa
+	if let Some((mut mpart, epart)) = outstr.split_once('@') {	//if in exponential notation
+		mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
+		let eint = Integer::parse(epart).unwrap().complete();	//isolate exponential part
+		if eint<0 && eint>-10 {
+			outstr = "0.".to_string() + &"0".repeat(eint.abs().to_usize().unwrap()-1) + &mpart.replace('.', "");	//convert exponential notation if not too small
 		}
 		else {
-			outstr.trim_end_matches('0').trim_end_matches('.').to_string()	//remove trailing zeros
+			outstr = mpart.to_string() + "@" + epart;	//reassemble
 		}
 	}
-	*/
+	else {
+		if let Some((ipart, fpart)) = outstr.split_once('.') {
+			outstr = ipart.to_string() + "." + fpart.trim_end_matches('0');	//trim trailing zeros
+		}
+	}
+	outstr.trim_end_matches('.').replace('@', " @")	//add space for clarity
 }
 
 //core execution engine
 //unsafe for accessing static mut objects across different runs
 //single-threaded so idgaf
-//CMDSTK is processed from the top (growable end of vector)
+//cmdstk is processed from the top (growable end of vector)
 unsafe fn exec(input: String, rng: &mut RandState) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of command strings to execute, enables pseudorecursive macro calls
 	if !input.is_empty() {cmdstk.push(input);}	//loop expects contents, effective nop if none provided
@@ -1018,6 +1008,21 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					}
 				}
 			},
+
+			//exponential notation shorthand
+			'@' => {
+				if check_n(cmd, MSTK.len()) {
+					let b=MSTK.pop().unwrap();
+					let a=MSTK.pop().unwrap();
+					if check_t(cmd, a.t, b.t, false) {
+						MSTK.push(Obj {
+							t: false,
+							n: Float::with_val(WPREC, a.n * Float::with_val(WPREC, ENVSTK.last().unwrap().1).pow(b.n)),
+							s: String::new()
+						});
+					}
+				}
+			},
 			/*------------------------
 				STACK MANIPULATION
 			------------------------*/
@@ -1077,10 +1082,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			//swap top 2 elements
 			'r' => {
 				if MSTK.len()>=2 {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
-					MSTK.push(b);
-					MSTK.push(a);
+					MSTK.swap(MSTK.len()-2, MSTK.len()-1);
 				}
 				else {
 					eprintln!("! Not enough elements to rotate")
