@@ -351,8 +351,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				}
 				//keep adding to numstr until number is finished
 				'STDNUM_FINISHED: loop {
-					//numbers and periods
-					if cmd.is_ascii_digit()||cmd == '.' {
+					//numbers, periods and exponential notation
+					if cmd.is_ascii_digit()||cmd == '.'||cmd == '@' {
 						if cmd =='.' { if frac { break 'STDNUM_FINISHED; } else { frac = true; } } //break on encountering second '.'
 						numstr.push(cmd);						
 					}
@@ -1005,21 +1005,6 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								eprintln!("! Invalid unit conversion string: \"{}\"", a.s);
 							},
 						}
-					}
-				}
-			},
-
-			//exponential notation shorthand
-			'@' => {
-				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
-					if check_t(cmd, a.t, b.t, false) {
-						MSTK.push(Obj {
-							t: false,
-							n: Float::with_val(WPREC, a.n * Float::with_val(WPREC, ENVSTK.last().unwrap().1).pow(b.n)),
-							s: String::new()
-						});
 					}
 				}
 			},
