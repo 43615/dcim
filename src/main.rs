@@ -299,6 +299,12 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 	if num.is_zero() {
 		return String::from("0");	//causes issues, always "0" regardless of parameters
 	}
+	if num.is_infinite() {
+		return String::from("Infinity");
+	}
+	if num.is_nan() {
+		return String::from("Not a number");
+	}
 	let ipart = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase);	//integer part
 	let ilen = ipart.trim_start_matches('-').len();	//length of integer part without negative sign
 	let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });	//generate string, oprec=fractional digits
