@@ -1241,7 +1241,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			--------------------------*/
 			//save to top of register
 			's' => {
-				if check_n(cmd, MSTK.len()) {
+				if MSTK.len()>=1 {
 					let a=MSTK.pop().unwrap();					
 					if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
 						eprintln!("! No register number provided");
@@ -1272,12 +1272,16 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Nothing to save to register");
+					if !cmdstk.last().unwrap().is_empty() {
+						cmdstk.last_mut().unwrap().remove(0);	//remove register name
+					}
+					MRI_EN = false;	//invalidate MRI
 				}
 			},
 
 			//push to top of register
 			'S' => {
-				if check_n(cmd, MSTK.len()) {
+				if MSTK.len()>=1 {
 					let a=RegObj {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
@@ -1303,6 +1307,10 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Nothing to push to register");
+					if !cmdstk.last().unwrap().is_empty() {
+						cmdstk.last_mut().unwrap().remove(0);	//remove register name
+					}
+					MRI_EN = false;	//invalidate MRI
 				}
 			},
 
@@ -1411,6 +1419,10 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Saving to an array requires an object and an index");
+					if !cmdstk.last().unwrap().is_empty() {
+						cmdstk.last_mut().unwrap().remove(0);	//remove register name
+					}
+					MRI_EN = false;	//invalidate MRI
 				}
 			},
 
@@ -1464,6 +1476,10 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Loading from an array requires an index");
+					if !cmdstk.last().unwrap().is_empty() {
+						cmdstk.last_mut().unwrap().remove(0);	//remove register name
+					}
+					MRI_EN = false;	//invalidate MRI
 				}
 			},
 
