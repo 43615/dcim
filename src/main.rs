@@ -310,6 +310,9 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 		let eint = Integer::parse(epart).unwrap().complete();	//isolate exponential part
 		if eint<0 && eint>-10 {
 			outstr = "0.".to_string() + &"0".repeat(eint.abs().to_usize().unwrap()-1) + &mpart.replace('.', "");	//convert exponential notation if not too small
+			if let Some(i) = outstr.find('-') {
+				outstr = outstr.remove(i).to_string() + &outstr;	//move negative sign to front
+			}
 		}
 		else {
 			outstr = mpart.to_string() + "@" + epart;	//reassemble
@@ -340,7 +343,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				OBJECT INPUT
 			------------------*/
 			//number input, force with single quote to use letters
-			'0'..='9'|'.'|'_'|'\'' => {
+			'0'..='9'|'.'|'_'|'\''|'@' => {
 				let mut numstr = String::new();	//gets filled with number to be parsed later
 				let mut frac = false;	//'.' has already occurred
 				let mut neg = false;	//'_' has already occurred
@@ -376,8 +379,9 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					cmd = if cmdstk.last().unwrap().is_empty() {' '} else {cmdstk.last_mut().unwrap().remove(0)};
 				}
 				cmdstk.last_mut().unwrap().insert(0, cmd);	//restore first char that isn't part of the number
-				if numstr.starts_with(".")||numstr.starts_with("-.") { numstr = numstr.replace(".", "0."); }	//add implied zero before fractional separator
-				if numstr.ends_with(".")||numstr.ends_with("-")||numstr.is_empty() { numstr = "0".to_string(); }	//assume 0 if no digits provided
+				if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
+				if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
+				if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr = '0'.to_string(); }	//assume 0 if no digits provided
 				if let Ok(res) = Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1) {		
 					MSTK.push(Obj {
 						t: false,
