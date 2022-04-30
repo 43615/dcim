@@ -1,6 +1,7 @@
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
+use std::cmp::Ordering;
 
 const HELPMSG: &str = "
 ╔════════════════════════╗
@@ -61,6 +62,7 @@ static mut RO_BUF: Vec<RegObj> = Vec::new();
 static mut MRI: usize = 0;	//manual register index
 static mut MRI_EN: bool = false;	//MRI valid?
 
+const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);
 
 fn main() {
 	let mut args: Vec<String> = std::env::args().collect();
@@ -441,7 +443,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						println!("{}", MSTK.last().unwrap().s.clone());
 					}
 					else {
-						println!("{}", flt_to_str(MSTK.last().unwrap().n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));						
+						println!("{}", flt_to_str(MSTK.last().unwrap().n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
 					}
 				}
 			},
@@ -484,12 +486,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						stdout().flush().unwrap();
 					}
 					else {
-						if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap().0.to_digits::<u8>(Order::Msf)) {
+						if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
 							print!("{}", res);
 							stdout().flush().unwrap();
 						}
 						else {
-							eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", a.n.to_integer_round(Round::Zero).unwrap().0);
+							eprintln!("! Unable to convert number {} to string: not valid UTF-8", a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
 						}
 					}
 				}
@@ -573,7 +575,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						//remove b chars from string a
 						if a.t {
 							let mut newstr = a.s;
-							let int = b.n.to_integer_round(Round::Zero).unwrap().0;	//extract b, keep for checking if negative
+							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
 							if let Some(mut num) = int.clone().abs().to_usize() {
 								if num>newstr.len() { num = newstr.len(); }	//account for too large b
 								if int<0 {
@@ -616,7 +618,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						//repeat string a b times
 						if a.t {
 							let mut newstr = a.s;
-							let int = b.n.to_integer_round(Round::Zero).unwrap().0;	//extract b, keep for checking if negative
+							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
 							if let Some(mut num) = int.clone().abs().to_usize() {
 								if num*newstr.len()>usize::MAX { num = usize::MAX/newstr.len(); }	//account for too large b
 								newstr = newstr.repeat(num);
@@ -652,7 +654,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						//shorten string a to length b
 						if a.t {
 							let mut newstr = a.s;
-							let int = b.n.to_integer_round(Round::Zero).unwrap().0;	//extract b, keep for checking if negative
+							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
 							if let Some(num) = int.clone().abs().to_usize() {								
 								if int<0 {
 									//if b is negative, remove from front
@@ -696,8 +698,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						let ia = a.n.to_integer_round(Round::Zero).unwrap().0;
-						let ib = b.n.to_integer_round(Round::Zero).unwrap().0;
+						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if ib==0 {
 							eprintln!("! Arithmetic error: Attempted modulo by zero");
 						}
@@ -718,8 +720,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						let ia = a.n.to_integer_round(Round::Zero).unwrap().0;
-						let ib = b.n.to_integer_round(Round::Zero).unwrap().0;
+						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if ib==0 {
 							eprintln!("! Arithmetic error: Attempted modulo by zero");
 						}
@@ -767,9 +769,9 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, c.t) {
-						let ia = a.n.to_integer_round(Round::Zero).unwrap().0;
-						let ib = b.n.to_integer_round(Round::Zero).unwrap().0;
-						let ic = c.n.to_integer_round(Round::Zero).unwrap().0;
+						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ic = c.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if ic==0 {
 							eprintln!("! Arithmetic error: Attempted modulo by zero");
 						}
@@ -969,7 +971,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()){
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int<=0 {
 							eprintln!("! Upper bound for random value must be above 0");
 						}
@@ -1031,7 +1033,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(mut num) = int.to_usize() {
 							if num>MSTK.len() { num=MSTK.len(); }	//limit clear count
 							MSTK.truncate(MSTK.len()-num);
@@ -1058,7 +1060,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(num) = int.to_usize() {
 							if num<=MSTK.len() {
 								MSTK.extend_from_within(MSTK.len()-num..);
@@ -1089,7 +1091,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let mut int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let mut int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
 						if let Some(num) = int.clone().abs().to_usize() {
 							if num<=MSTK.len() {
@@ -1129,7 +1131,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(num) = int.to_i32() {
 							ENVSTK.last_mut().unwrap().0 = num;
 						}
@@ -1145,7 +1147,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int>=2 && int<=36 {
 							ENVSTK.last_mut().unwrap().1 = int.to_i32().unwrap();
 						}
@@ -1161,7 +1163,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int>=2 && int<=36 {
 							ENVSTK.last_mut().unwrap().2 = int.to_i32().unwrap();
 						}
@@ -1177,7 +1179,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int>=1 && int<=u32::MAX {
 							WPREC = int.to_u32().unwrap();
 						}
@@ -1396,7 +1398,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 										a: Vec::new()
 									});
 								}
-								let int = b.n.to_integer_round(Round::Zero).unwrap().0;
+								let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 								if let Some(rai) = int.to_usize() {
 									if rai>=REGS[ri].last().unwrap().a.len() {
 										REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj {
@@ -1453,7 +1455,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 										a: Vec::new()
 									});
 								}
-								let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+								let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 								if let Some(rai) = int.to_usize() {
 									if rai>=REGS[ri].last().unwrap().a.len() {
 										REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj {
@@ -1615,7 +1617,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(ri) = int.to_usize() {
 							if REGS_SIZE>ri {
 								MRI = ri;
@@ -1651,28 +1653,28 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							MSTK.push(Obj {
 								t: true,
 								n: Float::new(WPREC),
-								s: String::from(char::from_u32_unchecked(a.n.to_integer_round(Round::Zero).unwrap().0.to_u32_wrapping()))
+								s: String::from(char::from_u32_unchecked(a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_u32_wrapping()))
 							});
 						}
 					}
 				}
 			},
 
-			//convert to string in 32-bit blocks
+			//convert to string from UTF-8 number
 			'A' => {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let mut newstr = String::new();
-						let chars = a.n.to_integer_round(Round::Zero).unwrap().0.to_digits::<u32>(Order::Msf);
-						for i in 0..chars.len() {
-							newstr.push(char::from_u32_unchecked(chars[i]));
+						if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
+							MSTK.push(Obj {
+								t: true,
+								n: Float::new(WPREC),
+								s: res
+							});
 						}
-						MSTK.push(Obj {
-							t: true,
-							n: Float::new(WPREC),
-							s: newstr
-						})
+						else {
+							eprintln!("! Unable to convert number {} to string: not valid UTF-8", a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
+						}
 					}
 				}
 			},
@@ -1760,12 +1762,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				std::process::exit(0);
 			},
 
-			//set macro quit level
+			//quit a macro calls
 			'Q' => {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						let int = a.n.to_integer_round(Round::Zero).unwrap().0;
+						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(num) = int.to_usize() {
 							for _ in 0..num {
 								if !cmdstk.is_empty() {
