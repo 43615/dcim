@@ -21,7 +21,7 @@ Planned upcoming features/changes:
 - Capital A-F are no longer used for number input in the normal way, base-11+ numbers now need to be escaped with `'`. This change frees up A-F to be used as commands and allows for bases over 16.
   - Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
 - Digits too high for the input base (such as `'G` when base is 16) are not parsed, but always cause an error message instead.
-- Exponential/scientific notation shorthand: `<a>@<b>` is equivalent to `<a>I<b>^*`, but is easier to input and might avoid rounding errors. '@' replaces the traditional 'e'/'E' to work with all input bases. The exponent must be a decimal integer and is applied to the input base. If no mantissa is provided, 1 is assumed (`1@123`=`@123`). 
+- Exponential/scientific notation shorthand: `<a>@<b>` is equivalent to `<a>I{<b>}^*`, but is easier to input and might avoid rounding errors. '@' replaces the traditional 'e'/'E' to work with all input bases. The exponent must be a decimal integer and is applied to the input base. If no mantissa is provided, 1 is assumed (`1@123`=`@123`).
 ## Precision and number output changes
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
@@ -54,16 +54,17 @@ Planned upcoming features/changes:
 - To enable copying of register arrays, a buffer for register objects has been added. Refer to the memory diagram below.
   - `j`\<reg\> and `J`\<reg\> are like `l` and `L`, but copy and pop to the buffer instead of the main stack.
   - `h`\<reg\> and `H`\<reg\> are like `s` and `S`, but overwrite and push ditto.
-  - Example: `jaHa` copies the top object of reg 97, `JaHb` moves the top object of reg 97 to reg 98.
+  - Example: `jaHa` duplicates the top object of reg 97, `JaHb` moves the top object of reg 97 to reg 98.
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
   - Example: `[abcde]_2-` results in "cde".
-- `*` repeats string a abs(b) times, flipping it if b is negative.
+- `*` repeats string a abs(b) times, reversing it if b is negative.
 - `/` removes characters from string a such that abs(b) remain: from the back if b is positive, from the front if negative.
   - Example: `[vwxyz]_2/` results in "yz".
 - `a` now uses the least significant 32 bits.
-- `A` converts a number to a string in 32-bit blocks corresponding to characters, similarly to `P`(which parses bytes as UTF-8).
+- `P` now parses the number as a UTF-8 byte sequence.
+- `A` is like `P`, but pushes the string to the stack instead of printing it.
 ## Manual register number selection
 - `,` writes a number to a single-use manual register number selector and marks it as valid.
 - This selector can only be written to and expires (becomes invalid) at the next call of any register command.
@@ -78,7 +79,7 @@ Planned upcoming features/changes:
 - `q` now always exits regardless of where it's called from.
 - `Q` may behave slightly differently, TODO: test.
 ## New feature: Library of constants and conversion factors
-TODO: List all factors
+TODO: List all constants
 - `"` pushes the constant or conversion factor with name a.
 - The name may also be two names separated by a space. This is a shorthand for converting from one unit to another.
   - Example: `90[deg]"*` converts 90° to radians, `10 6^[in nmi]"*` converts 1 million inches to nautical miles.
