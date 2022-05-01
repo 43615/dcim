@@ -235,52 +235,50 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 //unless specified, unit factors are based on the most prevalent international standard units for their respective quantities
 //ex: "in" (inch) returns 0.0254, thus executing 20[in]"* converts 20 inches to meters (0.508)
 fn constants(prec: u32, key: String) -> Option<Float> {
-	let ten = Float::with_val(prec, 10);
-	let pi = Float::with_val(prec, Constant::Pi);
 	match key.as_str() {
 		/*----------------------------
 			MATHEMATICAL CONSTANTS
 		----------------------------*/
 		"e" => {Some(Float::with_val(prec, 1).exp())}
-		"pi" => {Some(Float::with_val(prec, pi))}
+		"pi" => {Some(Float::with_val(prec, Constant::Pi))}
 		"gamma" => {Some(Float::with_val(prec, Constant::Euler))}
 		"phi" => {Some((Float::with_val(prec, 5).sqrt()+1)/2)}
-		"deg"|"°" => {Some(Float::with_val(prec, pi)/180)}
-		"gon"|"grad" => {Some(Float::with_val(prec, pi)/200)}
+		"deg"|"°" => {Some(Float::with_val(prec, Constant::Pi)/180)}
+		"gon"|"grad" => {Some(Float::with_val(prec, Constant::Pi)/200)}
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
 		"c" => {Some(Float::with_val(prec, 299792458))}
-		"hbar" => {Some(Float::with_val(prec, 662607015)*ten.pow(-42)/(2*pi))}
-		"G" => {Some(Float::with_val(prec, 6674)*ten.pow(-3))}
-		"qe" => {Some(Float::with_val(prec, 1602176634)*ten.pow(-28))}
-		"NA" => {Some(Float::with_val(prec, 602214076)*ten.pow(31))}
-		"kB" => {Some(Float::with_val(prec, 1380649)*ten.pow(-29))}
-		"u" => {Some(Float::with_val(prec, 1660539066)*ten.pow(-36))}
-		"lp" => {Some(Float::with_val(prec, 16162)*ten.pow(-39))}
-		"tp" => {Some(Float::with_val(prec, 5391)*ten.pow(-47))}
-		"mp" => {Some(Float::with_val(prec, 21764)*ten.pow(-12))}
-		"Tp" => {Some(Float::with_val(prec, 14167)*ten.pow(28))}
+		"hbar" => {Some(Float::with_val(prec, 662607015)*Float::with_val(prec, 10).pow(-42)/(2*Float::with_val(prec, Constant::Pi)))}
+		"G" => {Some(Float::with_val(prec, 6674)*Float::with_val(prec, 10).pow(-3))}
+		"qe" => {Some(Float::with_val(prec, 1602176634)*Float::with_val(prec, 10).pow(-28))}
+		"NA" => {Some(Float::with_val(prec, 602214076)*Float::with_val(prec, 10).pow(31))}
+		"kB" => {Some(Float::with_val(prec, 1380649)*Float::with_val(prec, 10).pow(-29))}
+		"u" => {Some(Float::with_val(prec, 1660539066)*Float::with_val(prec, 10).pow(-36))}
+		"lp" => {Some(Float::with_val(prec, 16162)*Float::with_val(prec, 10).pow(-39))}
+		"tp" => {Some(Float::with_val(prec, 5391)*Float::with_val(prec, 10).pow(-47))}
+		"mp" => {Some(Float::with_val(prec, 21764)*Float::with_val(prec, 10).pow(-12))}
+		"Tp" => {Some(Float::with_val(prec, 14167)*Float::with_val(prec, 10).pow(28))}
 		/*------------------
 			LENGTH UNITS
 		------------------*/
-		"in" => {Some(Float::with_val(prec, 254)*ten.pow(-4))}
-		"ft" => {Some(Float::with_val(prec, 3048)*ten.pow(-4))}
-		"yd" => {Some(Float::with_val(prec, 9144)*ten.pow(-4))}
+		"in" => {Some(Float::with_val(prec, 254)*Float::with_val(prec, 10).pow(-4))}
+		"ft" => {Some(Float::with_val(prec, 3048)*Float::with_val(prec, 10).pow(-4))}
+		"yd" => {Some(Float::with_val(prec, 9144)*Float::with_val(prec, 10).pow(-4))}
 		"m" => {Some(Float::with_val(prec, 1))}
-		"mi" => {Some(Float::with_val(prec, 1609344)*ten.pow(-3))}
+		"mi" => {Some(Float::with_val(prec, 1609344)*Float::with_val(prec, 10).pow(-3))}
 		"nmi" => {Some(Float::with_val(prec, 1852))}
 		"AU" => {Some(Float::with_val(prec, 149597870700i64))}
 		"ly" => {Some(Float::with_val(prec, 9460730472580800i64))}
-		"pc" => {Some(Float::with_val(prec, 96939420213600000i64)/pi)}
+		"pc" => {Some(Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))}
 		/*----------------
 			MASS UNITS
 		----------------*/
-		"ct" => {Some(Float::with_val(prec, 2)*ten.pow(-4))}
-		"oz" => {Some(Float::with_val(prec, 28349523125i64)*ten.pow(-12))}
-		"lb" => {Some(Float::with_val(prec, 45359237)*ten.pow(-8))}
+		"ct" => {Some(Float::with_val(prec, 2)*Float::with_val(prec, 10).pow(-4))}
+		"oz" => {Some(Float::with_val(prec, 28349523125i64)*Float::with_val(prec, 10).pow(-12))}
+		"lb" => {Some(Float::with_val(prec, 45359237)*Float::with_val(prec, 10).pow(-8))}
 		"kg" => {Some(Float::with_val(prec, 1))}
-		"st" => {Some(Float::with_val(prec, 635029318)*ten.pow(-8))}
+		"st" => {Some(Float::with_val(prec, 635029318)*Float::with_val(prec, 10).pow(-8))}
 		/*----------------
 			TIME UNITS
 		----------------*/
