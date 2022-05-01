@@ -51,10 +51,11 @@ Planned upcoming features/changes:
 - `F`\<reg\> now prints an entire register including array contents.
 - `R` rotates the top abs(a) elements: upward if a is positive, downward if negative.
   - Example: `1 2 3 4 3R` results in 1 4 2 3.
-- To enable copying of register arrays, a buffer for register objects has been added. Refer to the memory diagram below.
+- To enable copying of register arrays, a buffer for one complete register object has been added. Refer to the memory diagram below.
   - `j`\<reg\> and `J`\<reg\> are like `l` and `L`, but copy and pop to the buffer instead of the main stack.
-  - `h`\<reg\> and `H`\<reg\> are like `s` and `S`, but overwrite and push ditto.
+  - `h`\<reg\> and `H`\<reg\> are like `s` and `S`, but overwrite and push reading from the buffer.
   - Example: `jaHa` duplicates the top object of reg 97, `JaHb` moves the top object of reg 97 to reg 98.
+  - Yes, I'm running out of letters.
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
@@ -99,14 +100,14 @@ Boolean "Type" (true iff string) solely determines how an object is treated. The
 
 Main stack:
 +-----+-----+-----+----
-| Obj | Obj | Obj | ... no theoretical size limit
+| Obj | Obj | Obj | ... theoretically unlimited
 +-----+-----+-----+----
 
 Register object "RegObj":
 +-----+
 | Obj | principal object (s/l)
 +-----+-----+-----+----
-| Obj | Obj | Obj | ... array of objects (:/;), no theoretical size limit
+| Obj | Obj | Obj | ... array of objects (:/;), theoretically unlimited
 +-----+-----+-----+----
 Each RegObj has its own array.
 Note that arrays are continuous (all lower indices are always valid to read from).
@@ -114,10 +115,14 @@ Writing to or reading from an uninitialized array element initializes all previo
 
 Register:
 +--------+--------+--------+----
-| RegObj | RegObj | RegObj | ... no theoretical size limit
+| RegObj | RegObj | RegObj | ... theoretically unlimited
 +--------+--------+--------+----
-s and l overwrite and copy the top RegObj's Obj, S and L push and pop the whole RegObj (which wastes the array).
-There is also a buffer for one RegObj, which is accessed by `j`/`J` and `h`/`H` (preserving the array).
+RegObj buffer:
++--------+
+| RegObj |
++--------+
+s and l overwrite and copy the top RegObj's principal Obj, S and L push and pop the whole RegObj (which wastes the array).
+There is also a buffer for one RegObj, which is written to by `j`/`J` and read from by `h`/`H` (preserving the array).
 
 Array of all registers:
 +----------+----------+----------+-----+----------+
