@@ -242,11 +242,11 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 			MATHEMATICAL CONSTANTS
 		----------------------------*/
 		"e" => {Some(Float::with_val(prec, 1).exp())}
-		"pi" => {Some(Float::with_val(prec, Constant::Pi))}
+		"pi" => {Some(Float::with_val(prec, pi))}
 		"gamma" => {Some(Float::with_val(prec, Constant::Euler))}
 		"phi" => {Some((Float::with_val(prec, 5).sqrt()+1)/2)}
-		"deg"|"°" => {Some(Float::with_val(prec, Constant::Pi)/180)}
-		"gon"|"grad" => {Some(Float::with_val(prec, Constant::Pi)/200)}
+		"deg"|"°" => {Some(Float::with_val(prec, pi)/180)}
+		"gon"|"grad" => {Some(Float::with_val(prec, pi)/200)}
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
@@ -364,7 +364,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				'STDNUM_FINISHED: loop {
 					//numbers, periods and exponential notation
 					if cmd.is_ascii_digit()||cmd == '.'||cmd == '@' {
-						if cmd =='.' { if frac { break 'STDNUM_FINISHED; } else { frac = true; } } //break on encountering second '.'
+						if cmd == '.' { if frac { break 'STDNUM_FINISHED; } else { frac = true; } } //break on encountering second '.'
+						if cmd == '@' { neg = false; }	//allow for second negative sign in exponent
 						numstr.push(cmd);						
 					}
 					//'_' needs to be replaced with '-'
@@ -390,15 +391,17 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
 				if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
 				if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr = '0'.to_string(); }	//assume 0 if no digits provided
-				if let Ok(res) = Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1) {		
-					MSTK.push(Obj {
-						t: false,
-						n: Float::with_val(WPREC, res),
-						s: String::new()
-					});
-				}
-				else {
-					eprintln!("! Unable to parse number \"{}\"", numstr);
+				match Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1) {		
+					Ok(res) => {
+						MSTK.push(Obj {
+							t: false,
+							n: Float::with_val(WPREC, res),
+							s: String::new()
+						});
+					},
+					Err(error) => {
+						eprintln!("! Unable to parse number \"{}\": {}", numstr, error);
+					},
 				}
 			},
 
