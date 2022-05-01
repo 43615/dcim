@@ -119,7 +119,7 @@ Register:
 +--------+--------+--------+----
 RegObj buffer:
 +--------+
-| RegObj |
+| RegObj | initialized with number 0 and empty array
 +--------+
 s and l overwrite and copy the top RegObj's principal Obj, S and L push and pop the whole RegObj (which wastes the array).
 There is also a buffer for one RegObj, which is written to by `j`/`J` and read from by `h`/`H` (preserving the array).
