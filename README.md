@@ -83,7 +83,7 @@ Planned upcoming features/changes:
 TODO: List all constants
 - `"` pushes the constant or conversion factor with name a.
 - The name may also be two names separated by a space. This is a shorthand for converting from one unit to another.
-  - Example: `90[deg]"*` converts 90° to radians, `10 6^[in nmi]"*` converts 1 million inches to nautical miles.
+- Examples: `90[deg]"*` converts 90° to radians, `@6[in nmi]"*` converts 1 million inches to nautical miles.
 - All constants and units are stored in amounts of their respective international standard units.
 # Memory model diagram
 dc's manpage doesn't do a great job at explaining it, so here's a diagram:
