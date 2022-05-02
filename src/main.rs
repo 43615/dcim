@@ -388,7 +388,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				cmdstk.last_mut().unwrap().insert(0, cmd);	//restore first char that isn't part of the number
 				if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
 				if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
-				if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr = '0'.to_string(); }	//assume 0 if no digits provided
+				if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
 				match Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1) {		
 					Ok(res) => {
 						MSTK.push(Obj {
