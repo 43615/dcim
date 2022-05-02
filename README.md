@@ -68,10 +68,10 @@ Planned upcoming features/changes:
 - `a` now uses the least significant 32 bits.
 - `P` now parses the number as a UTF-8 byte sequence.
 - `A` is like `P`, but pushes the string to the stack instead of printing it.
-## Manual register number selection
-- `,` writes a number to a single-use manual register number selector and marks it as valid.
+## Direct register number selection
+- `,` writes a number to a single-use direct register selector and marks it as valid.
 - This selector can only be written to and expires (becomes invalid) at the next call of any register command.
-- When it's valid, register commands don't process the next character as a register name.
+- When it's valid, register commands access the register specified by the selector and don't process the next character as a register name.
 - Example: `[test] sa 97,l p` (assuming input base is 10).
 - If no register name is provided and the selector is marked as invalid, an error message is displayed.
 - Advantages/use cases:
