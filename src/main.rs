@@ -59,8 +59,8 @@ static mut REGS: Vec<Vec<RegObj>> = Vec::new();	//array of registers
 const REGS_SIZE: usize = 65536;	//amount of available registers
 static mut RO_BUF: Vec<RegObj> = Vec::new();
 
-static mut MRI: usize = 0;	//manual register index
-static mut MRI_EN: bool = false;	//MRI valid?
+static mut DRS: usize = 0;	//direct register selector
+static mut DRS_EN: bool = false;	//DRS valid?
 
 const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);
 
@@ -500,13 +500,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//print register
 			'F' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1246,13 +1246,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			's' => {
 				if MSTK.len()>=1 {
 					let a=MSTK.pop().unwrap();					
-					if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+					if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 						eprintln!("! No register number provided");
 					}
 					else {
-						let ri = if MRI_EN {
-							MRI_EN = false;
-							MRI
+						let ri = if DRS_EN {
+							DRS_EN = false;
+							DRS
 						}
 						else {
 							cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1278,7 +1278,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					if !cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
-					MRI_EN = false;	//invalidate MRI
+					DRS_EN = false;	//invalidate DRS
 				}
 			},
 
@@ -1289,13 +1289,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
 					};
-					if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+					if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 						eprintln!("! No register number provided");
 					}
 					else {
-						let ri = if MRI_EN {
-							MRI_EN = false;
-							MRI
+						let ri = if DRS_EN {
+							DRS_EN = false;
+							DRS
 						}
 						else {
 							cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1313,19 +1313,19 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					if !cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
-					MRI_EN = false;	//invalidate MRI
+					DRS_EN = false;	//invalidate DRS
 				}
 			},
 
 			//load from top of register
 			'l' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1346,13 +1346,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//pop from top of register
 			'L' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1377,13 +1377,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 							eprintln!("! No register number provided");
 						}
 						else {
-							let ri = if MRI_EN {
-								MRI_EN = false;
-								MRI
+							let ri = if DRS_EN {
+								DRS_EN = false;
+								DRS
 							}
 							else {
 								cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1425,7 +1425,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					if !cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
-					MRI_EN = false;	//invalidate MRI
+					DRS_EN = false;	//invalidate DRS
 				}
 			},
 
@@ -1434,13 +1434,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if MSTK.len()>=1 {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 							eprintln!("! No register number provided");
 						}
 						else {
-							let ri = if MRI_EN {
-								MRI_EN = false;
-								MRI
+							let ri = if DRS_EN {
+								DRS_EN = false;
+								DRS
 							}
 							else {
 								cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1482,19 +1482,19 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					if !cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
-					MRI_EN = false;	//invalidate MRI
+					DRS_EN = false;	//invalidate DRS
 				}
 			},
 
 			//load top-of-reg into buffer
 			'j' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1515,13 +1515,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//pop top-of-reg into buffer
 			'J' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1542,13 +1542,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//save buffer to top-of-reg
 			'h' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1567,13 +1567,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//push buffer to register
 			'H' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1589,13 +1589,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//push register depth
 			'Z' => {
-				if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if MRI_EN {
-						MRI_EN = false;
-						MRI
+					let ri = if DRS_EN {
+						DRS_EN = false;
+						DRS
 					}
 					else {
 						cmdstk.last_mut().unwrap().remove(0) as usize
@@ -1621,8 +1621,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(ri) = int.to_usize() {
 							if REGS_SIZE>ri {
-								MRI = ri;
-								MRI_EN = true;
+								DRS = ri;
+								DRS_EN = true;
 							}
 							else {
 								eprintln!("! Register {} is not available", ri);
@@ -1714,13 +1714,13 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let b=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						let mut mac = String::new();
-						if cmdstk.last().unwrap().is_empty()&&!MRI_EN {
+						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 							eprintln!("! No register name provided");
 						}
 						else {
-							let ri = if MRI_EN {
-								MRI_EN = false;
-								MRI
+							let ri = if DRS_EN {
+								DRS_EN = false;
+								DRS
 							}
 							else {
 								cmdstk.last_mut().unwrap().remove(0) as usize
