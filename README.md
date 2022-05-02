@@ -1,7 +1,9 @@
 # dcim
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
 
-Features present in GNU dc are not listed unless different. [Familiarize yourself first.](https://linux.die.net/man/1/dc)
+Features present in GNU dc are not listed here unless different. [Familiarize yourself first.](https://linux.die.net/man/1/dc)
+
+[Full command reference](../../wiki/Full-command-reference)
 
 This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
 
@@ -80,7 +82,7 @@ Planned upcoming features/changes:
 - `q` now always exits regardless of where it's called from.
 - `Q` may behave slightly differently, TODO: test.
 ## New feature: Library of constants and conversion factors
-TODO: List all constants
+[List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
 - The name may also be two names separated by a space. This is a shorthand for converting from one unit to another.
 - All constants and units are stored in amounts of their respective international standard units.
