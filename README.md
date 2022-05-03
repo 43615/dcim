@@ -87,9 +87,9 @@ Planned upcoming features/changes:
 ## New feature: Library of constants and conversion factors
 [List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
-- The name may also be two names separated by a space. This is a shorthand for converting from one unit to another.
 - All constants and units are stored in amounts of their respective international standard units.
 - Unit conversion doesn't happen automatically; multiplying with the created factor converts the selected unit to the standard unit, dividing by it does the opposite.
+- The string may also be two names separated by a space. This is a shorthand for converting from one unit to another.
 - Examples:
   - `[phi]"` pushes the golden ratio.
   - `90[deg]"*` converts 90° to radians.
