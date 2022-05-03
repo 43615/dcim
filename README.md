@@ -76,6 +76,8 @@ Planned upcoming features/changes:
   - Register numbers can be input in any base because the number is parsed like any other.
   - All register numbers in the allowed range can be used, not just valid/inputtable Unicode characters.
 ## Macro changes
+- `X` pops a string and a number and performs an "auto-macro" by repeatedly executing the string *until* the stack depth (`z`) is equal to the number.
+  - Examples: `[+]1X` sums the entire stack, `[Sa]0X` saves the entire stack to register 97, `z[Lb]rZb+X` loads the entirety of reg 98.
 - `q` now always exits regardless of where it's called from.
 - `Q` may behave slightly differently, TODO: test.
 ## New feature: Library of constants and conversion factors
