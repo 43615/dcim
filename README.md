@@ -3,8 +3,6 @@
 
 Features present in GNU dc are not listed here unless different. [Familiarize yourself first](https://linux.die.net/man/1/dc) or see the [full reference manual](../../wiki/Full-reference-manual).
 
-This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
-
 Planned upcoming features/changes:
 - More conversion factors
 ## General changes and notes
