@@ -218,6 +218,9 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 		//arrays can store numbers and strings
 		':' => (!a&&!b)||(a&&!b),
 
+		//convert both ways
+		'a' => !a||a,
+
 		//strings can be executed
 		'x' => !a||a,
 
@@ -1641,16 +1644,16 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				MACROS
 			------------*/
 
-			//convert least significant 32 bits to one-char string or isolate first char of string
+			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
 				if check_n(cmd, MSTK.len()) {
 					let mut a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.t {
 							MSTK.push(Obj {
-								t: true,
-								n: Float::new(WPREC),
-								s: String::from(a.s.remove(0))
+								t: false,
+								n: Float::with_val(WPREC, a.s.remove(0) as u32),
+								s: String::new()
 							});
 						}
 						else {
