@@ -1,11 +1,7 @@
 # dcim
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
 
-Features present in GNU dc are not listed here unless different. [Familiarize yourself first.](https://linux.die.net/man/1/dc)
-
-[Full command reference](../../wiki/Full-command-reference)
-
-This is my first real Rust project, please expect low quality and report anything weird. Any suggestions are appreciated.
+Features present in GNU dc are not listed here unless different. [Familiarize yourself first](https://linux.die.net/man/1/dc) or see the [full reference manual](../../wiki/Full-reference-manual).
 
 Planned upcoming features/changes:
 - More conversion factors
@@ -27,12 +23,13 @@ Planned upcoming features/changes:
 ## Precision and number output changes
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
-- If output precision is negative (default: -1), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
-- If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `-1.23456 @-789`.
-- Working precision (default: 256) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason.
+- If output precision is negative (new default: -1), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
+- If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `-1.23456 @-789`. Like with SCI input, the exponent is always in decimal.
+- Working precision (default: 256 bits) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa. Scale is unlimited within reason (signed 32-bit, up to ≈10^(±646'456'993)).
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
-- Floating-point rounding artifacts are guaranteed unless the number is a binary fraction or the output base is a power of 2. This is an unavoidable problem, GNU dc just hid it from view by storing numbers in the base they were created in.
-- Attention: W applies to the whole number, so large integers may be represented incorrectly. The default corresponds to a generous "i257".
+- Floating-point rounding artifacts (wrong digits at the end of a number) are guaranteed unless the number is a binary fraction or the output base is a power of 2. This is an unavoidable problem, GNU dc just hid it from view by storing numbers in the base they were created in.
+- Attention: W applies to the whole number, so large integers may be represented incorrectly. The default corresponds to a generous "signed 257".
+- W is limited to an unsigned 32-bit integer (4'294'967'295 bits). Actually going that high is definitely not recommended, but I'm not stopping you.
 - `X` is not implemented because it doesn't make sense for binary floats.
 ## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
