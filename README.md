@@ -30,7 +30,7 @@ Planned upcoming features/changes:
 - Floating-point rounding artifacts (wrong digits at the end of a number) are guaranteed unless the number is a binary fraction or the output base is a power of 2. This is an unavoidable problem, GNU dc just hid it from view by storing numbers in the base they were created in.
 - Attention: W applies to the whole number, so large integers may be represented incorrectly. The default corresponds to a generous "signed 257".
 - W is limited to an unsigned 32-bit integer (4'294'967'295 bits). Actually going that high is definitely not recommended, but I'm not stopping you.
-- `X` is not implemented because it doesn't make sense for binary floats.
+- `X` doesn't make sense for binary floats, so it's used for "[auto-macros](#macro-changes)".
 ## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
@@ -76,6 +76,8 @@ Planned upcoming features/changes:
   - Register numbers can be input in any base because the number is parsed like any other.
   - All register numbers in the allowed range can be used, not just valid/inputtable Unicode characters.
 ## Macro changes
+- `X` pops a string and a number and performs an "auto-macro" by repeatedly executing the string *until* the stack depth (`z`) is equal to the number.
+  - Examples: `[+]1X` sums the entire stack, `[Sa]0X` saves the entire stack to register 97, `z[Lb]rZb+X` loads the entirety of reg 98.
 - `q` now always exits regardless of where it's called from.
 - `Q` may behave slightly differently, TODO: test.
 ## New feature: Library of constants and conversion factors
