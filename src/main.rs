@@ -175,7 +175,7 @@ fn file_mode(files: Vec<String>, mut rng: &mut RandState) {
 								
 					},
 					Err(error) => {
-						eprintln!("! File read error: {}", error);
+						eprintln!("! Unable to read file \"{}\": {}", files[i], error);
 					},
 				}
 			}
