@@ -62,6 +62,7 @@ Planned upcoming features/changes:
 - `*` repeats string a abs(b) times, reversing it if b is negative.
 - `/` removes characters from string a such that abs(b) remain: from the back if b is positive, from the front if negative.
   - Example: `[vwxyz]_2/` results in "yz".
+- `g` can also return the length of a string.
 - `a` now converts the least significant 32 bits to a character or a character to its numerical value.
 - `P` now parses the number as a UTF-8 byte sequence.
 - `A` is like `P`, but pushes the string to the stack instead of printing it.
