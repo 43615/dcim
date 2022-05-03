@@ -342,7 +342,7 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 //unsafe for accessing static mut objects across different runs
 //single-threaded so idgaf
 //cmdstk is processed from the top (growable end of vector)
-unsafe fn exec(input: String, mut rng: &mut RandState) {
+unsafe fn exec(input: String, rng: &mut RandState) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of command strings to execute, enables pseudorecursive macro calls
 	if !input.is_empty() {cmdstk.push(input);}	//loop expects contents, effective nop if none provided
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to work within
@@ -1771,13 +1771,11 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if let Some(zlim) = int.to_usize() {
-							while MSTK.len()!=zlim {
-								exec(a.s.clone(), &mut rng);
-							}
+						if let Some(reps) = int.to_usize() {
+							cmdstk.resize(cmdstk.len()+reps, a.s);
 						}
 						else {
-							eprintln!("! Auto-macro: invalid stack depth limit: {}", int);
+							eprintln!("! Invalid macro repeat count: {}", int);
 						}
 					}
 				}
@@ -1829,8 +1827,11 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				if !cmd.is_whitespace()&&cmd!=']' { eprintln!("! Invalid command: {}", cmd); }
 			},
 		}
-		if cmdstk.last().unwrap().is_empty() {
-			cmdstk.pop();
+		while let Some(ptr) = cmdstk.last() {
+			if ptr.is_empty() {
+				cmdstk.pop();
+			}
+			else{break;}
 		}
 	}
 }
