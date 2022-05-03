@@ -13,7 +13,7 @@ Planned upcoming features/changes:
 - Commands that need integers always explicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
 - The default value when saving or loading uninitialized array objects is the number 0. This fixes the issue with `123d:ala`.
-- The `!` command for executing OS commands is deliberately not implemented.
+- The `!` command for executing OS commands is replaced with `\`, which pops and runs a string.
 ## Number input changes
 - Both the input and output bases are now in the range 2-36 (inclusive).
 - Capital A-F are no longer used for number input in the normal way, base-11+ numbers now need to be escaped with `'`. This change frees up A-F to be used as commands and allows for bases over 16.
@@ -82,6 +82,8 @@ Planned upcoming features/changes:
 - `q` now always exits regardless of where it's called from.
 - `Q` may behave slightly differently, TODO: test.
 - `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). Warning: This recurses and may thus crash by overflowing the call stack if used recursively. Splitting your scripts into multiple files should be done with caution.
+- `$` pops a string and pushes the environment variable with that name if it exists.
+- `\` pops a string and executes it as one or more OS commands (separated by `;`). Features of your shell like aliases are not available.
 ## New feature: Library of constants and conversion factors
 [List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
