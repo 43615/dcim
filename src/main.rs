@@ -218,11 +218,8 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 		//arrays can store numbers and strings
 		':' => (!a&&!b)||(a&&!b),
 
-		//convert both ways
-		'a' => !a||a,
-
-		//strings can be executed
-		'x' => !a||a,
+		//convert both ways, execute macros, get log or string length
+		'a'|'x'|'g' => !a||a,
 
 		//auto-macro
 		'X' => a&&!b,
@@ -843,15 +840,24 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				if check_n(cmd, MSTK.len()){
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						if a.n<=0 {
-							eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
-						}
-						else {
+						if a.t {
 							MSTK.push(Obj {
 								t: false,
-								n: Float::with_val(WPREC, a.n.ln()),
+								n: Float::with_val(WPREC, a.s.len()),
 								s: String::new()
 							});
+						}
+						else {
+							if a.n<=0 {
+								eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
+							}
+							else {
+								MSTK.push(Obj {
+									t: false,
+									n: Float::with_val(WPREC, a.n.ln()),
+									s: String::new()
+								});
+							}
 						}
 					}
 				}
