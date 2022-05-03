@@ -1794,12 +1794,9 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if let Some(num) = int.to_usize() {
-							for _ in 0..num {
-								if !cmdstk.is_empty() {
-									cmdstk.pop();	//remove top num macro calls
-								}
-							}
+						if let Some(mut num) = int.to_usize() {
+							if num>cmdstk.len() {num=cmdstk.len();}
+							cmdstk.truncate(cmdstk.len()-num);
 							if cmdstk.is_empty() {
 								cmdstk.push(String::new());	//guarantee at least one element
 							}
