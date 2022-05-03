@@ -83,7 +83,7 @@ Planned upcoming features/changes:
 - `Q` may behave slightly differently, TODO: test.
 - `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). Warning: This recurses and may thus crash by overflowing the call stack if used recursively. Splitting your scripts into multiple files should be done with caution.
 - `$` pops a string and pushes the environment variable with that name if it exists.
-- `\` pops a string and executes it as one or more OS commands (separated by `;`). Features of your shell like aliases are not available.
+- `\` pops a string and executes it as one or more OS commands (separated by `;`). Features of your shell like aliases are not available. `[clear]\` is a useful thing to remember.
 ## New feature: Library of constants and conversion factors
 [List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
