@@ -209,14 +209,11 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 		//'+' can also concatenate strings
 		'+' => (!a&&!b)||(a&&b),
 
-		//these can operate on strings with a number
-		'-'|'*'|'/' => (!a&&!b)||(a&&!b),
+		//string manipulation, store into array
+		'-'|'*'|'/'|':' => (!a&&!b)||(a&&!b),
 
-		//constant/conversion factor lookup by string name
-		'"' => a,
-
-		//arrays can store numbers and strings
-		':' => (!a&&!b)||(a&&!b),
+		//constant/conversion factor lookup by string name, read file by name
+		'"'|'&' => a,
 
 		//convert both ways, execute macros, get log or string length
 		'a'|'x'|'g' => !a||a,
@@ -339,7 +336,7 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 //unsafe for accessing static mut objects across different runs
 //single-threaded so idgaf
 //cmdstk is processed from the top (growable end of vector)
-unsafe fn exec(input: String, rng: &mut RandState) {
+unsafe fn exec(input: String, mut rng: &mut RandState) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of command strings to execute, enables pseudorecursive macro calls
 	if !input.is_empty() {cmdstk.push(input);}	//loop expects contents, effective nop if none provided
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to work within
@@ -1822,6 +1819,16 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					cmdstk.pop();	//optimize tail call
 				}
 				cmdstk.push(prompt_in);
+			},
+
+			//read file
+			'&' => {
+				if check_n(cmd, MSTK.len()) {
+					let a=MSTK.pop().unwrap();
+					if check_t(cmd, a.t, false, false) {
+						file_mode(vec!(a.s), &mut rng);
+					}
+				}
 			},
 
 			//stop on beginning of #comment
