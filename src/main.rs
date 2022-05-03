@@ -190,7 +190,7 @@ fn check_n(op: char, n: usize) -> bool {
 		'|' => n>=3,
 
 		//dyadic
-		'+'|'-'|'*'|'/'|'^'|'V'|'G'|'%'|'~'|'@'|':'|'='|'<'|'>' => n>=2,
+		'+'|'-'|'*'|'/'|'^'|'V'|'G'|'%'|'~'|'@'|':'|'='|'<'|'>'|'X' => n>=2,
 
 		//monadic unless specified
 		_ => n>=1,
@@ -220,6 +220,9 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 
 		//strings can be executed
 		'x' => !a||a,
+
+		//auto-macro
+		'X' => a&&!b,
 
 		//all other ops can only have numbers
 		_ => !a&&!b&&!c,
@@ -336,7 +339,7 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 //unsafe for accessing static mut objects across different runs
 //single-threaded so idgaf
 //cmdstk is processed from the top (growable end of vector)
-unsafe fn exec(input: String, rng: &mut RandState) {
+unsafe fn exec(input: String, mut rng: &mut RandState) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of command strings to execute, enables pseudorecursive macro calls
 	if !input.is_empty() {cmdstk.push(input);}	//loop expects contents, effective nop if none provided
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to work within
@@ -1743,7 +1746,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								'=' => { a.n == b.n },
 								'>' => { a.n > b.n },
 								_ => {
-									eprintln!("! Invalid comparison operator '{}'", cmd);
+									eprintln!("! Invalid comparison operator \"{}\"", cmd);
 									true	//only possible with inv, which xors it to false
 								},
 							}
@@ -1753,6 +1756,25 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								}
 								cmdstk.push(mac);
 							}
+						}
+					}
+				}
+			},
+
+			//auto-macro
+			'X' => {
+				if check_n(cmd, MSTK.len()) {
+					let b=MSTK.pop().unwrap();
+					let a=MSTK.pop().unwrap();
+					if check_t(cmd, a.t, b.t, false) {
+						let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						if let Some(zlim) = int.to_usize() {
+							while MSTK.len()!=zlim {
+								exec(a.s.clone(), &mut rng);
+							}
+						}
+						else {
+							eprintln!("! Auto-macro: invalid stack depth limit: {}", int);
 						}
 					}
 				}
