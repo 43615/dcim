@@ -212,8 +212,8 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 		//string manipulation, store into array
 		'-'|'*'|'/'|':' => (!a&&!b)||(a&&!b),
 
-		//constant/conversion factor lookup by string name, read file by name
-		'"'|'&' => a,
+		//constant/conversion factor lookup by string name, read file by name, get env variable, execute os command
+		'"'|'&'|'$'|'\\' => a,
 
 		//convert both ways, execute macros, get log or string length
 		'a'|'x'|'g' => !a||a,
@@ -1827,6 +1827,44 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						file_mode(vec!(a.s), &mut rng);
+					}
+				}
+			},
+
+			//get environment variable
+			'$' => {
+				if check_n(cmd, MSTK.len()) {
+					let a=MSTK.pop().unwrap();
+					if check_t(cmd, a.t, false, false) {
+						for (var, val) in std::env::vars() {
+							if var==a.s {
+								MSTK.push(Obj {
+									t: true,
+									n: Float::new(WPREC),
+									s: val
+								});
+							}
+						}
+					}
+				}
+			},
+
+			//execute os command(s)
+			'\\' => {
+				if check_n(cmd, MSTK.len()) {
+					let a=MSTK.pop().unwrap();
+					if check_t(cmd, a.t, false, false) {
+						for oscmd in a.s.split(';') {
+							let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
+							match std::process::Command::new(args.remove(0)).args(args).spawn() {
+								Ok(mut child) => {
+									let _ = child.wait();
+								},
+								Err(error) => {
+									eprintln!("! Unable to execute command \"{}\": {}", oscmd, error);
+								},
+							}
+						}
 					}
 				}
 			},
