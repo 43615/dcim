@@ -1777,6 +1777,9 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					if check_t(cmd, a.t, b.t, false) {
 						let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(reps) = int.to_usize() {
+							if cmdstk.last().unwrap().is_empty() {
+								cmdstk.pop();	//optimize tail call
+							}
 							cmdstk.resize(cmdstk.len()+reps, a.s);
 						}
 						else {
