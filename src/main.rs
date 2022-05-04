@@ -216,7 +216,7 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 		'"'|'&'|'$'|'\\' => a,
 
 		//convert both ways, execute macros, get log or string length
-		'a'|'x'|'g' => !a||a,
+		'a'|'A'|'x'|'g' => !a||a,
 
 		//auto-macro
 		'X' => a&&!b,
@@ -1702,20 +1702,29 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				}
 			},
 
-			//convert to string from UTF-8 number
+			//convert number to UTF-8 string or back
 			'A' => {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
+						if a.t {
 							MSTK.push(Obj {
-								t: true,
-								n: Float::new(WPREC),
-								s: res
+								t: false,
+								n: Float::with_val(WPREC, Integer::from_digits(a.s.as_bytes(), Order::Msf)),
+								s: String::new()
 							});
 						}
 						else {
-							eprintln!("! Unable to convert number {} to string: not valid UTF-8", a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
+							if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
+								MSTK.push(Obj {
+									t: true,
+									n: Float::new(WPREC),
+									s: res
+								});
+							}
+							else {
+								eprintln!("! Unable to convert number {} to string: not valid UTF-8", a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
+							}
 						}
 					}
 				}
