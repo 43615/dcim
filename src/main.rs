@@ -305,8 +305,7 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 	if num.is_nan() {
 		return String::from("Not a number");
 	}
-	let ipart = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase);	//integer part
-	let ilen = ipart.trim_start_matches('-').len();	//length of integer part without negative sign
+	let ilen = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase).trim_start_matches('-').len();	//length of integer part without negative sign
 	let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });	//generate string, oprec=fractional digits
 	if obase <= 10 {
 		outstr = outstr.replace('e', "@");	//unify exponent symbol
@@ -317,7 +316,8 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 		if eint<0 && eint>-10 {
 			outstr = "0.".to_string() + &"0".repeat(eint.abs().to_usize().unwrap()-1) + &mpart.replace('.', "");	//convert exponential notation if not too small
 			if let Some(i) = outstr.find('-') {
-				outstr = outstr.remove(i).to_string() + &outstr;	//move negative sign to front
+				outstr.remove(i);	//move negative sign to front
+				outstr.insert(0, '-');
 			}
 		}
 		else {
