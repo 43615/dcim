@@ -426,10 +426,11 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					}
 					cmdstk.last_mut().unwrap().insert(0, cmd);	//restore first char that isn't part of the string
 					if !err {
+						res.pop();
 						MSTK.push(Obj {
 							t: true,
 							n: Float::new(WPREC),
-							s: res.trim_end_matches(']').to_string()
+							s: res.to_string()
 						});
 					}
 				}
