@@ -66,7 +66,7 @@ Planned upcoming features/changes:
 - `g` can also return the length of a string.
 - `a` now converts the least significant 32 bits to a character or a character to its numerical value.
 - `P` now parses the number as a UTF-8 byte sequence.
-- `A` is like `P`, but pushes the string to the stack instead of printing it.
+- `A` is like `P`, but pushes the string to the stack instead of printing it and can also reverse the conversion.
 ## Direct register number selection
 - `,` writes a number to a single-use direct register selector and marks it as valid.
 - This selector can only be written to and expires (becomes invalid) at the next call of any register command.
