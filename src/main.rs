@@ -210,7 +210,7 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 		'+' => (!a&&!b)||(a&&b),
 
 		//string manipulation, store into array
-		'-'|'*'|'/'|':' => (!a&&!b)||(a&&!b),
+		'-'|'*'|'/'|'~'|':' => (!a&&!b)||(a&&!b),
 
 		//constant/conversion factor lookup by string name, read file by name, get env variable, execute os command
 		'"'|'&'|'$'|'\\' => a,
@@ -577,28 +577,27 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					if check_t(cmd, a.t, b.t, false) {
 						//remove b chars from string a
 						if a.t {
-							let mut newstr = a.s;
+							let mut newstr = a.s.clone();
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
 							if let Some(mut num) = int.clone().abs().to_usize() {
 								if num>newstr.len() { num = newstr.len(); }	//account for too large b
-								if int<0 {
-									//if b is negative, remove from front
-									newstr = newstr.chars().rev().collect();
+								if int<0 { newstr = newstr.chars().rev().collect(); }	//if negative, reverse to remove from front
+								if newstr.is_char_boundary(newstr.len()-num) {
 									newstr.truncate(newstr.len()-num);
-									newstr = newstr.chars().rev().collect();
+									if int<0 { newstr = newstr.chars().rev().collect(); }	//undo reversal
+									MSTK.push(Obj {
+										t: true,
+										n: Float::new(WPREC),
+										s: newstr
+									});
 								}
 								else {
-									newstr.truncate(newstr.len()-num);
+									eprintln!("! Cannot remove {} characters from string \"{}\": not on a character boundary", num, a.s);
 								}
 							}
 							else {
 								eprintln!("! Cannot possibly remove {} characters from a string", int);
 							}
-							MSTK.push(Obj {
-								t: true,
-								n: Float::new(WPREC),
-								s: newstr
-							});
 						}
 						//subtract numbers
 						else {
@@ -656,27 +655,26 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					if check_t(cmd, a.t, b.t, false) {
 						//shorten string a to length b
 						if a.t {
-							let mut newstr = a.s;
+							let mut newstr = a.s.clone();
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-							if let Some(num) = int.clone().abs().to_usize() {								
-								if int<0 {
-									//if b is negative, remove from front
-									newstr = newstr.chars().rev().collect();
+							if let Some(num) = int.clone().abs().to_usize() {
+								if int<0 { newstr = newstr.chars().rev().collect(); }	//if negative, reverse to remove from front
+								if newstr.is_char_boundary(num) {
 									newstr.truncate(num);
-									newstr = newstr.chars().rev().collect();
+									if int<0 { newstr = newstr.chars().rev().collect(); }	//undo reversal
+									MSTK.push(Obj {
+										t: true,
+										n: Float::new(WPREC),
+										s: newstr
+									});
 								}
 								else {
-									newstr.truncate(num);
+									eprintln!("! Cannot truncate string \"{}\" to length {}: not on a character boundary", a.s, num);
 								}
 							}
 							else {
 								eprintln!("! Cannot possibly shorten a string to {} characters", int);
 							}
-							MSTK.push(Obj {
-								t: true,
-								n: Float::new(WPREC),
-								s: newstr
-							});
 						}
 						//divide numbers
 						else {
@@ -717,29 +715,56 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				}
 			},
 
-			//euclidean division
+			//euclidean division or split string
 			'~' => {
 				if check_n(cmd, MSTK.len()) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if ib==0 {
-							eprintln!("! Arithmetic error: Attempted modulo by zero");
+						if a.t {
+							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							if let Some(idx) = int.clone().to_usize() {
+								if a.s.is_char_boundary(idx) {
+									let mut lstr = a.s.clone();
+									let rstr = lstr.split_off(idx);
+									MSTK.push(Obj {
+										t: true,
+										n: Float::new(WPREC),
+										s: lstr
+									});
+									MSTK.push(Obj {
+										t: true,
+										n: Float::new(WPREC),
+										s: rstr
+									});
+								}
+								else {
+									eprintln!("! Cannot split string \"{}\" at index {}: out of range or not on a character boundary", a.s, idx);
+								}
+							}
+							else {
+								eprintln!("! Cannot possibly split a string at index {}", int);
+							}
 						}
 						else {
-							let (quot, rem)=ia.div_rem_euc(ib);
-							MSTK.push(Obj {
-								t: false,
-								n: Float::with_val(WPREC, quot),
-								s: String::new()
-							});
-							MSTK.push(Obj {
-								t: false,
-								n: Float::with_val(WPREC, rem),
-								s: String::new()
-							});
+							let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							if ib==0 {
+								eprintln!("! Arithmetic error: Attempted modulo by zero");
+							}
+							else {
+								let (quot, rem)=ia.div_rem_euc(ib);
+								MSTK.push(Obj {
+									t: false,
+									n: Float::with_val(WPREC, quot),
+									s: String::new()
+								});
+								MSTK.push(Obj {
+									t: false,
+									n: Float::with_val(WPREC, rem),
+									s: String::new()
+								});
+							}
 						}
 					}
 				}
@@ -1655,11 +1680,16 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 					let mut a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.t {
-							MSTK.push(Obj {
-								t: false,
-								n: Float::with_val(WPREC, a.s.remove(0) as u32),
-								s: String::new()
-							});
+							if a.s.is_empty() {
+								eprintln!("! Cannot convert empty string to number");
+							}
+							else {
+								MSTK.push(Obj {
+									t: false,
+									n: Float::with_val(WPREC, a.s.remove(0) as u32),
+									s: String::new()
+								});
+							}
 						}
 						else {
 							MSTK.push(Obj {
