@@ -212,11 +212,11 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 		//string manipulation, store into array
 		'-'|'*'|'/'|'~'|':' => (!a&&!b)||(a&&!b),
 
-		//constant/conversion factor lookup by string name, read file by name, get env variable, execute os command
-		'"'|'&'|'$'|'\\' => a,
+		//read file by name, get env variable, execute os command
+		'&'|'$'|'\\' => a,
 
-		//convert both ways, execute macros, get log or string length
-		'a'|'A'|'x'|'g' => !a||a,
+		//convert both ways, constant lookup by string name or convert number to string, execute macros, get log or string length
+		'a'|'A'|'"'|'x'|'g' => !a||a,
 
 		//auto-macro
 		'X' => a&&!b,
@@ -1023,36 +1023,45 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				}
 			},
 
-			//constant/conversion factor lookup
+			//constant/conversion factor lookup or convert number to string
 			'"' => {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						match a.s.matches(' ').count() {
-							0 => {
-								if let Some(res) = constants(WPREC, a.s) {
-									MSTK.push(Obj {
-										t: false,
-										n: Float::with_val(WPREC, res),
-										s: String::new()
-									});
-								}
-							},
-							1 => {
-								let (sfrom, sto) = a.s.split_once(' ').unwrap();
-								if let Some(nfrom) = constants(WPREC, sfrom.to_string()) {
-									if let Some(nto) = constants(WPREC, sto.to_string()) {
+						if a.t {
+							match a.s.matches(' ').count() {
+								0 => {
+									if let Some(res) = constants(WPREC, a.s) {
 										MSTK.push(Obj {
 											t: false,
-											n: Float::with_val(WPREC, nfrom/nto),
+											n: Float::with_val(WPREC, res),
 											s: String::new()
 										});
 									}
-								}
-							},
-							_ => {
-								eprintln!("! Invalid unit conversion string: \"{}\"", a.s);
-							},
+								},
+								1 => {
+									let (sfrom, sto) = a.s.split_once(' ').unwrap();
+									if let Some(nfrom) = constants(WPREC, sfrom.to_string()) {
+										if let Some(nto) = constants(WPREC, sto.to_string()) {
+											MSTK.push(Obj {
+												t: false,
+												n: Float::with_val(WPREC, nfrom/nto),
+												s: String::new()
+											});
+										}
+									}
+								},
+								_ => {
+									eprintln!("! Invalid unit conversion string: \"{}\"", a.s);
+								},
+							}
+						}
+						else {
+							MSTK.push(Obj {
+								t: true,
+								n: Float::new(WPREC),
+								s: flt_to_str(a.n, ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0)
+							});
 						}
 					}
 				}
@@ -1311,7 +1320,7 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Nothing to save to register");
-					if !cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -1346,7 +1355,7 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Nothing to push to register");
-					if !cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -1458,7 +1467,7 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Saving to an array requires an object and an index");
-					if !cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -1515,7 +1524,7 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				}
 				else {
 					eprintln!("! Loading from an array requires an index");
-					if !cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().remove(0);	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -1752,7 +1761,7 @@ unsafe fn exec(input: String, mut rng: &mut RandState) {
 				let inv = cmd=='!';
 				if inv {
 					if cmdstk.last().unwrap().is_empty() {
-						eprintln!("! Missing comparison operator after '!'");
+						eprintln!("! Missing comparison operator after \"!\"");
 						cmd = ' ';
 					}
 					else {
