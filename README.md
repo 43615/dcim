@@ -67,6 +67,7 @@ Planned upcoming features/changes:
 - `a` now converts the least significant 32 bits to a character or a character to its numerical value.
 - `P` now parses the number as a UTF-8 byte sequence.
 - `A` is like `P`, but pushes the string to the stack instead of printing it and can also reverse the conversion.
+- `"`, which is also used for the [library of constants](#library-of-constants-and-conversion-factors), converts a number to its string representation (like printing, but without printing).
 ## Direct register number selection
 - `,` writes a number to a single-use direct register selector and marks it as valid.
 - This selector can only be written to and expires (becomes invalid) at the next call of any register command.
@@ -85,7 +86,7 @@ Planned upcoming features/changes:
 - `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). Warning: This recurses and may thus crash by overflowing the call stack if used recursively. Splitting your scripts into multiple files should be done with caution.
 - `$` pops a string and pushes the environment variable with that name if it exists.
 - `\` pops a string and executes it as one or more OS commands (separated by `;`). Features of your shell like aliases are not available. `[clear]\` is a useful thing to remember.
-## New feature: Library of constants and conversion factors
+## Library of constants and conversion factors
 [List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
 - All constants and units are stored in amounts of their respective international standard units.
