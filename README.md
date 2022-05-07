@@ -67,7 +67,7 @@ Planned upcoming features/changes:
 - `a` now converts the least significant 32 bits to a character or a character to its numerical value.
 - `P` now parses the number as a UTF-8 byte sequence.
 - `A` is like `P`, but pushes the string to the stack instead of printing it and can also reverse the conversion.
-- `"`, which is also used for the [library of constants](#library-of-constants-and-conversion-factors), converts a number to its string representation (like printing, but without printing).
+- `"`, which is also used for the [library of constants](#library-of-constants-and-conversion-factors), converts a number to its string representation (like printing, but without printing). Useful for prettifying output (tabulation etc.).
 ## Direct register number selection
 - `,` writes a number to a single-use direct register selector and marks it as valid.
 - This selector can only be written to and expires (becomes invalid) at the next call of any register command.
