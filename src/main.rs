@@ -308,28 +308,35 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 	let ilen = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase).trim_start_matches('-').len();	//length of integer part without negative sign
 	let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });	//generate string, oprec=fractional digits
 	if obase <= 10 {
-		outstr = outstr.replace('e', "@");	//unify exponent symbol
+		if outstr.len()<=20 {
+			outstr = outstr.replace('e', "@");	//unify exponent symbol
+		}
+		else {
+			let (lpart, rpart) = outstr.split_at(outstr.len()-20);
+			outstr = lpart.to_string() + &rpart.replace('e', "@");	//optimized for long strings
+		}
 	}
-	if let Some((mut mpart, epart)) = outstr.split_once('@') {	//if in exponential notation
+	if let Some((mut mpart, epart)) = outstr.rsplit_once('@') {	//if in exponential notation
 		mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
 		let eint = Integer::parse(epart).unwrap().complete();	//isolate exponential part
 		if eint<0 && eint>-10 {
-			outstr = "0.".to_string() + &"0".repeat(eint.abs().to_usize().unwrap()-1) + &mpart.replace('.', "");	//convert exponential notation if not too small
-			if let Some(i) = outstr.find('-') {
-				outstr.remove(i);	//move negative sign to front
-				outstr.insert(0, '-');
+			outstr = "0.".to_string() + &"0".repeat(eint.abs().to_usize().unwrap()-1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
+			if num<0 {
+				let (ipart, fpart) = outstr.split_once('-').unwrap();
+				outstr = "-".to_string() + ipart + fpart;	//move negative sign to front
 			}
 		}
 		else {
 			outstr = mpart.to_string() + "@" + epart;	//reassemble
 		}
+		outstr.insert(outstr.rfind('@').unwrap(), ' ');	//add space for clarity
 	}
 	else {
 		if let Some((ipart, fpart)) = outstr.split_once('.') {
 			outstr = ipart.to_string() + "." + fpart.trim_end_matches('0');	//trim trailing zeros
 		}
 	}
-	outstr.trim_end_matches('.').replace('@', " @")	//add space for clarity
+	outstr.trim_end_matches('.').to_string()	//remove fractional separator
 }
 
 //core execution engine
