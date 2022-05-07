@@ -1,4 +1,4 @@
-use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
+use rug::{Integer, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 use std::cmp::Ordering;
@@ -307,31 +307,31 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 	}
 	let ilen = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase).trim_start_matches('-').len();	//length of integer part without negative sign
 	let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });	//generate string, oprec=fractional digits
-	if obase <= 10 {
-		if outstr.len()<=20 {
-			outstr = outstr.replace('e', "@");	//unify exponent symbol
-		}
-		else {
-			let (lpart, rpart) = outstr.split_at(outstr.len()-20);
-			outstr = lpart.to_string() + &rpart.replace('e', "@");	//optimized for long strings
+	if obase <= 10 {	//unify exponent symbol without searching the whole string
+		let idxm = outstr.len()-1;
+		for idxr in 0..=idxm {
+			if outstr.as_bytes()[idxm-idxr]=='e' as u8 {
+				unsafe {outstr.as_mut_vec()[idxm-idxr] = '@' as u8;}
+				break;
+			}
+			if idxr>11 {break;}	//exponents cannot have more digits
 		}
 	}
 	if let Some((mut mpart, epart)) = outstr.rsplit_once('@') {	//if in exponential notation
 		mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
-		let eint = Integer::parse(epart).unwrap().complete();	//isolate exponential part
+		let eint = epart.parse::<i32>().unwrap();	//isolate exponential part
 		if eint<0 && eint>-10 {
-			outstr = "0.".to_string() + &"0".repeat(eint.abs().to_usize().unwrap()-1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
+			outstr = "0.".to_string() + &"0".repeat(eint.abs() as usize -1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
 			if num<0 {
 				let (ipart, fpart) = outstr.split_once('-').unwrap();
 				outstr = "-".to_string() + ipart + fpart;	//move negative sign to front
 			}
 		}
 		else {
-			outstr = mpart.to_string() + "@" + epart;	//reassemble
+			outstr = mpart.to_string() + " @" + epart;	//reassemble, add space for clarity
 		}
-		outstr.insert(outstr.rfind('@').unwrap(), ' ');	//add space for clarity
 	}
-	else {
+	else {	//if in normal notation
 		if let Some((ipart, fpart)) = outstr.split_once('.') {
 			outstr = ipart.to_string() + "." + fpart.trim_end_matches('0');	//trim trailing zeros
 		}
