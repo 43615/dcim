@@ -310,14 +310,15 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 	if obase <= 10 {	//unify exponent symbol without searching the whole string
 		let idxm = outstr.len()-1;
 		for idxr in 0..=idxm {
+			if idxr>10 {break;}	//exponents cannot have more digits, longest is @-323228496
 			if outstr.as_bytes()[idxm-idxr]=='e' as u8 {
 				unsafe {outstr.as_mut_vec()[idxm-idxr] = '@' as u8;}
 				break;
 			}
-			if idxr>11 {break;}	//exponents cannot have more digits
 		}
 	}
-	if let Some((mut mpart, epart)) = outstr.rsplit_once('@') {	//if in exponential notation
+	if outstr[if outstr.len()>11 {outstr.len()-11} else {0}..].contains('@') {	//efficiently check if in exponential notation
+		let (mut mpart, epart) = outstr.rsplit_once('@').unwrap();
 		mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
 		let eint = epart.parse::<i32>().unwrap();	//isolate exponential part
 		if eint<0 && eint>-10 {
