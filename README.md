@@ -10,7 +10,7 @@ Planned upcoming features/changes:
 - The file and expression modes now accept and execute any number of arguments. If the last expression or filename is `?`, it will enter interactive mode after finishing.
 - File mode removes all #comments before executing.
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
-- Commands that need integers always explicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
+- Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
 - The default value when saving or loading uninitialized array objects is the number 0. This fixes the issue with `123d:ala`.
 - The `!` command for executing OS commands is replaced with `\`, which pops and runs a string.
