@@ -299,7 +299,7 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 }
 
 //custom number printing function
-fn flt_to_str(num: Float, obase: Integer, oprec: Integer) -> String {
+fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	if num.is_zero() {
 		return String::from(if obase>36 {"(0)"} else {"0"});	//causes issues, always "0" regardless of parameters
 	}
@@ -311,8 +311,15 @@ fn flt_to_str(num: Float, obase: Integer, oprec: Integer) -> String {
 	}
 
 	if obase>36 {	//any-base printing
-		let mut outstr = String::from(if num<0 {"(- "} else {"("});	//get rid of negative sign
-		let mut int = num.clone().abs().to_integer_round(Round::Zero).unwrap().0;	//get absolute integer part
+		let mut outstr = String::from(if num<0 {"(-"} else {"("});	//get rid of negative sign
+		let mut scale = 0usize;	//amount to shift fractional separator in output
+		while !num.is_integer() {
+			num *= obase.clone();	//make integer
+			scale +=1;
+		}
+		num *= obase.clone();	//get extra precision for last digit
+		let mut int = num.clone().abs().to_integer().unwrap();	//get absolute value
+		int /= obase.clone();	//undo extra precision
 		let mut dig = Integer::from(1);	//current digit value
 		while dig<=int {
 			dig *= obase.clone();	//get highest required digit value
@@ -326,6 +333,14 @@ fn flt_to_str(num: Float, obase: Integer, oprec: Integer) -> String {
 			if dig==1 {break;}	//stop when all digits done
 			dig /= obase.clone();	//switch to next lower digit
 		}
+		if scale>0 { unsafe {
+			if let Some((idx, _)) = outstr.rmatch_indices(' ').nth(scale){	//find location for fractional separator
+				outstr.as_bytes_mut()[idx] = '.' as u8;	//and apply it
+			}
+			else {
+				outstr.insert_str(if outstr.starts_with("(-") {2} else {1}, "0.");	//number has no integer part, add "0."
+			}
+		}}
 		outstr.pop();
 		outstr.push(')');
 		outstr
@@ -350,7 +365,7 @@ fn flt_to_str(num: Float, obase: Integer, oprec: Integer) -> String {
 			for idxr in 0..=idxm {
 				if idxr>10 {break;}	//exponents cannot have more digits, longest is @-323228496
 				if outstr.as_bytes()[idxm-idxr]=='e' as u8 {
-					unsafe {outstr.as_mut_vec()[idxm-idxr] = '@' as u8;}
+					unsafe {outstr.as_bytes_mut()[idxm-idxr] = '@' as u8;}
 					break;
 				}
 			}
@@ -469,6 +484,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let ibase = ENVSTK.last().unwrap().1.clone();
 					let mut dig = String::new();	//digit being parsed
 					let mut neg = false;	//number negative?
+					let mut frac = false;	//fractional separator already occurred?
+					let mut scale = Integer::from(1);	//scale to divide by, for non-integers
 					loop {
 						cmd = if let Some(c) = cmdstk.last_mut().unwrap().pop() {c} else {')'};	//get next character, finish number if not possible
 						match cmd {
@@ -478,8 +495,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							'-'|'_' => {
 								if neg {
 									eprintln!("! Unable to parse any-base number: more than one negative sign");
-									if let Some(idx) = cmdstk.last().unwrap().find(')') {
-										cmdstk.last_mut().unwrap().replace_range(..=idx, "");	//remove rest of erroneous number
+									if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
+										cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
 									}
 									else {
 										cmdstk.last_mut().unwrap().clear();
@@ -488,14 +505,28 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								}
 								neg = true;
 							},
+							'.' => {
+								if frac {
+									eprintln!("! Unable to parse any-base number: more than one fractional separator");
+									if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
+										cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
+									}
+									else {
+										cmdstk.last_mut().unwrap().clear();
+									}
+									break;
+								}
+								frac = true;
+								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration
+							},
 							' '|')' => {	//if digit or whole number is finished
 								let digint = if dig.clone().is_empty() {Integer::ZERO} else {Integer::parse(dig.clone()).unwrap().complete()};	//parse digit, default to 0
 								if digint >= ibase {
 									eprintln!("! Unable to parse any-base number: digit {} is too high for base {}", digint, ibase);
 									if cmd==')' {break;}
 									else {
-										if let Some(idx) = cmdstk.last().unwrap().find(')') {
-											cmdstk.last_mut().unwrap().replace_range(..=idx, "");	//remove rest of erroneous number
+										if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
+											cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
 										}
 										else {
 											cmdstk.last_mut().unwrap().clear();
@@ -506,10 +537,16 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								num *= ibase.clone();	//add digit to number: multiply old contents by radix...
 								num += digint;	//... and add new digit
 								dig.clear();
+								if frac {
+									scale *= ibase.clone();	//if fractional part has started, make scale keep up
+								}
 								if cmd==')' {	//if number finished, push to stack
+									if scale>1 {
+										scale /= ibase;	//correct off-by-one error
+									}
 									MSTK.push(Obj {
 										t: false,
-										n: Float::with_val(WPREC, num * if neg {-1} else {1}),
+										n: Float::with_val(WPREC, num * if neg {-1} else {1}) / scale,	//apply neg and scale
 										s: String::new()
 									});
 									break;
@@ -517,8 +554,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							},
 							_ => {
 								eprintln!("! Invalid character in any-base number: \"{}\"", cmd);
-								if let Some(idx) = cmdstk.last().unwrap().find(')') {
-									cmdstk.last_mut().unwrap().replace_range(..=idx, "");	//remove rest of erroneous number
+								if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
+									cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
 								}
 								else {
 									cmdstk.last_mut().unwrap().clear();
