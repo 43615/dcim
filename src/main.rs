@@ -1,4 +1,4 @@
-use rug::{Integer, integer::Order, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
+use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 use std::cmp::Ordering;
@@ -32,10 +32,10 @@ Options and syntax:
 ";
 
 //environment parameters with default values:
-const KDEF: i32 = -1;	//output precision
-const IDEF: i32 = 10;	//input base
-const ODEF: i32 = 10;	//output base
-static mut ENVSTK: Vec<(i32, i32, i32)> = Vec::new();	//stores (k,i,o) tuples, used by '{' and '}'
+static mut KDEF: Integer = Integer::new();	//output precision
+static mut IDEF: Integer = Integer::new();	//input base
+static mut ODEF: Integer = Integer::new();	//output base
+static mut ENVSTK: Vec<(Integer, Integer, Integer)> = Vec::new();	//stores (k,i,o) tuples, used by '{' and '}'
 static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
 
 //basic object on a dc stack, need to differentiate between numbers and strings
@@ -69,7 +69,10 @@ fn main() {
 	args.remove(0);
 
 	unsafe{
-		ENVSTK.push((KDEF, IDEF, ODEF));	//initialize env params
+		KDEF = Integer::from(-1);
+		IDEF = Integer::from(10);
+		ODEF = Integer::from(10);
+		ENVSTK.push((KDEF.clone(), IDEF.clone(), ODEF.clone()));	//initialize env params
 		REGS.resize(REGS_SIZE, Vec::new());	//initialize registers
 		RO_BUF.push(RegObj{
 			a: Vec::new(),
@@ -295,9 +298,9 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 }
 
 //custom number printing function
-fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
+fn flt_to_str(num: Float, obase: Integer, oprec: Integer) -> String {
 	if num.is_zero() {
-		return String::from("0");	//causes issues, always "0" regardless of parameters
+		return String::from(if obase>36 {"(0)"} else {"0"});	//causes issues, always "0" regardless of parameters
 	}
 	if num.is_infinite() {
 		return String::from("Infinity");
@@ -305,39 +308,74 @@ fn flt_to_str(num: Float, obase: i32, oprec: i32) -> String {
 	if num.is_nan() {
 		return String::from("Not a number");
 	}
-	let ilen = num.clone().to_integer_round(Round::Zero).unwrap().0.to_string_radix(obase).trim_start_matches('-').len();	//length of integer part without negative sign
-	let mut outstr = num.to_string_radix(obase, if oprec>=0 { Some(oprec as usize + ilen) } else { None });	//generate string, oprec=fractional digits
-	if obase <= 10 {	//unify exponent symbol without searching the whole string
-		let idxm = outstr.len()-1;
-		for idxr in 0..=idxm {
-			if idxr>10 {break;}	//exponents cannot have more digits, longest is @-323228496
-			if outstr.as_bytes()[idxm-idxr]=='e' as u8 {
-				unsafe {outstr.as_mut_vec()[idxm-idxr] = '@' as u8;}
-				break;
+
+	if obase>36 {	//any-base printing
+		let mut outstr = String::from(if num<0 {"(- "} else {"("});	//get rid of negative sign
+		let mut int = num.clone().abs().to_integer_round(Round::Zero).unwrap().0;	//get absolute integer part
+		let mut dig = Integer::from(1);	//current digit value
+		while dig<=int {
+			dig *= obase.clone();	//get highest required digit value
+		}
+		dig /= obase.clone();	//correct off-by-one error
+		loop {
+			let (quot, rem) = int.clone().div_rem_euc(dig.clone());	//separate into amount of current digit and remainder
+			outstr.push_str(&quot.to_string());	//print amount of current digit
+			outstr.push(' ');
+			int = rem;	//switch to remainder
+			if dig==1 {break;}	//stop when all digits done
+			dig /= obase.clone();	//switch to next lower digit
+		}
+		outstr.pop();
+		outstr.push(')');
+		outstr
+	}
+	else {	//normal printing
+		let mut outstr = num.to_string_radix(
+			obase.to_i32().unwrap(),
+			if oprec>=0u8 {
+				if let Some(p) = (oprec + Integer::from(
+						num.clone().to_integer_round(Round::Zero).unwrap().0	//integer part of num
+						.to_string_radix(obase.to_i32().unwrap())	//...to string
+						.trim_start_matches('-').len())).to_usize() 	//...length without negative sign
+				{
+					Some(p)	//desired length of integer+fractional part
+				}
+				else {None}	//if too big for usize, print exactly
+			}
+			else {None}
+		);
+		if obase <= 10 {	//unify exponent symbol without searching the whole string
+			let idxm = outstr.len()-1;
+			for idxr in 0..=idxm {
+				if idxr>10 {break;}	//exponents cannot have more digits, longest is @-323228496
+				if outstr.as_bytes()[idxm-idxr]=='e' as u8 {
+					unsafe {outstr.as_mut_vec()[idxm-idxr] = '@' as u8;}
+					break;
+				}
 			}
 		}
-	}
-	if outstr[if outstr.len()>11 {outstr.len()-11} else {0}..].contains('@') {	//efficiently check if in exponential notation
-		let (mut mpart, epart) = outstr.rsplit_once('@').unwrap();
-		mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
-		let eint = epart.parse::<i32>().unwrap();	//isolate exponential part
-		if eint<0 && eint>-10 {
-			outstr = "0.".to_string() + &"0".repeat(eint.abs() as usize -1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
-			if num<0 {
-				let (ipart, fpart) = outstr.split_once('-').unwrap();
-				outstr = "-".to_string() + ipart + fpart;	//move negative sign to front
+		if outstr[if outstr.len()>11 {outstr.len()-11} else {0}..].contains('@') {	//efficiently check if in exponential notation
+			let (mut mpart, epart) = outstr.rsplit_once('@').unwrap();
+			mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
+			let eint = epart.parse::<i32>().unwrap();	//isolate exponential part
+			if eint<0 && eint>-10 {
+				outstr = "0.".to_string() + &"0".repeat(eint.abs() as usize -1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
+				if num<0 {
+					let (ipart, fpart) = outstr.split_once('-').unwrap();
+					outstr = "-".to_string() + ipart + fpart;	//move negative sign to front
+				}
+			}
+			else {
+				outstr = mpart.to_string() + " @" + epart;	//reassemble, add space for clarity
 			}
 		}
-		else {
-			outstr = mpart.to_string() + " @" + epart;	//reassemble, add space for clarity
+		else {	//if in normal notation
+			if let Some((ipart, fpart)) = outstr.split_once('.') {
+				outstr = ipart.to_string() + "." + fpart.trim_end_matches('0');	//trim trailing zeros
+			}
 		}
+		outstr.trim_end_matches('.').to_string()	//remove fractional separator
 	}
-	else {	//if in normal notation
-		if let Some((ipart, fpart)) = outstr.split_once('.') {
-			outstr = ipart.to_string() + "." + fpart.trim_end_matches('0');	//trim trailing zeros
-		}
-	}
-	outstr.trim_end_matches('.').to_string()	//remove fractional separator
 }
 
 //core execution engine
@@ -356,58 +394,117 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			/*------------------
 				OBJECT INPUT
 			------------------*/
-			//number input, force with single quote to use letters
+			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
-				let mut numstr = String::new();	//gets filled with number to be parsed later
-				let mut frac = false;	//'.' has already occurred
-				let mut neg = false;	//'_' has already occurred
-				let mut alpha = false;	//letters are used
-				if cmd == '\'' {
-					alpha = true;
-					cmd = if cmdstk.last().unwrap().is_empty() {' '} else {cmdstk.last_mut().unwrap().remove(0)};
+				if ENVSTK.last().unwrap().1>36 {
+					eprintln!("! Any-base input must be used for input bases over 36");
 				}
-				//keep adding to numstr until number is finished
-				'STDNUM_FINISHED: loop {
-					//numbers, periods and exponential notation
-					if cmd.is_ascii_digit()||cmd == '.'||cmd == '@' {
-						if cmd == '.' { if frac { break 'STDNUM_FINISHED; } else { frac = true; } } //break on encountering second '.'
-						if cmd == '@' { neg = false; }	//allow for second negative sign in exponent
-						numstr.push(cmd);						
+				else {
+					let mut numstr = String::new();	//gets filled with number to be parsed later
+					let mut frac = false;	//'.' has already occurred
+					let mut neg = false;	//'_' has already occurred
+					let mut alpha = false;	//letters are used
+					if cmd == '\'' {
+						alpha = true;
+						cmd = if cmdstk.last().unwrap().is_empty() {' '} else {cmdstk.last_mut().unwrap().remove(0)};
 					}
-					//'_' needs to be replaced with '-'
-					else if cmd == '_' {
-						if neg { break 'STDNUM_FINISHED; } else { neg = true; } //break on encountering second '_'
-						numstr.push('-');
-					}
-					//parse letters if number is prefixed with quote
-					else if cmd.is_ascii_alphabetic() {
-						if alpha {
-							numstr.push(cmd);							
+					//keep adding to numstr until number is finished
+					'STDNUM_FINISHED: loop {
+						//numbers, periods and exponential notation
+						if cmd.is_ascii_digit()||cmd == '.'||cmd == '@' {
+							if cmd == '.' { if frac { break 'STDNUM_FINISHED; } else { frac = true; } } //break on encountering second '.'
+							if cmd == '@' { neg = false; }	//allow for second negative sign in exponent
+							numstr.push(cmd);						
+						}
+						//'_' needs to be replaced with '-'
+						else if cmd == '_' {
+							if neg { break 'STDNUM_FINISHED; } else { neg = true; } //break on encountering second '_'
+							numstr.push('-');
+						}
+						//parse letters if number is prefixed with quote
+						else if cmd.is_ascii_alphabetic() {
+							if alpha {
+								numstr.push(cmd);							
+							}
+							else {
+								break 'STDNUM_FINISHED;
+							}
 						}
 						else {
 							break 'STDNUM_FINISHED;
 						}
+						cmd = if cmdstk.last().unwrap().is_empty() {' '} else {cmdstk.last_mut().unwrap().remove(0)};
 					}
-					else {
-						break 'STDNUM_FINISHED;
+					cmdstk.last_mut().unwrap().insert(0, cmd);	//restore first char that isn't part of the number
+					if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
+					if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
+					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
+					match Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1.to_i32().unwrap()) {		
+						Ok(res) => {
+							MSTK.push(Obj {
+								t: false,
+								n: Float::with_val(WPREC, res),
+								s: String::new()
+							});
+						},
+						Err(error) => {
+							eprintln!("! Unable to parse number \"{}\": {}", numstr, error);
+						},
 					}
-					cmd = if cmdstk.last().unwrap().is_empty() {' '} else {cmdstk.last_mut().unwrap().remove(0)};
 				}
-				cmdstk.last_mut().unwrap().insert(0, cmd);	//restore first char that isn't part of the number
-				if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
-				if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
-				if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
-				match Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1) {		
-					Ok(res) => {
-						MSTK.push(Obj {
-							t: false,
-							n: Float::with_val(WPREC, res),
-							s: String::new()
-						});
-					},
-					Err(error) => {
-						eprintln!("! Unable to parse number \"{}\": {}", numstr, error);
-					},
+			},
+
+			//any-base number input
+			'(' => {
+				let mut num = Integer::from(0);	//resulting number
+				if cmdstk.last().unwrap().is_empty() {
+					MSTK.push(Obj {
+						t: false,
+						n: Float::with_val(WPREC, num),	//default to 0 if on end of input
+						s: String::new()
+					});
+				}
+				else {
+					let ibase = ENVSTK.last().unwrap().1.clone();
+					let mut dig = String::new();	//digit being parsed
+					let mut neg = false;	//number negative?
+					loop {
+						cmd = if cmdstk.last().unwrap().is_empty() {')'} else {cmdstk.last_mut().unwrap().remove(0)};	//get next character, finish number if not possible
+						match cmd {
+							'0'..='9' => {
+								dig.push(cmd);	//add numerals to digit
+							},
+							'-'|'_' => {
+								if neg {
+									eprintln!("! Unable to parse any-base number: more than one negative sign");
+									break;
+								}
+								neg = true;
+							},
+							' '|')' => {	//if digit or whole number is finished
+								let digint = if dig.clone().is_empty() {Integer::ZERO} else {Integer::parse(dig.clone()).unwrap().complete()};	//parse digit, default to 0
+								if digint >= ibase {
+									eprintln!("! Unable to parse any-base number: digit {} is too high for base {}", digint, ibase);
+									break;
+								}
+								num *= ibase.clone();	//add digit to number: multiply old contents by radix...
+								num += digint;	//... and add new digit
+								dig.clear();
+								if cmd==')' {	//if number finished, push to stack
+									MSTK.push(Obj {
+										t: false,
+										n: Float::with_val(WPREC, num * if neg {-1} else {1}),
+										s: String::new()
+									});
+									break;
+								}
+							},
+							_ => {
+								eprintln!("! Invalid character in any-base number: \"{}\"", cmd);
+								break;
+							},
+						}
+					}
 				}
 			},
 
@@ -453,7 +550,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						println!("{}", MSTK.last().unwrap().s.clone());
 					}
 					else {
-						println!("{}", flt_to_str(MSTK.last().unwrap().n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+						println!("{}", flt_to_str(MSTK.last().unwrap().n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 					}
 				}
 			},
@@ -466,7 +563,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							println!("{}", MSTK[i].s.clone());
 						}
 						else {
-							println!("{}", flt_to_str(MSTK[i].n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+							println!("{}", flt_to_str(MSTK[i].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 						}
 					}
 				}
@@ -481,7 +578,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						stdout().flush().unwrap();
 					}
 					else {
-						print!("{}", flt_to_str(a.n, ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+						print!("{}", flt_to_str(a.n, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 						stdout().flush().unwrap();
 					}
 				}
@@ -527,7 +624,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 									println!("{}", REGS[ri][i].o.s.clone());
 								}
 								else {
-									println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+									println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 								}
 								if !REGS[ri][i].a.is_empty() {
 									let tablen = REGS[ri][i].a.len().to_string().len();	//length of longest index number
@@ -536,7 +633,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 											println!("\t{}{}: {}", " ".repeat(tablen-ai.to_string().len()), ai, REGS[ri][i].a[ai].s);
 										}
 										else {
-											println!("\t{}{}: {}", " ".repeat(tablen-ai.to_string().len()), ai, flt_to_str(REGS[ri][i].a[ai].n.clone(), ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0));
+											println!("\t{}{}: {}", " ".repeat(tablen-ai.to_string().len()), ai, flt_to_str(REGS[ri][i].a[ai].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 										}
 									}
 								}
@@ -1068,7 +1165,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							MSTK.push(Obj {
 								t: true,
 								n: Float::new(WPREC),
-								s: flt_to_str(a.n, ENVSTK.last().unwrap().2, ENVSTK.last().unwrap().0)
+								s: flt_to_str(a.n, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone())
 							});
 						}
 					}
@@ -1186,11 +1283,11 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if let Some(num) = int.to_i32() {
-							ENVSTK.last_mut().unwrap().0 = num;
+						if int>=-1 {
+							ENVSTK.last_mut().unwrap().0 = int;
 						}
 						else {
-							eprintln!("! Output precision must be between {} and {} (inclusive)", i32::MIN, i32::MAX);
+							eprintln!("! Output precision must be at least -1");
 						}
 					}
 				}
@@ -1202,11 +1299,11 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if int>=2 && int<=36 {
-							ENVSTK.last_mut().unwrap().1 = int.to_i32().unwrap();
+						if int>=2 {
+							ENVSTK.last_mut().unwrap().1 = int;
 						}
 						else {
-							eprintln!("! Input base must be between {} and {} (inclusive)", 2, 36);
+							eprintln!("! Inpt base must be at least 2");
 						}
 					}
 				}
@@ -1218,11 +1315,11 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if int>=2 && int<=36 {
-							ENVSTK.last_mut().unwrap().2 = int.to_i32().unwrap();
+						if int>=2 {
+							ENVSTK.last_mut().unwrap().2 = int;
 						}
 						else {
-							eprintln!("! Output base must be between {} and {} (inclusive)", 2, 36);
+							eprintln!("! Output base must be at least 2");
 						}
 					}
 				}
@@ -1248,7 +1345,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			'K' => {
 				MSTK.push(Obj {
 					t: false,
-					n: Float::with_val(WPREC, ENVSTK.last().unwrap().0),
+					n: Float::with_val(WPREC, ENVSTK.last().unwrap().0.clone()),
 					s: String::new()
 				});
 			},
@@ -1257,7 +1354,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			'I' => {
 				MSTK.push(Obj {
 					t: false,
-					n: Float::with_val(WPREC, ENVSTK.last().unwrap().1),
+					n: Float::with_val(WPREC, ENVSTK.last().unwrap().1.clone()),
 					s: String::new()
 				});
 			},
@@ -1266,7 +1363,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			'O' => {
 				MSTK.push(Obj {
 					t: false,
-					n: Float::with_val(WPREC, ENVSTK.last().unwrap().2),
+					n: Float::with_val(WPREC, ENVSTK.last().unwrap().2.clone()),
 					s: String::new()
 				});
 			},
@@ -1282,14 +1379,14 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 
 			//create new k,i,o context
 			'{' => {
-				ENVSTK.push((KDEF, IDEF, ODEF));
+				ENVSTK.push((KDEF.clone(), IDEF.clone(), ODEF.clone()));
 			},
 
 			//revert to previous context
 			'}' => {
 				ENVSTK.pop();
 				if ENVSTK.is_empty() {
-					ENVSTK.push((KDEF, IDEF, ODEF));	//ensure 1 entry always remains
+					ENVSTK.push((KDEF.clone(), IDEF.clone(), ODEF.clone()));	//ensure 1 entry always remains
 				}
 			},
 			/*--------------------------
