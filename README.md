@@ -34,9 +34,9 @@ Planned upcoming features/changes:
 - W is limited to an unsigned 32-bit integer (4'294'967'295 bits). Actually going that high is definitely not recommended, but I'm not stopping you.
 - `X` and `Z` don't make sense for binary floats. They are used for different commands.
 ## Any-base input and output
-- The input and output bases are now unlimited. If they are over 36, an "any-base" format is used and only integers are allowed.
-- Any-base numbers consist of parentheses containing individual digit values separated by spaces, with one optional negative sign anywhere.
-  - Example: `(-123 456 789)`
+- The input and output bases are now unlimited. If they are over 36, an "any-base" format is used.
+- Any-base numbers consist of parentheses containing individual digit values (in decimal) separated by spaces, with one optional negative sign anywhere and one optional fractional separator `.` between two digits.
+  - Example: `(-123 456.789)`
 - Because the number is processed separately from commands, both `-` and `_` may be used as negative signs.
 - "Empty" digits (nothing where there should be one) default to 0.
 ## New feature: Parameter stack
