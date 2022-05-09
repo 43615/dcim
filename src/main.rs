@@ -484,9 +484,10 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 					let ibase = ENVSTK.last().unwrap().1.clone();
 					let mut dig = String::new();	//digit being parsed
 					let mut neg = false;	//number negative?
-					let mut frac = false;	//fractional separator already occurred?
+					let mut frac = false;	//fractional separator has occurred
 					let mut scale = Integer::from(1);	//scale to divide by, for non-integers
-					loop {
+					let mut exp = false;	//exponential symbol has occurred
+					'CANCEL_ABNUM: loop {
 						cmd = if let Some(c) = cmdstk.last_mut().unwrap().pop() {c} else {')'};	//get next character, finish number if not possible
 						match cmd {
 							'0'..='9' => {
@@ -519,6 +520,20 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								frac = true;
 								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration
 							},
+							'@' => {
+								if exp {
+									eprintln!("! Unable to parse any-base number: more than one exponential sign");
+									if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
+										cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
+									}
+									else {
+										cmdstk.last_mut().unwrap().clear();
+									}
+									break;
+								}
+								exp = true;
+								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration
+							},
 							' '|')' => {	//if digit or whole number is finished
 								let digint = if dig.clone().is_empty() {Integer::ZERO} else {Integer::parse(dig.clone()).unwrap().complete()};	//parse digit, default to 0
 								if digint >= ibase {
@@ -540,13 +555,58 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								if frac {
 									scale *= ibase.clone();	//if fractional part has started, make scale keep up
 								}
+								let escale =	//power applied to input base for exponential notation
+								if exp {	//if exponential part has begun
+									let mut epart = String::new();
+									let mut eneg = false;
+									while !cmdstk.last().unwrap().is_empty() {
+										cmd = cmdstk.last_mut().unwrap().pop().unwrap();
+										match cmd {
+											'0'..='9' => {
+												epart.push(cmd);
+											},
+											'-'|'_' => {
+												if eneg {
+													eprintln!("! Unable to parse any-base number: more than one negative sign in exponent");
+													if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
+														cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
+													}
+													else {
+														cmdstk.last_mut().unwrap().clear();
+													}
+													break 'CANCEL_ABNUM;
+												}
+												epart.insert(0, '-');
+												eneg = true;
+											},
+											')' => {
+												break;
+											},
+											_ => {
+												eprintln!("! Unable to parse any-base number: invalid character \"{}\" in exponent", cmd);
+												if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
+													cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
+												}
+												else {
+													cmdstk.last_mut().unwrap().clear();
+												}
+												break 'CANCEL_ABNUM;
+											},
+										}
+									}
+									Integer::parse(epart).unwrap().complete()
+								}
+								else {
+									Integer::from(0)
+								};
 								if cmd==')' {	//if number finished, push to stack
 									if scale>1 {
-										scale /= ibase;	//correct off-by-one error
+										scale /= ibase.clone();	//correct off-by-one error
 									}
 									MSTK.push(Obj {
 										t: false,
-										n: Float::with_val(WPREC, num * if neg {-1} else {1}) / scale,	//apply neg and scale
+										n: Float::with_val(WPREC, num * if neg {-1} else {1}) / scale
+										* Float::with_val(WPREC, ibase).pow(escale),	//apply neg, scale and escale
 										s: String::new()
 									});
 									break;
