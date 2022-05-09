@@ -299,6 +299,8 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 }
 
 //custom number printing function
+//if output base is over 36, prints in custom "any-base" notation
+//otherwise, applies precision to fractional part and converts from exponential notation
 fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	if num.is_zero() {
 		return String::from(if obase>36 {"(0)"} else {"0"});	//causes issues, always "0" regardless of parameters
@@ -313,7 +315,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	if obase>36 {	//any-base printing
 		let mut outstr = String::from(if num<0 {"(-"} else {"("});	//get rid of negative sign
 		let mut scale = 0usize;	//amount to shift fractional separator in output
-		while !num.is_integer() {
+		while !num.is_integer()&&if oprec<0 {true} else {scale<oprec} {	//apply output precision if enabled
 			num *= obase.clone();	//make integer
 			scale +=1;
 		}
@@ -348,14 +350,12 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	else {	//normal printing
 		let mut outstr = num.to_string_radix(
 			obase.to_i32().unwrap(),
-			if oprec>=0u8 {
+			if oprec>=0 {
 				if let Some(p) = (oprec + Integer::from(
 						num.clone().to_integer_round(Round::Zero).unwrap().0	//integer part of num
 						.to_string_radix(obase.to_i32().unwrap())	//...to string
 						.trim_start_matches('-').len())).to_usize() 	//...length without negative sign
-				{
-					Some(p)	//desired length of integer+fractional part
-				}
+				{Some(p)}	//desired length of integer+fractional part
 				else {None}	//if too big for usize, print exactly
 			}
 			else {None}
