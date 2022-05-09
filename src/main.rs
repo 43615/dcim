@@ -229,7 +229,7 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 	}
 	{ true }
 	else {
-		eprintln!("! Invalid argument types for command \"{}\"", op);
+		eprintln!("! Invalid argument type(s) for command \"{}\"", op);
 		false
 	}
 }
