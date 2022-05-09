@@ -35,8 +35,8 @@ Planned upcoming features/changes:
 - `X` and `Z` don't make sense for binary floats. They are used for different commands.
 ## Any-base input and output
 - The input and output bases are now unlimited. If they are over 36, an "any-base" format is used.
-- Any-base numbers consist of parentheses containing individual digit values (in decimal) separated by spaces, with one optional negative sign anywhere and one optional fractional separator `.` between two digits.
-  - Example: `(-123 456.789)`
+- Any-base numbers consist of parentheses containing individual digit values (in decimal) separated by spaces, with one optional negative sign anywhere and one optional fractional separator `.` between two digits, as well as an optional exponential part like with normal input (decimal integer).
+  - Example: `(-123 456.789@-321)`
 - Because the number is processed separately from commands, both `-` and `_` may be used as negative signs.
 - "Empty" digits (nothing where there should be one) default to 0.
 ## New feature: Parameter stack
