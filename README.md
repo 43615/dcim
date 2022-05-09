@@ -15,12 +15,13 @@ Planned upcoming features/changes:
 - The default value when saving or loading uninitialized array objects is the number 0. This fixes the issue with `123d:ala`.
 - The `!` command for executing OS commands is replaced with `\`, which pops and runs a string.
 ## Number input changes
-- Both the input and output bases are now in the range 2-36 (inclusive).
+- For normal input, the input base is now in range 2-36 (inclusive).
 - Capital A-F are no longer used for number input in the normal way, base-11+ numbers now need to be escaped with `'`. This change frees up A-F to be used as commands and allows for bases over 16.
   - Example: `'_123orletters.ANYCASE789` (ends on any character that doesn't continue the number, space recommended).
 - Digits too high for the input base (such as `'G` when base is 16) are not parsed, but always cause an error message instead.
 - Exponential/scientific notation shorthand: `<a>@<b>` is equivalent to `<a>I{<b>}^*`, but is easier to input and might avoid rounding errors. '@' replaces the traditional 'e'/'E' to work with all input bases. The exponent must be a decimal integer and is applied to the input base. If no mantissa is provided, 1 is assumed (`1@123`=`@123`).
 ## Precision and number output changes
+- Numbers are output the normal way if output base is in range 2-36 (inclusive).
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
 - If output precision is negative (new default: -1), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
@@ -32,6 +33,12 @@ Planned upcoming features/changes:
 - Attention: W applies to the whole number, so large integers may be represented incorrectly. The default corresponds to a generous "signed 257".
 - W is limited to an unsigned 32-bit integer (4'294'967'295 bits). Actually going that high is definitely not recommended, but I'm not stopping you.
 - `X` and `Z` don't make sense for binary floats. They are used for different commands.
+## Any-base input and output
+- The input and output bases are now unlimited. If they are over 36, an "any-base" format is used and only integers are allowed.
+- Any-base numbers consist of parentheses containing individual digit values separated by spaces, with one optional negative sign anywhere.
+  - Example: `(-123 456 789)`
+- Because the number is processed separately from commands, both `-` and `_` may be used as negative signs.
+- "Empty" digits (nothing where there should be one) default to 0.
 ## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
