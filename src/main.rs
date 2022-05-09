@@ -477,6 +477,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							'-'|'_' => {
 								if neg {
 									eprintln!("! Unable to parse any-base number: more than one negative sign");
+									if let Some(idx) = cmdstk.last().unwrap().find(')') {
+										cmdstk.last_mut().unwrap().replace_range(..=idx, "");	//remove rest of erroneous number
+									}
+									else {
+										cmdstk.last_mut().unwrap().clear();
+									}
 									break;
 								}
 								neg = true;
@@ -485,7 +491,16 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								let digint = if dig.clone().is_empty() {Integer::ZERO} else {Integer::parse(dig.clone()).unwrap().complete()};	//parse digit, default to 0
 								if digint >= ibase {
 									eprintln!("! Unable to parse any-base number: digit {} is too high for base {}", digint, ibase);
-									break;
+									if cmd==')' {break;}
+									else {
+										if let Some(idx) = cmdstk.last().unwrap().find(')') {
+											cmdstk.last_mut().unwrap().replace_range(..=idx, "");	//remove rest of erroneous number
+										}
+										else {
+											cmdstk.last_mut().unwrap().clear();
+										}
+										break;
+									}
 								}
 								num *= ibase.clone();	//add digit to number: multiply old contents by radix...
 								num += digint;	//... and add new digit
@@ -501,6 +516,12 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 							},
 							_ => {
 								eprintln!("! Invalid character in any-base number: \"{}\"", cmd);
+								if let Some(idx) = cmdstk.last().unwrap().find(')') {
+									cmdstk.last_mut().unwrap().replace_range(..=idx, "");	//remove rest of erroneous number
+								}
+								else {
+									cmdstk.last_mut().unwrap().clear();
+								}
 								break;
 							},
 						}
