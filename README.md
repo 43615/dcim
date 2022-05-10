@@ -100,11 +100,14 @@ Planned upcoming features/changes:
 - All constants and units are stored in amounts of their respective international standard units.
 - Unit conversion doesn't happen automatically; multiplying with the created factor converts the selected unit to the standard unit, dividing by it does the opposite.
 - The string may also be two names separated by a space. This is a shorthand for converting from one unit to another.
+- Units may also have an integer at the end, which is a shorthand for powers (area, volume).
+- There are NO checks for whether the conversion makes sense, the provided values are just numbers with names.
 - Examples:
   - `[phi]"` pushes the golden ratio.
   - `90[deg]"*` converts 90° to radians.
   - `80[lb]"/` converts 80 kilograms to pounds.
   - `@6[in nmi]"*` converts 1 million inches to nautical miles.
+  - `5[m3 in3]"*` converts 5 cubic meters to cubic inches.
 # Memory model diagram
 dc's manpage doesn't do a great job at explaining it, so here's a diagram:
 ```
