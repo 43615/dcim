@@ -1250,26 +1250,48 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 			//constant/conversion factor lookup or convert number to string
 			'"' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let mut a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.t {
 							match a.s.matches(' ').count() {
 								0 => {
+									let mut power = String::new();
+									while a.s.ends_with(|c: char| c.is_ascii_digit()) {
+										power.insert(0, a.s.pop().unwrap());
+									}
+									if power.is_empty() {power.push('1');}
 									if let Some(res) = constants(WPREC, a.s) {
 										MSTK.push(Obj {
 											t: false,
-											n: Float::with_val(WPREC, res),
+											n: Float::with_val(WPREC, res.pow(Integer::parse(power).unwrap().complete())),
 											s: String::new()
 										});
 									}
 								},
 								1 => {
-									let (sfrom, sto) = a.s.split_once(' ').unwrap();
+									let (from, to) = a.s.split_once(' ').unwrap();
+									let mut sfrom = String::from(from);
+									let mut sto = String::from(to);
+
+									let mut pfrom = String::new();
+									while sfrom.ends_with(|c: char| c.is_ascii_digit()) {
+										pfrom.insert(0, sfrom.pop().unwrap());
+									}
+									if pfrom.is_empty() {pfrom.push('1');}
+
+									let mut pto = String::new();
+									while sto.ends_with(|c: char| c.is_ascii_digit()) {
+										pto.insert(0, sto.pop().unwrap());
+									}
+									if pto.is_empty() {pto.push('1');}
+
 									if let Some(nfrom) = constants(WPREC, sfrom.to_string()) {
 										if let Some(nto) = constants(WPREC, sto.to_string()) {
 											MSTK.push(Obj {
 												t: false,
-												n: Float::with_val(WPREC, nfrom/nto),
+												n: Float::with_val(WPREC,
+													nfrom.pow(Integer::parse(pfrom).unwrap().complete())/
+													nto.pow(Integer::parse(pto).unwrap().complete())),
 												s: String::new()
 											});
 										}
