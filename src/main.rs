@@ -521,18 +521,8 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration
 							},
 							'@' => {
-								if exp {
-									eprintln!("! Unable to parse any-base number: more than one exponential sign");
-									if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
-										cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
-									}
-									else {
-										cmdstk.last_mut().unwrap().clear();
-									}
-									break;
-								}
 								exp = true;
-								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration
+								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration, exponent handled by finalizer
 							},
 							' '|')' => {	//if digit or whole number is finished
 								let digint = if dig.clone().is_empty() {Integer::ZERO} else {Integer::parse(dig.clone()).unwrap().complete()};	//parse digit, default to 0
