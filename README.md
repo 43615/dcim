@@ -38,7 +38,7 @@ Planned upcoming features/changes:
 - Any-base numbers consist of parentheses containing individual digit values (in decimal) separated by spaces, with one optional negative sign anywhere and one optional fractional separator `.` between two digits, as well as an optional exponential part like with normal input (decimal integer).
   - Example: `(-123 456.789@-321)`
 - Because the number is processed separately from commands, both `-` and `_` may be used as negative signs.
-- "Empty" digits (nothing where there should be one) default to 0.
+- "Empty" digits (like two spaces in a row) default to 0.
 ## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
