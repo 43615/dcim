@@ -693,22 +693,15 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 				}
 			},
 
-			//pop, convert if number, print without newline
+			//pop and print with newline
 			'P' => {
 				if check_n(cmd, MSTK.len()) {
 					let a = MSTK.pop().unwrap();
 					if a.t {
-						print!("{}", a.s);
-						stdout().flush().unwrap();
+						println!("{}", a.s);
 					}
 					else {
-						if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
-							print!("{}", res);
-							stdout().flush().unwrap();
-						}
-						else {
-							eprintln!("! Unable to convert number {} to string: not valid UTF-8", a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
-						}
+						println!("{}", flt_to_str(a.n, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 					}
 				}
 			},
