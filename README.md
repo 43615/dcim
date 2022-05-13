@@ -24,7 +24,7 @@ Planned upcoming features/changes:
 - Numbers are output the normal way if output base is in range 2-36 (inclusive).
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
-- If output precision is negative (new default: -1), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
+- If output precision is -1 (new default), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
 - If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `-1.23456 @-789`. Like with SCI input, the exponent is always in decimal.
 - Working precision (default: 256 bits) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa.
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
@@ -38,7 +38,7 @@ Planned upcoming features/changes:
 - Any-base numbers consist of parentheses containing individual digit values (in decimal) separated by spaces, with one optional negative sign anywhere and one optional fractional separator `.` between two digits, as well as an optional exponential part like with normal input (decimal integer).
   - Example: `(-123 456.789@-321)`
 - Because the number is processed separately from commands, both `-` and `_` may be used as negative signs.
-- "Empty" digits (nothing where there should be one) default to 0.
+- "Empty" digits (like two spaces in a row) default to 0.
 ## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
