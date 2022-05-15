@@ -121,7 +121,7 @@ Basic object "Obj":
 +--------+
 |  Type  |
 +--------+
-Boolean "Type" (true iff string) solely determines how an object is treated. The thereby "activated" field must not be empty, the other one is never used.
+Boolean "Type" (true iff string) solely determines how an object is treated. The thereby "deactivated" field is never used.
 
 Main stack:
 +-----+-----+-----+----
@@ -140,7 +140,7 @@ Writing to or reading from an uninitialized array element initializes all previo
 
 Register:
 +--------+--------+--------+----
-| RegObj | RegObj | RegObj | ... theoretically unlimited
+| RegObj | RegObj | RegObj | ... S/L, theoretically unlimited
 +--------+--------+--------+----
 RegObj buffer:
 +--------+
