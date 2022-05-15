@@ -65,13 +65,13 @@ static mut DRS_EN: bool = false;	//DRS valid?
 static mut RNG: Vec<RandState> = Vec::new();
 
 const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);	//default tuple for to_integer_round()
-fn flt_def() -> Float {Float::with_val(1, 0)}	//default Float value, no constant constructors :(
+fn flt_def() -> Float {Float::new(1)}	//default Float value for unused Obj.n
 
 fn main() {
 	let mut args: Vec<String> = std::env::args().collect();
 	args.remove(0);
 
-	unsafe{
+	unsafe {
 		KDEF = Integer::from(-1);
 		IDEF = Integer::from(10);
 		ODEF = Integer::from(10);
@@ -657,7 +657,7 @@ unsafe fn exec(input: String) {
 			'p' => {
 				if !MSTK.is_empty() {
 					if MSTK.last().unwrap().t {
-						println!("{}", MSTK.last().unwrap().s.clone());
+						println!("[{}]", MSTK.last().unwrap().s.clone());
 					}
 					else {
 						println!("{}", flt_to_str(MSTK.last().unwrap().n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
@@ -670,7 +670,7 @@ unsafe fn exec(input: String) {
 				if !MSTK.is_empty() {
 					for i in (0..MSTK.len()).rev() {
 						if MSTK[i].t {
-							println!("{}", MSTK[i].s.clone());
+							println!("[{}]", MSTK[i].s.clone());
 						}
 						else {
 							println!("{}", flt_to_str(MSTK[i].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
@@ -724,7 +724,7 @@ unsafe fn exec(input: String) {
 						if !REGS[ri].is_empty(){
 							for i in (0..REGS[ri].len()).rev() {
 								if REGS[ri][i].o.t {
-									println!("{}", REGS[ri][i].o.s.clone());
+									println!("[{}]", REGS[ri][i].o.s.clone());
 								}
 								else {
 									println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
@@ -733,7 +733,7 @@ unsafe fn exec(input: String) {
 									let tablen = REGS[ri][i].a.len().to_string().len();	//length of longest index number
 									for ai in 0..REGS[ri][i].a.len() {
 										if REGS[ri][i].a[ai].t {
-											println!("\t{}{}: {}", " ".repeat(tablen-ai.to_string().len()), ai, REGS[ri][i].a[ai].s);
+											println!("\t{}{}: [{}]", " ".repeat(tablen-ai.to_string().len()), ai, REGS[ri][i].a[ai].s);
 										}
 										else {
 											println!("\t{}{}: {}", " ".repeat(tablen-ai.to_string().len()), ai, flt_to_str(REGS[ri][i].a[ai].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
