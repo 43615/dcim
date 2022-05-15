@@ -41,6 +41,7 @@ Planned upcoming features/changes:
   - Example: `(-123 456.789@-321)`
 - Because the number is processed separately from commands, both `-` and `_` may be used as negative signs.
 - "Empty" digits (like two spaces in a row) default to 0.
+- Due to a limitation of the base conversion algorithm, any-base output has limited fractional precision (still millions of digits).
 ## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
