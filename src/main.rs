@@ -1540,7 +1540,7 @@ unsafe fn exec(input: String) {
 			--------------------------*/
 			//save to top of register
 			's' => {
-				if MSTK.len()>=1 {
+				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();					
 					if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 						eprintln!("! No register number provided");
@@ -1570,7 +1570,6 @@ unsafe fn exec(input: String) {
 					}
 				}
 				else {
-					eprintln!("! Nothing to save to register");
 					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
@@ -1580,7 +1579,7 @@ unsafe fn exec(input: String) {
 
 			//push to top of register
 			'S' => {
-				if MSTK.len()>=1 {
+				if check_n(cmd, MSTK.len()) {
 					let a=RegObj {
 						o: MSTK.pop().unwrap(),
 						a: Vec::new()
@@ -1605,7 +1604,6 @@ unsafe fn exec(input: String) {
 					}
 				}
 				else {
-					eprintln!("! Nothing to push to register");
 					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
@@ -1669,7 +1667,7 @@ unsafe fn exec(input: String) {
 
 			//save to top-of-register's array
 			':' => {
-				if MSTK.len()>=2 {
+				if check_n(cmd, MSTK.len()) {
 					let b=MSTK.pop().unwrap();
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
@@ -1715,9 +1713,14 @@ unsafe fn exec(input: String) {
 							}
 						}
 					}
+					else {
+						if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+							cmdstk.last_mut().unwrap().pop();	//remove register name
+						}
+						DRS_EN = false;	//invalidate DRS
+					}
 				}
 				else {
-					eprintln!("! Saving to an array requires an object and an index");
 					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
@@ -1727,7 +1730,7 @@ unsafe fn exec(input: String) {
 
 			//load from top-of-register's array
 			';' => {
-				if MSTK.len()>=1 {
+				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
@@ -1772,9 +1775,14 @@ unsafe fn exec(input: String) {
 							}
 						}
 					}
+					else {
+						if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+							cmdstk.last_mut().unwrap().pop();	//remove register name
+						}
+						DRS_EN = false;	//invalidate DRS
+					}
 				}
 				else {
-					eprintln!("! Loading from an array requires an index");
 					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
@@ -2008,7 +2016,7 @@ unsafe fn exec(input: String) {
 
 			//invert next conditional
 			'!' => {
-				inv = true;
+				inv = !inv;
 			},
 
 			//conditionally execute macro
@@ -2042,7 +2050,7 @@ unsafe fn exec(input: String) {
 							}
 						}
 						if !mac.is_empty() {
-							if inv != match cmd {
+							if inv != match cmd {	//like xor
 								'<' => { a.n < b.n },
 								'=' => { a.n == b.n },
 								'>' => { a.n > b.n },
@@ -2069,7 +2077,7 @@ unsafe fn exec(input: String) {
 					}
 					DRS_EN = false;	//invalidate DRS
 				}
-				inv = false;
+				inv = false;	//always reset inversion
 			},
 
 			//auto-macro
