@@ -11,6 +11,7 @@ Planned upcoming features/changes:
 - File mode removes all #comments before executing.
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
 - `P` is now like `n`, but with a newline. The conversion feature is moved to `A`.
+- "Diagnostic" printing commands (all except `n` and `P`) now print brackets around strings for clarity.
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
 - The default value when saving or loading uninitialized array objects is the number 0. This fixes the issue with `123d:ala`.
