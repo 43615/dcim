@@ -62,6 +62,8 @@ static mut RO_BUF: Vec<RegObj> = Vec::new();
 static mut DRS: usize = 0;	//direct register selector
 static mut DRS_EN: bool = false;	//DRS valid?
 
+static mut RNG: Vec<RandState> = Vec::new();
+
 const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);	//default tuple for to_integer_round()
 fn flt_def() -> Float {Float::with_val(1, 0)}	//default Float value, no constant constructors :(
 
@@ -83,27 +85,26 @@ fn main() {
 				s: String::new()
 			}
 		});
+		//initialize RNG with system time (* PID for a bit less predictability)
+		RNG.push(RandState::new());
+		RNG[0].seed(&(Integer::from(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::MAX).as_nanos()) * std::process::id()));
 	}
 
-	//initialize RNG with system time (* PID for a bit less predictability)
-	let mut rng = RandState::new();
-	rng.seed(&(Integer::from(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::MAX).as_nanos()) * std::process::id()));
-
 	if args.is_empty() {
-		interactive_mode(&mut rng);	//default to interactive
+		interactive_mode();	//default to interactive
 	}
 	else {
 		let mode = args.remove(0);
 		match mode.as_str() {
 			"--interactive"|"-i"|"i" => {
 				//ability to force interactive mode just in case
-				interactive_mode(&mut rng);
+				interactive_mode();
 			},
 			"--expression"|"-e"|"e" => {
-				expression_mode(args, &mut rng);
+				expression_mode(args);
 			},
 			"--file"|"-f"|"f" => {
-				file_mode(args, &mut rng);
+				file_mode(args);
 			},
 			"--help"|"-h"|"h" => {
 				println!("{}", HELPMSG);
@@ -116,7 +117,7 @@ fn main() {
 }
 
 //interactive/shell mode, the default
-fn interactive_mode(mut rng: &mut RandState) {
+fn interactive_mode() {
 	//prompt loop
 	loop {
 		//prompt for user input
@@ -136,34 +137,34 @@ fn interactive_mode(mut rng: &mut RandState) {
 		input = input.trim_end_matches('\n').to_string();	//remove trailing LF
 
 		unsafe {
-			exec(input, &mut rng);
+			exec(input);
 		}
 	}
 }
 
-fn expression_mode(exprs: Vec<String>, mut rng: &mut RandState) {
+fn expression_mode(exprs: Vec<String>) {
 	if !exprs.is_empty() {
 		for i in 0..exprs.len() {
 			if i==exprs.len()-1&&exprs[i]=="?" {
-				interactive_mode(&mut rng);	//if last expression is "?", enter prompt loop
+				interactive_mode();	//if last expression is "?", enter prompt loop
 			}
 			else {
 				unsafe {
-					exec(exprs[i].clone(), &mut rng);
+					exec(exprs[i].clone());
 				}
 			}
 		}
 	}
 }
 
-fn file_mode(files: Vec<String>, mut rng: &mut RandState) {
+fn file_mode(files: Vec<String>) {
 	if files.is_empty() {
 		eprintln!("! No file name provided");
 	}
 	else {
 		for i in 0..files.len() {
 			if i==files.len()-1&&files[i]=="?"{
-				interactive_mode(&mut rng);	//if last filename is "?", enter prompt loop
+				interactive_mode();	//if last filename is "?", enter prompt loop
 			}
 			else {
 				match std::fs::read_to_string(files[i].clone()) {
@@ -174,7 +175,7 @@ fn file_mode(files: Vec<String>, mut rng: &mut RandState) {
 							script_nc.push('\n');
 						}
 						unsafe {
-							exec(script_nc, &mut rng);
+							exec(script_nc);
 						}
 								
 					},
@@ -396,7 +397,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 
 //CORE EXECUTION ENGINE
 //unsafe for accessing static mut objects across different runs
-unsafe fn exec(input: String, rng: &mut RandState) {
+unsafe fn exec(input: String) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
 	if !input.is_empty() {	//loop expects contents, do nothing if none provided
 		cmdstk.push(input.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
@@ -1222,7 +1223,7 @@ unsafe fn exec(input: String, rng: &mut RandState) {
 						else {
 							MSTK.push(Obj {
 								t: false,
-								n: Float::with_val(WPREC, int.random_below(rng)),
+								n: Float::with_val(WPREC, int.random_below(&mut RNG[0])),
 								s: String::new()
 							});
 						}
