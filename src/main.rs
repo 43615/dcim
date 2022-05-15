@@ -304,6 +304,15 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 	}
 }
 
+//slightly more efficient string reverser, at least on my machine
+fn rev_str(mut instr: String) -> String {
+	let mut outstr = String::new();
+	while !instr.is_empty() {
+		outstr.push(instr.pop().unwrap());
+	}
+	outstr
+}
+
 //custom number printing function
 //if output base is over 36, prints in custom "any-base" notation
 //otherwise, applies precision like dc and converts from exponential notation if not too small
@@ -412,7 +421,7 @@ unsafe fn exec(input: String) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
 	if !input.is_empty() {	//loop expects contents, do nothing if none provided
-		cmdstk.push(input.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
+		cmdstk.push(rev_str(input));	//all command strings are reversed since pop() is O(1)
 	}
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
@@ -801,10 +810,10 @@ unsafe fn exec(input: String) {
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
 							if let Some(mut num) = int.clone().abs().to_usize() {
 								if num>newstr.len() { num = newstr.len(); }	//account for too large b
-								if int<0 { newstr = newstr.chars().rev().collect(); }	//if negative, reverse to remove from front
+								if int<0 { newstr = rev_str(newstr); }	//if negative, reverse to remove from front
 								if newstr.is_char_boundary(newstr.len()-num) {
 									newstr.truncate(newstr.len()-num);
-									if int<0 { newstr = newstr.chars().rev().collect(); }	//undo reversal
+									if int<0 { newstr = rev_str(newstr); }	//undo reversal
 									MSTK.push(Obj {
 										t: true,
 										n: flt_def(),
@@ -844,7 +853,7 @@ unsafe fn exec(input: String) {
 							if let Some(mut num) = int.clone().abs().to_usize() {
 								if num*newstr.len()>usize::MAX { num = usize::MAX/newstr.len(); }	//account for too large b
 								newstr = newstr.repeat(num);
-								if int<0 { newstr = newstr.chars().rev().collect(); }	//if b is negative, invert string
+								if int<0 { newstr = rev_str(newstr); }	//if b is negative, invert string
 							}
 							else {
 								eprintln!("! Cannot possibly repeat a string {} times", int);
@@ -878,10 +887,10 @@ unsafe fn exec(input: String) {
 							let mut newstr = a.s.clone();
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
 							if let Some(num) = int.clone().abs().to_usize() {
-								if int<0 { newstr = newstr.chars().rev().collect(); }	//if negative, reverse to remove from front
+								if int<0 { newstr = rev_str(newstr); }	//if negative, reverse to remove from front
 								if newstr.is_char_boundary(num) {
 									newstr.truncate(num);
-									if int<0 { newstr = newstr.chars().rev().collect(); }	//undo reversal
+									if int<0 { newstr = rev_str(newstr); }	//undo reversal
 									MSTK.push(Obj {
 										t: true,
 										n: flt_def(),
@@ -1989,7 +1998,7 @@ unsafe fn exec(input: String) {
 						if cmdstk.last().unwrap().is_empty() {
 							cmdstk.pop();	//optimize tail call
 						}
-						cmdstk.push(a.s.chars().rev().collect());
+						cmdstk.push(rev_str(a.s));
 					}
 					else {
 						MSTK.push(a);
@@ -2043,7 +2052,7 @@ unsafe fn exec(input: String) {
 								if cmdstk.last().unwrap().is_empty() {
 									cmdstk.pop();	//optimize tail call
 								}
-								cmdstk.push(mac.chars().rev().collect());
+								cmdstk.push(rev_str(mac));
 							}
 						}
 					}
@@ -2074,7 +2083,7 @@ unsafe fn exec(input: String) {
 							if cmdstk.last().unwrap().is_empty() {
 								cmdstk.pop();	//optimize tail call
 							}
-							cmdstk.resize(cmdstk.len()+reps, a.s.chars().rev().collect());
+							cmdstk.resize(cmdstk.len()+reps, rev_str(a.s));
 						}
 						else {
 							eprintln!("! Invalid macro repeat count: {}", int);
@@ -2116,7 +2125,7 @@ unsafe fn exec(input: String) {
 				if cmdstk.last().unwrap().is_empty() {
 					cmdstk.pop();	//optimize tail call
 				}
-				cmdstk.push(prompt_in.chars().rev().collect());
+				cmdstk.push(rev_str(prompt_in));
 			},
 
 			//execute file as script
@@ -2131,7 +2140,7 @@ unsafe fn exec(input: String) {
 									script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 									script_nc.push('\n');
 								}
-								cmdstk.push(script_nc.chars().rev().collect());
+								cmdstk.push(rev_str(script_nc));
 							},
 							Err(error) => {
 								eprintln!("! Unable to read file \"{}\": {}", a.s, error);
