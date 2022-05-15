@@ -2044,6 +2044,18 @@ unsafe fn exec(input: String) {
 							}
 						}
 					}
+					else {
+						if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+							cmdstk.last_mut().unwrap().pop();	//remove register name
+						}
+						DRS_EN = false;	//invalidate DRS
+					}
+				}
+				else {
+					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+						cmdstk.last_mut().unwrap().pop();	//remove register name
+					}
+					DRS_EN = false;	//invalidate DRS
 				}
 			},
 
