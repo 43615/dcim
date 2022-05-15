@@ -399,6 +399,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 //unsafe for accessing static mut objects across different runs
 unsafe fn exec(input: String) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
+	let mut inv = false;	//invert next comparison
 	if !input.is_empty() {	//loop expects contents, do nothing if none provided
 		cmdstk.push(input.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
 	}
@@ -1985,19 +1986,13 @@ unsafe fn exec(input: String) {
 				}
 			},
 
+			//invert next conditional
+			'!' => {
+				inv = true;
+			},
+
 			//conditionally execute macro
-			'!'|'<'|'='|'>' => {
-				//handle inversion
-				let inv = cmd=='!';
-				if inv {
-					if cmdstk.last().unwrap().is_empty() {
-						eprintln!("! Missing comparison operator after \"!\"");
-						cmd = ' ';
-					}
-					else {
-						cmd = cmdstk.last_mut().unwrap().pop().unwrap();
-					}
-				}
+			'<'|'='|'>' => {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();	//deliberately reverse order
 					let b=MSTK.pop().unwrap();
@@ -2031,10 +2026,7 @@ unsafe fn exec(input: String) {
 								'<' => { a.n < b.n },
 								'=' => { a.n == b.n },
 								'>' => { a.n > b.n },
-								_ => {
-									eprintln!("! Invalid comparison operator \"{}\"", cmd);
-									true	//only possible with inv, which xors it to false
-								},
+								_ => {false},
 							}
 							{
 								if cmdstk.last().unwrap().is_empty() {
@@ -2057,6 +2049,7 @@ unsafe fn exec(input: String) {
 					}
 					DRS_EN = false;	//invalidate DRS
 				}
+				inv = false;
 			},
 
 			//auto-macro
