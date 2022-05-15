@@ -14,7 +14,7 @@ const HELPMSG: &str = "
 ║                        ║
 ╚════════════════════════╝
 dc improved - Feature-added rewrite of an RPN calculator/stack machine language from 1970-72
-Documentation at https://github.com/43615/dcim
+Most basic GNU dc features are unaltered, full documentation at https://github.com/43615/dcim
 
 Options and syntax:
 
@@ -31,7 +31,7 @@ Options and syntax:
 	Print this help message.
 ";
 
-//environment parameters with default values:
+//environment parameter defaults and storage, initialized in main
 static mut KDEF: Integer = Integer::new();	//output precision
 static mut IDEF: Integer = Integer::new();	//input base
 static mut ODEF: Integer = Integer::new();	//output base
@@ -57,20 +57,21 @@ static mut MSTK: Vec<Obj> = Vec::new();	//main stack
 
 static mut REGS: Vec<Vec<RegObj>> = Vec::new();	//array of registers
 const REGS_SIZE: usize = 65536;	//amount of available registers
-static mut RO_BUF: Vec<RegObj> = Vec::new();
+static mut RO_BUF: Vec<RegObj> = Vec::new();	//vec because constant constructors are impossible, initialized in main
 
 static mut DRS: usize = 0;	//direct register selector
 static mut DRS_EN: bool = false;	//DRS valid?
 
-static mut RNG: Vec<RandState> = Vec::new();
+static mut RNG: Vec<RandState> = Vec::new();	//same problem as with RO_BUF
 
-const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);	//default tuple for to_integer_round()
+const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);	//default tuple for to_integer_round().unwrap_or()
 fn flt_def() -> Float {Float::new(1)}	//default Float value for unused Obj.n
 
 fn main() {
 	let mut args: Vec<String> = std::env::args().collect();
-	args.remove(0);
+	args.remove(0);	//remove name of executable
 
+	//init everything that doesn't have a const constructor
 	unsafe {
 		KDEF = Integer::from(-1);
 		IDEF = Integer::from(10);
@@ -128,10 +129,11 @@ fn interactive_mode() {
 			Ok(_) => {},
 			Err(error) => {
 				eprintln!("! Unable to read standard input: {}", error);
+				break;
 			}
 		}
 		if input.is_empty() {
-			print!("\r\r");
+			print!("\r");
 			std::process::exit(0);	//stop on end of pipe input
 		}
 		input = input.trim_end_matches('\n').to_string();	//remove trailing LF
@@ -188,7 +190,8 @@ fn file_mode(files: Vec<String>) {
 	}
 }
 
-//checks if n operands are sufficient for operator op (defines adicity)
+//checks if n arguments are sufficient for a command (defines adicity)
+//not used by niladics
 fn check_n(op: char, n: usize) -> bool {
 	if match op {
 		//triadic
@@ -207,7 +210,7 @@ fn check_n(op: char, n: usize) -> bool {
 	}
 }
 
-//checks if an operator can be used on provided operand types
+//checks if a command can be used on provided argument types
 //a-c: types (.t) of the operands that would be used (in canonical order), use false if not required
 fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 	if match op {
@@ -292,8 +295,10 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"h" => {Some(Float::with_val(prec, 3600))}
 		"d" => {Some(Float::with_val(prec, 86400))}
 		"w" => {Some(Float::with_val(prec, 604800))}
+
+		"author" => {Some(Float::with_val(prec, 43615))}	//why not
 		_ => {
-			eprintln!("! Constant/conversion factor \"{}\" not found", key);
+			eprintln!("! Constant/conversion factor \"{}\" doesn't exist", key);
 			None
 		}
 	}
@@ -301,7 +306,7 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 
 //custom number printing function
 //if output base is over 36, prints in custom "any-base" notation
-//otherwise, applies precision to fractional part and converts from exponential notation
+//otherwise, applies precision like dc and converts from exponential notation if not too small
 fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	if num.is_zero() {
 		return String::from(if obase>36 {"(0)"} else {"0"});	//causes issues, always "0" regardless of parameters
@@ -313,37 +318,43 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		return String::from("Not a number");
 	}
 
-	if obase>36 {	//any-base printing
-		let mut outstr = String::from(if num<0 {"(-"} else {"("});	//get rid of negative sign
-		let mut scale = 0usize;	//amount to shift fractional separator in output
-		while !num.is_integer()&&if oprec<0 {true} else {scale<oprec} {	//apply output precision if enabled
-			num *= obase.clone();	//make integer
+	if obase>36 {	//any-base printing (original base conversion algorithm out of necessity, limited precision possible)
+		let mut outstr = String::from(if num<0 {"(-"} else {"("});	//apply negative sign
+		num = num.abs();
+		let mut scale: usize = 0;	//amount to shift fractional separator in output
+		while !num.is_integer()&&if oprec<0 {true} else {scale<oprec} {	//turn into integer scaled by power of obase, apply output precision if enabled
+			let temp = num.clone() * &obase;	//preview scale-up
+			if temp.is_infinite() {	//possible with high precision due to Float's exponent limitation
+				num /= &obase;	//prevent overflow in later "extra precision" part
+				break;	//disregard further precision
+			}
+			num = temp;	//if ok, commit to scale-up
 			scale +=1;
 		}
-		num *= obase.clone();	//get extra precision for last digit
-		let mut int = num.clone().abs().to_integer().unwrap();	//get absolute value
-		int /= obase.clone();	//undo extra precision
+		num *= &obase;	//get extra precision for last digit
+		let mut int = num.to_integer().unwrap();	//convert to Integer
+		int /= &obase;	//undo extra precision
 		let mut dig = Integer::from(1);	//current digit value
 		while dig<=int {
-			dig *= obase.clone();	//get highest required digit value
+			dig *= &obase;	//get highest required digit value
 		}
-		dig /= obase.clone();	//correct off-by-one error
-		loop {
+		dig /= &obase;	//correct off-by-one error
+		loop {	//separate into digits
 			let (quot, rem) = int.clone().div_rem_euc(dig.clone());	//separate into amount of current digit and remainder
 			outstr.push_str(&quot.to_string());	//print amount of current digit
 			outstr.push(' ');
 			int = rem;	//switch to remainder
 			if dig==1 {break;}	//stop when all digits done
-			dig /= obase.clone();	//switch to next lower digit
+			dig /= &obase;	//switch to next lower digit
 		}
-		if scale>0 { unsafe {
+		if scale>0 {
 			if let Some((idx, _)) = outstr.rmatch_indices(' ').nth(scale){	//find location for fractional separator
-				outstr.as_bytes_mut()[idx] = '.' as u8;	//and apply it
+				unsafe { outstr.as_bytes_mut()[idx] = '.' as u8; }	//and insert it
 			}
 			else {
 				outstr.insert_str(if outstr.starts_with("(-") {2} else {1}, "0.");	//number has no integer part, add "0."
 			}
-		}}
+		}
 		outstr.pop();
 		outstr.push(')');
 		outstr
@@ -362,11 +373,11 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 			else {None}
 		);
 		if obase <= 10 {	//unify exponent symbol without searching the whole string
-			let idxm = outstr.len()-1;
-			for idxr in 0..=idxm {
-				if idxr>10 {break;}	//exponents cannot have more digits, longest is @-323228496
-				if outstr.as_bytes()[idxm-idxr]=='e' as u8 {
-					unsafe {outstr.as_bytes_mut()[idxm-idxr] = '@' as u8;}
+			let im = outstr.len()-1;
+			for ir in 0..=im {
+				if ir>10 {break;}	//exponents cannot have more digits, longest is @-323228496
+				if outstr.as_bytes()[im-ir]=='e' as u8 {
+					unsafe {outstr.as_bytes_mut()[im-ir] = '@' as u8;}
 					break;
 				}
 			}
@@ -1237,12 +1248,12 @@ unsafe fn exec(input: String) {
 				if check_n(cmd, MSTK.len()) {
 					let mut a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						if a.t {
+						if a.t {	//constant lookup
 							match a.s.matches(' ').count() {
-								0 => {
+								0 => {	//normal lookup
 									let mut power = String::new();
 									while a.s.ends_with(|c: char| c.is_ascii_digit()) {
-										power.insert(0, a.s.pop().unwrap());
+										power.insert(0, a.s.pop().unwrap());	//remove power
 									}
 									if power.is_empty() {power.push('1');}
 									if let Some(res) = constants(WPREC, a.s) {
@@ -1253,7 +1264,7 @@ unsafe fn exec(input: String) {
 										});
 									}
 								},
-								1 => {
+								1 => {	//conversion shorthand, everything is like the 0 case but twice
 									let (from, to) = a.s.split_once(' ').unwrap();
 									let mut sfrom = String::from(from);
 									let mut sto = String::from(to);
@@ -1287,7 +1298,7 @@ unsafe fn exec(input: String) {
 								},
 							}
 						}
-						else {
+						else {	//"print" number to string
 							MSTK.push(Obj {
 								t: true,
 								n: flt_def(),
