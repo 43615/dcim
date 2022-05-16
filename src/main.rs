@@ -271,30 +271,42 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 			LENGTH UNITS
 		------------------*/
 		"in" => {Some(Float::with_val(prec, 254)*Float::with_val(prec, 10).pow(-4))}
-		"ft" => {Some(Float::with_val(prec, 3048)*Float::with_val(prec, 10).pow(-4))}
-		"yd" => {Some(Float::with_val(prec, 9144)*Float::with_val(prec, 10).pow(-4))}
+		"ft" => {Some(constants(prec, "in".to_string()).unwrap()*12)}
+		"yd" => {Some(constants(prec, "ft".to_string()).unwrap()*3)}
 		"m" => {Some(Float::with_val(prec, 1))}
-		"mi" => {Some(Float::with_val(prec, 1609344)*Float::with_val(prec, 10).pow(-3))}
+		"fur" => {Some(constants(prec, "ft".to_string()).unwrap()*660)}
+		"mi" => {Some(constants(prec, "ft".to_string()).unwrap()*5280)}
 		"nmi" => {Some(Float::with_val(prec, 1852))}
 		"AU" => {Some(Float::with_val(prec, 149597870700i64))}
 		"ly" => {Some(Float::with_val(prec, 9460730472580800i64))}
 		"pc" => {Some(Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))}
+		/*-------------------------
+			AREA & VOLUME UNITS 
+			with no length equivalent
+		-------------------------*/
+		"ac"|"acre" => {Some(Float::with_val(prec, 40468564224i64)*Float::with_val(prec, 10).pow(-7))}
+		"l" => {Some(Float::with_val(prec, 10).pow(-3))}
+		"floz" => {Some(Float::with_val(prec, 284130625)*Float::with_val(prec, 10).pow(-13))}
+		"pt" => {Some(constants(prec, "floz".to_string()).unwrap()*20)}
+		"qt" => {Some(constants(prec, "floz".to_string()).unwrap()*40)}
+		"gal" => {Some(constants(prec, "floz".to_string()).unwrap()*160)}
 		/*----------------
 			MASS UNITS
 		----------------*/
 		"ct" => {Some(Float::with_val(prec, 2)*Float::with_val(prec, 10).pow(-4))}
 		"oz" => {Some(Float::with_val(prec, 28349523125i64)*Float::with_val(prec, 10).pow(-12))}
-		"lb" => {Some(Float::with_val(prec, 45359237)*Float::with_val(prec, 10).pow(-8))}
+		"lb" => {Some(constants(prec, "oz".to_string()).unwrap()*16)}
 		"kg" => {Some(Float::with_val(prec, 1))}
-		"st" => {Some(Float::with_val(prec, 635029318)*Float::with_val(prec, 10).pow(-8))}
+		"st" => {Some(constants(prec, "lb".to_string()).unwrap()*14)}
+		"t" => {Some(constants(prec, "lb".to_string()).unwrap()*2240)}
 		/*----------------
 			TIME UNITS
 		----------------*/
 		"s" => {Some(Float::with_val(prec, 1))}
 		"min" => {Some(Float::with_val(prec, 60))}
-		"h" => {Some(Float::with_val(prec, 3600))}
-		"d" => {Some(Float::with_val(prec, 86400))}
-		"w" => {Some(Float::with_val(prec, 604800))}
+		"h" => {Some(constants(prec, "min".to_string()).unwrap()*60)}
+		"d" => {Some(constants(prec, "h".to_string()).unwrap()*24)}
+		"w" => {Some(constants(prec, "d".to_string()).unwrap()*7)}
 
 		"author" => {Some(Float::with_val(prec, 43615))}	//why not
 		_ => {
@@ -331,7 +343,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		let mut outstr = String::from(if num<0 {"(-"} else {"("});	//apply negative sign
 		num = num.abs();
 		let mut scale: usize = 0;	//amount to shift fractional separator in output
-		while !num.is_integer()&&if oprec<0 {true} else {scale<oprec} {	//turn into integer scaled by power of obase, apply output precision if enabled
+		while !num.is_integer()&&(oprec<0||scale<oprec) {	//turn into integer scaled by power of obase, apply output precision if enabled
 			let temp = num.clone() * &obase;	//preview scale-up
 			if temp.is_infinite() {	//possible with high precision due to Float's exponent limitation
 				num /= &obase;	//prevent overflow in later "extra precision" part
@@ -357,7 +369,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 			dig /= &obase;	//switch to next lower digit
 		}
 		if scale>0 {
-			if let Some((idx, _)) = outstr.rmatch_indices(' ').nth(scale){	//find location for fractional separator
+			if let Some((idx, _)) = outstr.rmatch_indices(' ').nth(scale) {	//find location for fractional separator
 				unsafe { outstr.as_bytes_mut()[idx] = '.' as u8; }	//and insert it
 			}
 			else {
