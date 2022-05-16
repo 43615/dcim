@@ -394,12 +394,15 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 			else {None}
 		);
 		if obase <= 10 {	//unify exponent symbol without searching the whole string
-			let im = outstr.len()-1;
-			for ir in 0..=im {
-				if ir>10 {break;}	//exponents cannot have more digits, longest is @-323228496
-				if outstr.as_bytes()[im-ir]=='e' as u8 {
-					unsafe {outstr.as_bytes_mut()[im-ir] = '@' as u8;}
-					break;
+			let im = outstr.len()-1;	//max index
+			unsafe {
+				let bytes = outstr.as_bytes_mut();
+				for ir in 0..=im {	//right offset
+					if ir>10 {break;}	//exponents cannot have more digits, longest is @-323228496
+					if bytes[im-ir]=='e' as u8 {
+						bytes[im-ir] = '@' as u8;	//replace
+						break;
+					}
 				}
 			}
 		}
