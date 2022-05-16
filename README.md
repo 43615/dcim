@@ -1,7 +1,7 @@
 # dcim
 ### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
 
-Features present in GNU dc are not listed here unless different. [Familiarize yourself first](https://linux.die.net/man/1/dc) or see the [full reference manual](../../wiki).
+Features present in GNU dc are not listed here unless different. [Familiarize yourself first](https://linux.die.net/man/1/dc) or see the [***full reference manual***](../../wiki).
 
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
