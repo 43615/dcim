@@ -3,8 +3,6 @@
 
 Features present in GNU dc are not listed here unless different. [Familiarize yourself first](https://linux.die.net/man/1/dc) or see the [full reference manual](../../wiki).
 
-Planned upcoming features/changes:
-- More conversion factors
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - The file and expression modes now accept and execute any number of arguments. If the last expression or filename is `?`, it will enter interactive mode after finishing.
