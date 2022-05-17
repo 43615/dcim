@@ -11,7 +11,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - `P` is now like `n`, but with a newline. The conversion feature is moved to `A`.
 - "Diagnostic" printing commands (all except `n` and `P`) now print brackets around strings for clarity.
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
-- The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane can be used as a register name.
+- The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane (0000-FFFF) can be used as a register name. This is the only arbitrary limit imposed on the user.
 - When saving or loading uninitialized array objects, all previously nonexistent objects are initialized with the number 0. This fixes undefined behaviour like with `123d:ala`.
 - The `!` command for executing OS commands is replaced with `\`, which pops and runs a string.
 ## Number input changes
