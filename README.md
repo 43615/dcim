@@ -63,7 +63,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
   - `j`\<reg\> and `J`\<reg\> are like `l` and `L`, but copy and pop to the buffer instead of the main stack.
   - `h`\<reg\> and `H`\<reg\> are like `s` and `S`, but overwrite and push reading from the buffer.
   - Example: `jaHa` duplicates the top object of reg 97, `JaHb` moves the top object of reg 97 to reg 98.
-  - Yes, I'm running out of letters.
+  - Mnemonics: J looks like a flipped L, H is next to it on QWERTY.
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
