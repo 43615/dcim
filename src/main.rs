@@ -383,15 +383,15 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	else {	//normal printing
 		let mut outstr = num.to_string_radix(
 			obase.to_i32().unwrap(),
-			if oprec>=0 {
-				if let Some(p) = (oprec + Integer::from(
-						num.clone().to_integer_round(Round::Zero).unwrap().0	//integer part of num
-						.to_string_radix(obase.to_i32().unwrap())	//...to string
-						.trim_start_matches('-').len())).to_usize() 	//...length without negative sign
-				{Some(p)}	//desired length of integer+fractional part
-				else {None}	//if too big for usize, print exactly
+			if oprec<0 {
+				None
 			}
-			else {None}
+			else {
+				(oprec + Integer::from(
+					num.to_integer_round(Round::Zero).unwrap().0	//integer part of num
+					.to_string_radix(obase.to_i32().unwrap())	//...to string
+					.trim_start_matches('-').len())).to_usize() 	//...length without negative sign, print exactly if too large
+			}
 		);
 		if obase <= 10 {	//unify exponent symbol without searching the whole string
 			let im = outstr.len()-1;	//max index
