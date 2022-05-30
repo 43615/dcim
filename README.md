@@ -44,7 +44,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 ## New feature: Parameter stack
 - `{` switches to a new "parameter context" with defaults `_1k 10i 10o` while keeping the previous one.
 - `}` restores the previous context or resets the parameters to default if no previous context exists.
-- Working precision is unaffected.
+- Working precision is unaffected to avoid accidental changing of existing numbers' precision.
 ## New mathematical commands and changes
 - `^` no longer rounds the exponent.
 - `V`: bth root of a.
