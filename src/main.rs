@@ -459,7 +459,7 @@ unsafe fn exec(input: String) {
 					let mut alpha = false;	//letters are used
 					if cmd == '\'' {
 						alpha = true;
-						cmd = if let Some(c) = cmdstk.last_mut().unwrap().pop() {c} else {' '};
+						cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');
 					}
 					//keep adding to numstr until number is finished
 					'STDNUM_FINISHED: loop {
@@ -486,7 +486,7 @@ unsafe fn exec(input: String) {
 						else {
 							break 'STDNUM_FINISHED;
 						}
-						cmd = if let Some(c) = cmdstk.last_mut().unwrap().pop() {c} else {' '};
+						cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');
 					}
 					cmdstk.last_mut().unwrap().push(cmd);	//restore first char that isn't part of the number
 					if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
@@ -658,32 +658,25 @@ unsafe fn exec(input: String) {
 			'[' => {
 				let mut res = String::new();	//result string
 				let mut nest: usize = 1;	//nesting level
-				let mut err = false;
-				if !cmdstk.last().unwrap().is_empty() {
-					cmd = cmdstk.last_mut().unwrap().pop().unwrap();
-					while nest>0 {
-						res.push(cmd);
-						if cmd == '[' { nest+=1; }
-						if cmd == ']' { nest-=1; }
-						if cmdstk.last().unwrap().is_empty() {
-							if nest>0 {
-								//only reached on improper string
-								eprintln!("! Unable to parse string \"{}\": missing closing bracket", res);
-								err = true;
-								nest = 0;
-							}
-						}
-						else {cmd = cmdstk.last_mut().unwrap().pop().unwrap();}
-					}
-					cmdstk.last_mut().unwrap().push(cmd);	//restore first char that isn't part of the string
-					if !err {
-						res.pop();
+				cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');	//overwrite opening bracket, null if nothing left
+				loop {
+					res.push(cmd);
+					if cmd == '[' { nest+=1; }
+					if cmd == ']' { nest-=1; }
+					if nest==0 {	//string finished
+						res.pop();	//remove closing bracket
 						MSTK.push(Obj {
 							t: true,
 							n: flt_def(),
 							s: res.to_string()
 						});
+						break;
 					}
+					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
+						eprintln!("! Unable to parse string \"[{}\": missing closing bracket", res);
+						break;
+					}
+					else {cmd = cmdstk.last_mut().unwrap().pop().unwrap();}
 				}
 			},
 			/*--------------
@@ -766,13 +759,13 @@ unsafe fn exec(input: String) {
 									println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 								}
 								if !REGS[ri][i].a.is_empty() {
-									let tablen = REGS[ri][i].a.len().to_string().len();	//length of longest index number
+									let maxwidth = REGS[ri][i].a.len().to_string().len();	//length of longest index number
 									for ai in 0..REGS[ri][i].a.len() {
 										if REGS[ri][i].a[ai].t {
-											println!("\t{}{}: [{}]", " ".repeat(tablen-ai.to_string().len()), ai, REGS[ri][i].a[ai].s);
+											println!("\t{:>maxwidth$}: [{}]", ai, REGS[ri][i].a[ai].s);
 										}
 										else {
-											println!("\t{}{}: {}", " ".repeat(tablen-ai.to_string().len()), ai, flt_to_str(REGS[ri][i].a[ai].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+											println!("\t{:>maxwidth$}: {}", ai, flt_to_str(REGS[ri][i].a[ai].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 										}
 									}
 								}
@@ -1873,9 +1866,7 @@ unsafe fn exec(input: String) {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
 					if REGS_SIZE>ri {
-						if !REGS[ri].is_empty() {
-							REGS[ri].pop();	//remove old top, effectively overwrite
-						}
+						REGS[ri].pop();
 						REGS[ri].push(RO_BUF[0].clone());
 					}
 					else {
@@ -2218,7 +2209,7 @@ unsafe fn exec(input: String) {
 
 			//notify on invalid command, keep going
 			_ => {
-				if !cmd.is_whitespace()&&cmd!=']' { eprintln!("! Invalid command: {}", cmd); }
+				if !cmd.is_whitespace()&&cmd!='\0' { eprintln!("! Invalid command: {} (0x{:X})", cmd, cmd as u32); }
 			},
 		}
 		while let Some(ptr) = cmdstk.last() {
