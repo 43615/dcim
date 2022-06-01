@@ -814,23 +814,18 @@ unsafe fn exec(input: String) {
 					if check_t(cmd, a.t, b.t, false) {
 						//remove b chars from string a
 						if a.t {
-							let mut newstr = a.s.clone();
+							let mut newstr = a.s.chars().collect::<Vec<char>>();
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-							if let Some(mut num) = int.clone().abs().to_usize() {
+							if let Some(mut num) = &int.abs_ref().complete().to_usize() {
 								if num>newstr.len() { num = newstr.len(); }	//account for too large b
-								if int<0 { newstr = rev_str(newstr); }	//if negative, reverse to remove from front
-								if newstr.is_char_boundary(newstr.len()-num) {
-									newstr.truncate(newstr.len()-num);
-									if int<0 { newstr = rev_str(newstr); }	//undo reversal
-									MSTK.push(Obj {
-										t: true,
-										n: flt_def(),
-										s: newstr
-									});
-								}
-								else {
-									eprintln!("! Cannot remove {} characters from string \"{}\": not on a character boundary", num, a.s);
-								}
+								if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
+								newstr.truncate(newstr.len()-num);
+								if int<0 { newstr.reverse(); }	//undo reversal
+								MSTK.push(Obj {
+									t: true,
+									n: flt_def(),
+									s: newstr.iter().collect::<String>()
+								});
 							}
 							else {
 								eprintln!("! Cannot possibly remove {} characters from a string", int);
@@ -858,19 +853,19 @@ unsafe fn exec(input: String) {
 						if a.t {
 							let mut newstr = a.s;
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-							if let Some(mut num) = int.clone().abs().to_usize() {
+							if let Some(mut num) = &int.abs_ref().complete().to_usize() {
 								if num*newstr.len()>usize::MAX { num = usize::MAX/newstr.len(); }	//account for too large b
 								newstr = newstr.repeat(num);
 								if int<0 { newstr = rev_str(newstr); }	//if b is negative, invert string
+								MSTK.push(Obj {
+									t: true,
+									n: flt_def(),
+									s: newstr
+								});
 							}
 							else {
 								eprintln!("! Cannot possibly repeat a string {} times", int);
 							}
-							MSTK.push(Obj {
-								t: true,
-								n: flt_def(),
-								s: newstr
-							});
 						}
 						//multiply numbers
 						else {
@@ -892,22 +887,17 @@ unsafe fn exec(input: String) {
 					if check_t(cmd, a.t, b.t, false) {
 						//shorten string a to length b
 						if a.t {
-							let mut newstr = a.s.clone();
+							let mut newstr = a.s.chars().collect::<Vec<char>>();
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-							if let Some(num) = int.clone().abs().to_usize() {
-								if int<0 { newstr = rev_str(newstr); }	//if negative, reverse to remove from front
-								if newstr.is_char_boundary(num) {
-									newstr.truncate(num);
-									if int<0 { newstr = rev_str(newstr); }	//undo reversal
-									MSTK.push(Obj {
-										t: true,
-										n: flt_def(),
-										s: newstr
-									});
-								}
-								else {
-									eprintln!("! Cannot truncate string \"{}\" to length {}: not on a character boundary", a.s, num);
-								}
+							if let Some(num) = &int.abs_ref().complete().to_usize() {
+								if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
+								newstr.truncate(*num);
+								if int<0 { newstr.reverse(); }	//undo reversal
+								MSTK.push(Obj {
+									t: true,
+									n: flt_def(),
+									s: newstr.iter().collect::<String>()
+								});
 							}
 							else {
 								eprintln!("! Cannot possibly shorten a string to {} characters", int);
@@ -960,27 +950,22 @@ unsafe fn exec(input: String) {
 					if check_t(cmd, a.t, b.t, false) {
 						if a.t {
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-							if let Some(idx) = int.clone().to_usize() {
-								if a.s.is_char_boundary(idx) {
-									let mut lstr = a.s.clone();
-									let rstr = lstr.split_off(idx);
-									MSTK.push(Obj {
-										t: true,
-										n: flt_def(),
-										s: lstr
-									});
-									MSTK.push(Obj {
-										t: true,
-										n: flt_def(),
-										s: rstr
-									});
-								}
-								else {
-									eprintln!("! Cannot split string \"{}\" at index {}: out of range or not on a character boundary", a.s, idx);
-								}
+							if let Some(mut idx) = &int.to_usize() {
+								let cvec = a.s.chars().collect::<Vec<char>>();
+								if idx>cvec.len() { idx=cvec.len(); }	//if too large, split at max index to preserve signature
+								MSTK.push(Obj {
+									t: true,
+									n: flt_def(),
+									s: cvec[0..idx].iter().collect::<String>()
+								});
+								MSTK.push(Obj {
+									t: true,
+									n: flt_def(),
+									s: cvec[idx..].iter().collect::<String>()
+								});
 							}
 							else {
-								eprintln!("! Cannot possibly split a string at index {}", int);
+								eprintln!("! Cannot possibly split a string at character {}", int);
 							}
 						}
 						else {
@@ -1103,7 +1088,7 @@ unsafe fn exec(input: String) {
 						if a.t {
 							MSTK.push(Obj {
 								t: false,
-								n: Float::with_val(WPREC, a.s.len()),
+								n: Float::with_val(WPREC, a.s.chars().count()),
 								s: String::new()
 							});
 						}
