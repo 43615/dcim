@@ -2209,7 +2209,7 @@ unsafe fn exec(input: String) {
 
 			//notify on invalid command, keep going
 			_ => {
-				if !cmd.is_whitespace()&&cmd!='\0' { eprintln!("! Invalid command: {} (0x{:X})", cmd, cmd as u32); }
+				if !cmd.is_whitespace()&&cmd!='\0' { eprintln!("! Invalid command: {} (U+{:04X})", cmd, cmd as u32); }
 			},
 		}
 		while let Some(ptr) = cmdstk.last() {
