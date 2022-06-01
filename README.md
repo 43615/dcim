@@ -13,7 +13,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane (0000-FFFF) can be used as a register name. This is the only arbitrary limit imposed on the user.
 - When saving or loading uninitialized array objects, all previously nonexistent objects are initialized with the number 0. This fixes undefined behaviour like with `123d:ala`.
-- Strings have full Unicode support (stored as UTF-8). The new string manipulation features index all strings by bytes.
+- Strings have full Unicode support (stored as UTF-8). The new string manipulation features index all strings by characters.
 - The `!` command for executing OS commands is replaced with `\`, which pops and runs a string.
 ## Number input changes
 - For normal input, the input base is now in range 2-36 (inclusive).
@@ -66,7 +66,6 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
   - Example: `jaHa` duplicates the top object of reg 97, `JaHb` moves the top object of reg 97 to reg 98.
   - Mnemonics: J looks like a flipped L, H is next to it on QWERTY.
 ## New/overloaded string manipulation commands
-Strings are always indexed by bytes. These commands will fail if attempting to split a multi-byte character.
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.
   - Example: `[abcde]_2-` results in "cde".
