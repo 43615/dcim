@@ -4,15 +4,13 @@ use std::time::{SystemTime, Duration};
 use std::cmp::Ordering;
 
 const HELPMSG: &str = "
-╭───────────────────────────╮
-│                           │
-│    │           ▪          │
-│    │                      │
-│  ╭─┤  ╭──  ▪  ╶┤   ┌─┬─╮  │
-│  │ │  │        │   │ │ │  │
-│  ╰─┘  ╰──  ▪  ─┴─  ╵ ╵ ╵  │
-│                           │
-╰───────────────────────────╯
+╭─────────────────────────╮
+│   ╷           ▪         │
+│   │                     │
+│ ╭─┤  ╭─╴  ▪  ╶┤   ┌─┬─╮ │
+│ │ │  │        │   │ │ │ │
+│ ╰─┘  ╰─╴  ▪  ╶┴╴  ╵   ╵ │
+╰─────────────────────────╯
 
 dc improved - Feature-added rewrite of an RPN calculator/stack machine language from 1970-72
 Most basic GNU dc features are unaltered, full documentation at https://github.com/43615/dcim
