@@ -32,9 +32,9 @@ Options and syntax:
 ";
 
 //environment parameter defaults and storage, initialized in main
-static mut KDEF: Integer = Integer::new();	//output precision
-static mut IDEF: Integer = Integer::new();	//input base
-static mut ODEF: Integer = Integer::new();	//output base
+fn kdef() -> Integer { Integer::from(-1) }
+fn idef() -> Integer { Integer::from(10) }
+fn odef() -> Integer { Integer::from(10) }
 static mut ENVSTK: Vec<(Integer, Integer, Integer)> = Vec::new();	//stores (k,i,o) tuples, used by '{' and '}'
 static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
 
@@ -73,10 +73,7 @@ fn main() {
 
 	//init everything that doesn't have a const constructor
 	unsafe {
-		KDEF = Integer::from(-1);
-		IDEF = Integer::from(10);
-		ODEF = Integer::from(10);
-		ENVSTK.push((KDEF.clone(), IDEF.clone(), ODEF.clone()));	//initialize env params
+		ENVSTK.push((kdef(), idef(), odef()));	//initialize env params
 		REGS.resize(REGS_SIZE, Vec::new());	//initialize registers
 		RO_BUF.push(RegObj{
 			a: Vec::new(),
@@ -1518,14 +1515,14 @@ unsafe fn exec(input: String) {
 
 			//create new k,i,o context
 			'{' => {
-				ENVSTK.push((KDEF.clone(), IDEF.clone(), ODEF.clone()));
+				ENVSTK.push((kdef(), idef(), odef()));
 			},
 
 			//revert to previous context
 			'}' => {
 				ENVSTK.pop();
 				if ENVSTK.is_empty() {
-					ENVSTK.push((KDEF.clone(), IDEF.clone(), ODEF.clone()));	//ensure 1 entry always remains
+					ENVSTK.push((kdef(), idef(), odef()));	//ensure 1 entry always remains
 				}
 			},
 			/*--------------------------
