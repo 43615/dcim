@@ -1438,7 +1438,7 @@ unsafe fn exec(input: String) {
 							ENVSTK.last_mut().unwrap().1 = int;
 						}
 						else {
-							eprintln!("! Inpt base must be at least 2");
+							eprintln!("! Input base must be at least 2");
 						}
 					}
 				}
