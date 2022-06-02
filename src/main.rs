@@ -107,7 +107,7 @@ fn main() {
 				println!("{}", HELPMSG);
 			},
 			_ => {
-				eprintln!("! Invalid operating mode \"{}\"", mode);
+				eprintln!("! Invalid option \"{}\", use \"h\" for option syntax help", mode);
 			},
 		}
 	}
