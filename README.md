@@ -99,6 +99,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 ## Library of constants and conversion factors
 [List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
+  - Exception: Some names cause dc:im to exit in different ways.
 - All constants and units are stored in amounts of their respective international standard units.
 - Unit conversion doesn't happen automatically; multiplying with the created factor converts the selected unit to the standard unit, dividing by it does the opposite.
 - The string may also be two names separated by a space. This is a shorthand for converting from one unit to another.
