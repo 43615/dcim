@@ -304,6 +304,15 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"d" => {Some(constants(prec, "h".to_string()).unwrap()*24)}
 		"w" => {Some(constants(prec, "d".to_string()).unwrap()*7)}
 
+		/*------------------------------
+			SPECIAL VALUES/FUNCTIONS
+		------------------------------*/
+		"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs()))}
+		"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()))}
+		"pid" => {Some(Float::with_val(prec, std::process::id()))}
+		"abort" => {std::process::abort();}
+		"crash" => {constants(prec, "crash".to_string())}	//stack overflow through recursion
+		"panic" => {std::panic::panic_any("Manually initiated panic");}
 		"author" => {Some(Float::with_val(prec, 43615))}	//why not
 		_ => {
 			eprintln!("! Constant/conversion factor \"{}\" doesn't exist", key);
@@ -2089,7 +2098,7 @@ unsafe fn exec(input: String) {
 
 			//quit dcim
 			'q' => {
-				std::process::exit(0);
+				std::process::exit(if DRS_EN {DRS as i32} else {0});
 			},
 
 			//quit a macro calls
@@ -2150,14 +2159,17 @@ unsafe fn exec(input: String) {
 				if check_n(cmd, MSTK.len()) {
 					let a=MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
-						for (var, val) in std::env::vars() {
-							if var==a.s {
+						match std::env::var(&a.s) {
+							Ok(val) => {
 								MSTK.push(Obj {
 									t: true,
 									n: flt_def(),
 									s: val
 								});
-							}
+							},
+							Err(err) => {
+								eprintln!("! Unable to get value of \"{}\": {}", a.s, err);
+							},
 						}
 					}
 				}
