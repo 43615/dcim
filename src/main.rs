@@ -312,7 +312,10 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"pid" => {Some(Float::with_val(prec, std::process::id()))}
 		"abort" => {std::process::abort();}
 		"crash" => {constants(prec, "crash".to_string())}	//stack overflow through recursion
-		"panic" => {std::panic::panic_any("Manually initiated panic");}
+		"panic" => {std::panic::panic_any(
+			unsafe {if let Some(ptr) = MSTK.last() {
+				if ptr.t {&ptr.s} else {"Manual panic"}}
+			else {"Manual panic"}});}
 		"author" => {Some(Float::with_val(prec, 43615))}	//why not
 		_ => {
 			eprintln!("! Constant/conversion factor \"{}\" doesn't exist", key);
