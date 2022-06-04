@@ -31,7 +31,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
 - Scale is limited to 2^±2³⁰ or ≈10^±323'228'496.
 - Floating-point rounding artifacts (wrong digits at the end of a number) are guaranteed unless the number is a binary fraction or the input base is a power of 2. This is an unavoidable problem, GNU dc just hid it from view by storing numbers in the base they were created in.
-- Attention: W applies to the whole number, so large integers may be represented incorrectly. The default corresponds to a generous "signed 257".
+- Attention: W applies to the whole number, so large integers may be represented incorrectly. For example, with W=4, 17 is stored as 16.
 - W is limited to an unsigned 32-bit integer (4'294'967'295 bits). Actually going that high is definitely not recommended, but I'm not stopping you.
 - `X` and `Z` don't make sense for binary floats. They are used for different commands.
 ## Any-base input and output
