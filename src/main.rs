@@ -1287,33 +1287,51 @@ unsafe fn exec(input: String) {
 						if a.t {	//constant lookup
 							match a.s.matches(' ').count() {
 								0 => {	//normal lookup
+									let mut scale = String::new();
+									while a.s.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
+										scale.push(a.s.remove(0));	//extract scale prefix
+									}
+									if scale.is_empty() {scale.push('0');}
+
 									let mut power = String::new();
 									while a.s.ends_with(|c: char| c.is_ascii_digit()) {
-										power.insert(0, a.s.pop().unwrap());	//remove power
+										power.insert(0, a.s.pop().unwrap());	//extract power suffix
 									}
 									if power.is_empty() {power.push('1');}
+
 									if let Some(res) = constants(WPREC, a.s) {
 										MSTK.push(Obj {
 											t: false,
-											n: Float::with_val(WPREC, res.pow(Integer::parse(power).unwrap().complete())),
+											n: Float::with_val(WPREC, (res*Float::with_val(WPREC, Integer::parse(scale).unwrap().complete()).exp10())
+												.pow(Integer::parse(power).unwrap().complete())),
 											s: String::new()
 										});
 									}
 								},
 								1 => {	//conversion shorthand, everything is like the 0 case but twice
 									let (from, to) = a.s.split_once(' ').unwrap();
-									let mut sfrom = String::from(from);
-									let mut sto = String::from(to);
+									let mut sfrom = String::from(from);	//convert from this
+									let mut sto = String::from(to);	//to this
 
+									let mut kfrom = String::new();
+									while sfrom.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
+										kfrom.push(sfrom.remove(0));	//extract scale prefix
+									}
+									if kfrom.is_empty() {kfrom.push('0');}
 									let mut pfrom = String::new();
 									while sfrom.ends_with(|c: char| c.is_ascii_digit()) {
-										pfrom.insert(0, sfrom.pop().unwrap());
+										pfrom.insert(0, sfrom.pop().unwrap());	//extract power suffix
 									}
 									if pfrom.is_empty() {pfrom.push('1');}
 
+									let mut kto = String::new();
+									while sto.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
+										kto.push(sto.remove(0));	//extract scale prefix
+									}
+									if kto.is_empty() {kto.push('0');}
 									let mut pto = String::new();
 									while sto.ends_with(|c: char| c.is_ascii_digit()) {
-										pto.insert(0, sto.pop().unwrap());
+										pto.insert(0, sto.pop().unwrap());	//extract power suffix
 									}
 									if pto.is_empty() {pto.push('1');}
 
@@ -1322,15 +1340,17 @@ unsafe fn exec(input: String) {
 											MSTK.push(Obj {
 												t: false,
 												n: Float::with_val(WPREC,
-													nfrom.pow(Integer::parse(pfrom).unwrap().complete())/
-													nto.pow(Integer::parse(pto).unwrap().complete())),
+													(nfrom*Float::with_val(WPREC, Integer::parse(kfrom).unwrap().complete()).exp10())
+														.pow(Integer::parse(pfrom).unwrap().complete())/
+													(nto*Float::with_val(WPREC, Integer::parse(kto).unwrap().complete()).exp10())
+														.pow(Integer::parse(pto).unwrap().complete())),
 												s: String::new()
 											});
 										}
 									}
 								},
 								_ => {
-									eprintln!("! Invalid unit conversion string: \"{}\"", a.s);
+									eprintln!("! Too many spaces in constant lookup/unit conversion string: \"{}\"", a.s);
 								},
 							}
 						}
