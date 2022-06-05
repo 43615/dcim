@@ -235,6 +235,11 @@ fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 	}
 }
 
+//scientific notation to Some(Float), for brevity
+fn sci_to_flt(prec: u32, man: i128, exp: i128) -> Option<Float> {
+	Some(Float::with_val(prec, man)*Float::with_val(prec, exp).exp10())
+}
+
 //library of constants and unit conversion factors
 //unless specified, unit factors are based on the most prevalent international standard units for their respective quantities
 //ex: "in" (inch) returns 0.0254, thus executing 20[in]"* converts 20 inches to meters (0.508)
@@ -253,20 +258,20 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 			PHYSICAL CONSTANTS
 		------------------------*/
 		"c" => {Some(Float::with_val(prec, 299792458))}
-		"hbar" => {Some(Float::with_val(prec, 662607015)*Float::with_val(prec, 10).pow(-42)/(2*Float::with_val(prec, Constant::Pi)))}
-		"G" => {Some(Float::with_val(prec, 6674)*Float::with_val(prec, 10).pow(-3))}
-		"qe" => {Some(Float::with_val(prec, 1602176634)*Float::with_val(prec, 10).pow(-28))}
-		"NA" => {Some(Float::with_val(prec, 602214076)*Float::with_val(prec, 10).pow(31))}
-		"kB" => {Some(Float::with_val(prec, 1380649)*Float::with_val(prec, 10).pow(-29))}
-		"u" => {Some(Float::with_val(prec, 1660539066)*Float::with_val(prec, 10).pow(-36))}
-		"lp" => {Some(Float::with_val(prec, 16162)*Float::with_val(prec, 10).pow(-39))}
-		"tp" => {Some(Float::with_val(prec, 5391)*Float::with_val(prec, 10).pow(-47))}
-		"mp" => {Some(Float::with_val(prec, 21764)*Float::with_val(prec, 10).pow(-12))}
-		"Tp" => {Some(Float::with_val(prec, 14167)*Float::with_val(prec, 10).pow(28))}
+		"hbar" => {Some(sci_to_flt(prec, 662607015, -42).unwrap()/(2*Float::with_val(prec, Constant::Pi)))}
+		"G" => {sci_to_flt(prec, 6674, -3)}
+		"qe" => {sci_to_flt(prec, 1602176634, -28)}
+		"NA" => {sci_to_flt(prec, 602214076, 31)}
+		"kB" => {sci_to_flt(prec, 1380649, -29)}
+		"u" => {sci_to_flt(prec, 1660539066, -36)}
+		"lp" => {sci_to_flt(prec, 16162, -39)}
+		"tp" => {sci_to_flt(prec, 5391, -47)}
+		"mp" => {sci_to_flt(prec, 21764, -12)}
+		"Tp" => {sci_to_flt(prec, 14167, 28)}
 		/*------------------
 			LENGTH UNITS
 		------------------*/
-		"in" => {Some(Float::with_val(prec, 254)*Float::with_val(prec, 10).pow(-4))}
+		"in" => {sci_to_flt(prec, 254, -4)}
 		"ft" => {Some(constants(prec, "in".to_string()).unwrap()*12)}
 		"yd" => {Some(constants(prec, "ft".to_string()).unwrap()*3)}
 		"m" => {Some(Float::with_val(prec, 1))}
@@ -276,21 +281,35 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"AU" => {Some(Float::with_val(prec, 149597870700i64))}
 		"ly" => {Some(Float::with_val(prec, 9460730472580800i64))}
 		"pc" => {Some(Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))}
-		/*-------------------------
-			AREA & VOLUME UNITS 
+		/*-------------------------------
+			   AREA & VOLUME UNITS
 			with no length equivalent
-		-------------------------*/
-		"ac"|"acre" => {Some(Float::with_val(prec, 40468564224i64)*Float::with_val(prec, 10).pow(-7))}
+		-------------------------------*/
+		"ac"|"acre" => {sci_to_flt(prec, 40468564224, -7)}
 		"l" => {Some(Float::with_val(prec, 10).pow(-3))}
-		"floz" => {Some(Float::with_val(prec, 284130625)*Float::with_val(prec, 10).pow(-13))}
-		"pt" => {Some(constants(prec, "floz".to_string()).unwrap()*20)}
-		"qt" => {Some(constants(prec, "floz".to_string()).unwrap()*40)}
-		"gal" => {Some(constants(prec, "floz".to_string()).unwrap()*160)}
+		"ifloz" => {sci_to_flt(prec, 284130625, -13)}
+		"ipt" => {Some(constants(prec, "ifloz".to_string()).unwrap()*20)}
+		"iqt" => {Some(constants(prec, "ifloz".to_string()).unwrap()*40)}
+		"igal" => {Some(constants(prec, "ifloz".to_string()).unwrap()*160)}
+		"ibu"|"ibsh" => {Some(constants(prec, "ifloz".to_string()).unwrap()*1280)}
+		"ufldr" => {sci_to_flt(prec, 36966911953125, -19)}
+		"tsp" => {Some(constants(prec, "ufldr".to_string()).unwrap()/3*4)}
+		"tbsp" => {Some(constants(prec, "ufldr".to_string()).unwrap()*4)}
+		"ufloz" => {Some(constants(prec, "ufldr".to_string()).unwrap()*8)}
+		"upt" => {Some(constants(prec, "ufloz".to_string()).unwrap()*16)}
+		"uqt" => {Some(constants(prec, "ufloz".to_string()).unwrap()*32)}
+		"ugal" => {Some(constants(prec, "ufloz".to_string()).unwrap()*128)}
+		"bbl" => {Some(constants(prec, "ugal".to_string()).unwrap()*42)}
+		"udpt" => {sci_to_flt(prec, 5506104713575, -16)}
+		"udqt" => {Some(constants(prec, "udpt".to_string()).unwrap()*2)}
+		"udgal" => {Some(constants(prec, "udpt".to_string()).unwrap()*8)}
+		"ubu"|"ubsh" => {Some(constants(prec, "udpt".to_string()).unwrap()*64)}
+		"dbbl" => {sci_to_flt(prec, 115627123584, -12)}
 		/*----------------
 			MASS UNITS
 		----------------*/
-		"ct" => {Some(Float::with_val(prec, 2)*Float::with_val(prec, 10).pow(-4))}
-		"oz" => {Some(Float::with_val(prec, 28349523125i64)*Float::with_val(prec, 10).pow(-12))}
+		"ct" => {sci_to_flt(prec, 2, -4)}
+		"oz" => {sci_to_flt(prec, 28349523125, -12)}
 		"lb" => {Some(constants(prec, "oz".to_string()).unwrap()*16)}
 		"kg" => {Some(Float::with_val(prec, 1))}
 		"st" => {Some(constants(prec, "lb".to_string()).unwrap()*14)}
@@ -303,7 +322,14 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"h" => {Some(constants(prec, "min".to_string()).unwrap()*60)}
 		"d" => {Some(constants(prec, "h".to_string()).unwrap()*24)}
 		"w" => {Some(constants(prec, "d".to_string()).unwrap()*7)}
-
+		/*-----------------
+			OTHER UNITS
+		-----------------*/
+		"J" => {Some(Float::with_val(prec, 1))}
+		"cal" => {sci_to_flt(prec, 4184, -3)}
+		"Pa" => {Some(Float::with_val(prec, 1))}
+		"atm" => {Some(Float::with_val(prec, 101325))}
+		"psi" => {sci_to_flt(prec, 6894757293168, -9)}
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
 		------------------------------*/
