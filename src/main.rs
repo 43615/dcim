@@ -5,11 +5,11 @@ use std::cmp::Ordering;
 
 const HELPMSG: &str = "
 ╭─────────────────────────╮
-│   ╷           ▪         │
+│   ╷           •         │
 │   │                     │
-│ ╭─┤  ╭─╴  ▪  ╶┤   ┌─┬─╮ │
+│ ╭─┤  ╭─╴  •  ╶┤   ┌─┬─╮ │
 │ │ │  │        │   │ │ │ │
-│ ╰─┘  ╰─╴  ▪  ╶┴╴  ╵   ╵ │
+│ ╰─┘  ╰─╴  •  ╶┴╴  ╵   ╵ │
 ╰─────────────────────────╯
 
 dc improved - Feature-added rewrite of an RPN calculator/stack machine language from 1970-72
@@ -1617,7 +1617,7 @@ unsafe fn exec(input: String) {
 					}
 				}
 				else {
-					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -1651,7 +1651,7 @@ unsafe fn exec(input: String) {
 					}
 				}
 				else {
-					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -1761,14 +1761,14 @@ unsafe fn exec(input: String) {
 						}
 					}
 					else {
-						if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+						if !DRS_EN {
 							cmdstk.last_mut().unwrap().pop();	//remove register name
 						}
 						DRS_EN = false;	//invalidate DRS
 					}
 				}
 				else {
-					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -1823,14 +1823,14 @@ unsafe fn exec(input: String) {
 						}
 					}
 					else {
-						if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+						if !DRS_EN {
 							cmdstk.last_mut().unwrap().pop();	//remove register name
 						}
 						DRS_EN = false;	//invalidate DRS
 					}
 				}
 				else {
-					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
@@ -2110,14 +2110,14 @@ unsafe fn exec(input: String) {
 						}
 					}
 					else {
-						if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+						if !DRS_EN {
 							cmdstk.last_mut().unwrap().pop();	//remove register name
 						}
 						DRS_EN = false;	//invalidate DRS
 					}
 				}
 				else {
-					if !DRS_EN&&!cmdstk.last().unwrap().is_empty() {
+					if !DRS_EN {
 						cmdstk.last_mut().unwrap().pop();	//remove register name
 					}
 					DRS_EN = false;	//invalidate DRS
