@@ -702,7 +702,7 @@ unsafe fn exec(input: String) {
 						MSTK.push(Obj {
 							t: true,
 							n: flt_def(),
-							s: res.to_string()
+							s: res
 						});
 						break;
 					}
@@ -817,8 +817,8 @@ unsafe fn exec(input: String) {
 			//add or concatenate strings
 			'+' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						//concat strings
 						if a.t {
@@ -843,8 +843,8 @@ unsafe fn exec(input: String) {
 			//subtract or remove chars from string
 			'-' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						//remove b chars from string a
 						if a.t {
@@ -880,8 +880,8 @@ unsafe fn exec(input: String) {
 			//multiply or repeat/invert string
 			'*' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						//repeat string a b times
 						if a.t {
@@ -916,8 +916,8 @@ unsafe fn exec(input: String) {
 			//divide or shorten string to length
 			'/' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						//shorten string a to length b
 						if a.t {
@@ -957,8 +957,8 @@ unsafe fn exec(input: String) {
 			//modulo, integers only
 			'%' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
@@ -979,8 +979,8 @@ unsafe fn exec(input: String) {
 			//euclidean division or split string
 			'~' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						if a.t {
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
@@ -1029,8 +1029,8 @@ unsafe fn exec(input: String) {
 			//exponentiation
 			'^' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						if a.n<0&&b.n.clone().abs()<1{
 							eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
@@ -1049,9 +1049,9 @@ unsafe fn exec(input: String) {
 			//modular exponentiation, integers only
 			'|' => {
 				if check_n(cmd, MSTK.len()) {
-					let c=MSTK.pop().unwrap();
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let c = MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, c.t) {
 						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
@@ -1078,7 +1078,7 @@ unsafe fn exec(input: String) {
 			//square root
 			'v' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.n<0 {
 							eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
@@ -1097,8 +1097,8 @@ unsafe fn exec(input: String) {
 			//bth root
 			'V' => {
 				if check_n(cmd, MSTK.len()){
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						if a.n<0&&b.n.clone().abs()>1{
 							eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
@@ -1117,7 +1117,7 @@ unsafe fn exec(input: String) {
 			//natural logarithm
 			'g' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.t {
 							MSTK.push(Obj {
@@ -1145,8 +1145,8 @@ unsafe fn exec(input: String) {
 			//base b logarithm
 			'G' => {
 				if check_n(cmd, MSTK.len()){
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						if a.n<=0 {
 							eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
@@ -1168,7 +1168,7 @@ unsafe fn exec(input: String) {
 			//sine
 			'u' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						MSTK.push(Obj {
 							t: false,
@@ -1182,7 +1182,7 @@ unsafe fn exec(input: String) {
 			//cosine
 			'y' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						MSTK.push(Obj {
 							t: false,
@@ -1196,7 +1196,7 @@ unsafe fn exec(input: String) {
 			//tangent
 			't' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						MSTK.push(Obj {
 							t: false,
@@ -1210,7 +1210,7 @@ unsafe fn exec(input: String) {
 			//arc-sine
 			'U' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.n.clone().abs()>1 {
 							eprintln!("! Arithmetic error: Arc-sine of value outside [-1,1]");
@@ -1229,7 +1229,7 @@ unsafe fn exec(input: String) {
 			//arc-cosine
 			'Y' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.n.clone().abs()>1 {
 							eprintln!("! Arithmetic error: Arc-cosine of value outside [-1,1]");
@@ -1248,7 +1248,7 @@ unsafe fn exec(input: String) {
 			//arc-tangent
 			'T' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						MSTK.push(Obj {
 							t: false,
@@ -1262,7 +1262,7 @@ unsafe fn exec(input: String) {
 			//random integer [0;a)
 			'N' => {
 				if check_n(cmd, MSTK.len()){
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int<=0 {
@@ -1282,7 +1282,7 @@ unsafe fn exec(input: String) {
 			//constant/conversion factor lookup or convert number to string
 			'"' => {
 				if check_n(cmd, MSTK.len()) {
-					let mut a=MSTK.pop().unwrap();
+					let mut a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.t {	//constant lookup
 							match a.s.matches(' ').count() {
@@ -1375,11 +1375,11 @@ unsafe fn exec(input: String) {
 			//remove top a elements from stack
 			'C' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(mut num) = int.to_usize() {
-							if num>MSTK.len() { num=MSTK.len(); }	//limit clear count
+							if num>MSTK.len() { num = MSTK.len(); }	//limit clear count
 							MSTK.truncate(MSTK.len()-num);
 						}
 						else {
@@ -1402,7 +1402,7 @@ unsafe fn exec(input: String) {
 			//duplicate top a elements
 			'D' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(num) = int.to_usize() {
@@ -1433,7 +1433,7 @@ unsafe fn exec(input: String) {
 			//rotate top a elements
 			'R' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let mut int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
@@ -1473,7 +1473,7 @@ unsafe fn exec(input: String) {
 			//set output precision
 			'k' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int>=-1 {
@@ -1489,7 +1489,7 @@ unsafe fn exec(input: String) {
 			//set input base
 			'i' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int>=2 {
@@ -1505,7 +1505,7 @@ unsafe fn exec(input: String) {
 			//set output base
 			'o' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int>=2 {
@@ -1521,7 +1521,7 @@ unsafe fn exec(input: String) {
 			//set working precision
 			'w' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if int>=1 && int<=u32::MAX {
@@ -1588,7 +1588,7 @@ unsafe fn exec(input: String) {
 			//save to top of register
 			's' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();					
+					let a = MSTK.pop().unwrap();					
 					if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 						eprintln!("! No register number provided");
 					}
@@ -1715,8 +1715,8 @@ unsafe fn exec(input: String) {
 			//save to top-of-register's array
 			':' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 							eprintln!("! No register number provided");
@@ -1778,7 +1778,7 @@ unsafe fn exec(input: String) {
 			//load from top-of-register's array
 			';' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
 							eprintln!("! No register number provided");
@@ -1965,7 +1965,7 @@ unsafe fn exec(input: String) {
 			//specify manual register index
 			',' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(ri) = int.to_usize() {
@@ -1990,7 +1990,7 @@ unsafe fn exec(input: String) {
 			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
 				if check_n(cmd, MSTK.len()) {
-					let mut a=MSTK.pop().unwrap();
+					let mut a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.t {
 							if a.s.is_empty() {
@@ -2018,7 +2018,7 @@ unsafe fn exec(input: String) {
 			//convert number to UTF-8 string or back
 			'A' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						if a.t {
 							MSTK.push(Obj {
@@ -2046,7 +2046,7 @@ unsafe fn exec(input: String) {
 			//execute string as macro
 			'x' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if a.t {
 						if cmdstk.last().unwrap().is_empty() {
 							cmdstk.pop();	//optimize tail call
@@ -2067,8 +2067,8 @@ unsafe fn exec(input: String) {
 			//conditionally execute macro
 			'<'|'='|'>' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();	//deliberately reverse order
-					let b=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();	//deliberately reverse order
+					let b = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						let mut mac = String::new();
 						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
@@ -2128,8 +2128,8 @@ unsafe fn exec(input: String) {
 			//auto-macro
 			'X' => {
 				if check_n(cmd, MSTK.len()) {
-					let b=MSTK.pop().unwrap();
-					let a=MSTK.pop().unwrap();
+					let b = MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
 						let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(reps) = int.to_usize() {
@@ -2153,7 +2153,7 @@ unsafe fn exec(input: String) {
 			//quit a macro calls
 			'Q' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(mut num) = int.to_usize() {
@@ -2184,7 +2184,7 @@ unsafe fn exec(input: String) {
 			//execute file as script
 			'&' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						match std::fs::read_to_string(a.s.clone()) {
 							Ok(script) => {
@@ -2206,7 +2206,7 @@ unsafe fn exec(input: String) {
 			//get environment variable
 			'$' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						match std::env::var(&a.s) {
 							Ok(val) => {
@@ -2227,17 +2227,26 @@ unsafe fn exec(input: String) {
 			//execute os command(s)
 			'\\' => {
 				if check_n(cmd, MSTK.len()) {
-					let a=MSTK.pop().unwrap();
+					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						for oscmd in a.s.split(';') {
-							let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
-							match std::process::Command::new(args.remove(0)).args(args).spawn() {
-								Ok(mut child) => {
-									let _ = child.wait();
-								},
-								Err(error) => {
-									eprintln!("! Unable to execute command \"{}\": {}", oscmd, error);
-								},
+							if let Some((var, val)) = oscmd.split_once('=') {	//set variable
+								std::env::set_var(var, val);
+							}
+							else {	//normal command
+								let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
+								match std::process::Command::new(args.remove(0)).args(args).spawn() {
+									Ok(mut child) => {
+										if let Ok(stat) = child.wait() {
+											if let Some(code) = stat.code() {
+												if code!=0 {eprintln!("! OS command \"{}\" exited with code {}", oscmd, code);}
+											}
+										}
+									},
+									Err(error) => {
+										eprintln!("! Unable to execute OS command \"{}\": {}", oscmd, error);
+									},
+								}
 							}
 						}
 					}
