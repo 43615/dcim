@@ -95,7 +95,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - `Q` may behave slightly differently, TODO: test.
 - `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). This enables easy usage of existing macros in interactive mode and splitting of scripts into multiple modular files. Because the script is executed in the same instance of dcim, it may overwrite register contents.
 - `$` pops a string and pushes the environment variable with that name if it exists.
-- `\` pops a string and executes it as one or more OS commands (separated by `;`). Features of your shell like aliases are not available. `[clear]\` is a useful thing to remember.
+- `\` pops a string and executes it as one or more OS commands (separated by `;`). The allowed syntax is either `cmd arg1 arg2...` or `var=val` for setting environment variables.
 ## Library of constants and conversion factors
 [List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
