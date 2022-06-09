@@ -93,7 +93,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - `q` now always exits regardless of where it's called from.
   - If the [DRS](#Direct-register-number-selection) is set, its value is used as the exit code.
 - `Q` may behave slightly differently, TODO: test.
-- `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). This enables easy usage of existing macros in interactive mode and splitting of scripts into multiple modular files. Because the script is executed in the same instance of dcim, it may overwrite register contents.
+- `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). This enables easy usage of existing helper scripts while in interactive mode and splitting of scripts into multiple modular files. Because the script is executed in the same instance of dcim, it may overwrite register contents.
 - `$` pops a string and pushes the environment variable with that name if it exists.
 - `\` pops a string and executes it as one or more OS commands (separated by `;`). The allowed syntax is either `cmd arg1 arg2...` or `var=val` for setting environment variables.
 ## Library of constants and conversion factors
