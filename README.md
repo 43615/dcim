@@ -111,7 +111,8 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
   - `90[deg]"*` converts 90° to radians.
   - `80[lb]"/` converts 80 kilograms to pounds.
   - `3[6in nmi]"*` converts 3 million inches to nautical miles.
-  - `5[m3 in3]"*` converts 5 cubic meters to cubic inches.
+  - `5[in3 -2m3]"*` converts 5 cubic inches to cubic centimeters.
+  - `69[w2 21tsp]"*` converts 69 square weeks to zetateaspoons. Nonsense is possible, be careful.
 # Memory model diagram
 dc's manpage doesn't do a great job at explaining it, so here's a diagram:
 ```
