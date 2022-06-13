@@ -13,6 +13,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane (0000-FFFF) can be used as a register name. This is the only arbitrary limit imposed on the user.
 - When saving or loading uninitialized array objects, all previously nonexistent objects are initialized with the number 0. This fixes undefined behaviour like with `123d:ala`.
+- For consistency, negative numbers are printed with `_` instead of `-`.
 - Strings have full Unicode support (stored as UTF-8). The new string manipulation features index all strings by characters.
 - The `!` command for executing OS commands is replaced with `\`, which pops and runs a string.
 ## Number input changes
@@ -26,7 +27,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
 - If output precision is -1 (new default), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
-- If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `-1.23456 @-789`. Like with SCI input, the exponent is always in decimal.
+- If it's not, up to K digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `_1.23456@_789`. Like with SCI input, the exponent is always in decimal.
 - Working precision (default: 256 bits) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 53-bit mantissa.
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
 - Scale is limited to 2^±2³⁰ or ≈10^±323'228'496.
