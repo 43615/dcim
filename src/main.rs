@@ -1252,7 +1252,7 @@ unsafe fn exec(input: String) {
 				MSTK.clear();
 			},
 
-			//remove top a elements from stack
+			//remove top a objects from stack
 			'C' => {
 				if check_n(cmd, MSTK.len()) {
 					let a = MSTK.pop().unwrap();
@@ -1263,7 +1263,7 @@ unsafe fn exec(input: String) {
 							MSTK.truncate(MSTK.len()-num);
 						}
 						else {
-							eprintln!("! Cannot possibly remove {} elements from the main stack", int);
+							eprintln!("! Cannot possibly remove {} objects from the main stack", int);
 						}
 					}
 				}
@@ -1279,7 +1279,7 @@ unsafe fn exec(input: String) {
 				}
 			},
 
-			//duplicate top a elements
+			//duplicate top a objects
 			'D' => {
 				if check_n(cmd, MSTK.len()) {
 					let a = MSTK.pop().unwrap();
@@ -1290,27 +1290,27 @@ unsafe fn exec(input: String) {
 								MSTK.extend_from_within(MSTK.len()-num..);
 							}
 							else {
-								eprintln!("! Not enough elements to duplicate");
+								eprintln!("! Not enough objects to duplicate");
 							}
 						}
 						else {
-							eprintln!("! Cannot possibly duplicate {} elements", int);
+							eprintln!("! Cannot possibly duplicate {} objects", int);
 						}
 					}
 				}
 			},
 
-			//swap top 2 elements
+			//swap top 2 objects
 			'r' => {
 				if MSTK.len()>=2 {
 					MSTK.swap(MSTK.len()-2, MSTK.len()-1);
 				}
 				else {
-					eprintln!("! Not enough elements to rotate")
+					eprintln!("! Not enough objects to rotate")
 				}
 			},
 
-			//rotate top a elements
+			//rotate top a objects
 			'R' => {
 				if check_n(cmd, MSTK.len()) {
 					let a = MSTK.pop().unwrap();
@@ -1329,11 +1329,11 @@ unsafe fn exec(input: String) {
 								MSTK = sl.to_vec();
 							}
 							else {
-								eprintln!("! Not enough elements to rotate");
+								eprintln!("! Not enough objects to rotate");
 							}
 						}
 						else {
-							eprintln!("! Cannot possibly rotate {} elements", int.abs());
+							eprintln!("! Cannot possibly rotate {} objects", int.abs());
 						}
 					}
 				}
@@ -1994,7 +1994,7 @@ unsafe fn exec(input: String) {
 							if num>cmdstk.len() {num=cmdstk.len();}
 							cmdstk.truncate(cmdstk.len()-num);
 							if cmdstk.is_empty() {
-								cmdstk.push(String::new());	//guarantee at least one element
+								cmdstk.push(String::new());	//guarantee at least one object
 							}
 						}
 						else {
