@@ -55,11 +55,11 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - All modulo operators (`%`, `~`, `|`) now round their arguments.
 - `N` pushes a random integer in range \[0;a).
 ## New stack/register manipulation commands
-- `C` deletes the top a elements.
-- `D` duplicates the top a elements.
+- `C` deletes the top a objects.
+- `D` duplicates the top a objects.
 - `Z`\<reg\> now pushes the depth of a register.
 - `F`\<reg\> now prints an entire register including array contents.
-- `R` rotates the top abs(a) elements: upward if a is positive, downward if negative.
+- `R` rotates the top abs(a) objects: upward if a is positive, downward if negative.
   - Example: `1 2 3 4 3R` results in 1 4 2 3.
 - To enable copying of register arrays, a buffer for one complete register object has been added. Refer to the memory diagram below.
   - `j`\<reg\> and `J`\<reg\> are like `l` and `L`, but copy and pop to the buffer instead of the main stack.
