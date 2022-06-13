@@ -72,8 +72,8 @@ impl Obj {
 
 static mut MSTK: Vec<Obj> = Vec::new();	//main stack
 
-static mut REGS: Vec<Vec<RegObj>> = Vec::new();	//array of registers
-const REGS_SIZE: usize = 65536;	//amount of available registers
+const REG_DEF: Vec<RegObj> = Vec::new();
+static mut REGS: [Vec<RegObj>; 65536] = [REG_DEF; 65536];	//array of registers
 static mut RO_BUF: Vec<RegObj> = Vec::new();	//vec because constant constructors are impossible, initialized in main
 
 static mut DRS: usize = 0;	//direct register selector
@@ -91,7 +91,6 @@ fn main() {
 	//init everything that doesn't have a const constructor
 	unsafe {
 		ENVSTK.push((kdef(), idef(), odef()));	//initialize env params
-		REGS.resize(REGS_SIZE, Vec::new());	//initialize registers
 		RO_BUF.push(RegObj{	//and RegObj buffer
 			a: Vec::new(),
 			o: Obj::n(Float::with_val(WPREC, 0))
@@ -784,7 +783,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						if !REGS[ri].is_empty(){
 							for i in (0..REGS[ri].len()).rev() {
 								if REGS[ri][i].o.t {
@@ -1461,7 +1460,7 @@ unsafe fn exec(input: String) {
 						else {
 							cmdstk.last_mut().unwrap().pop().unwrap() as usize
 						};
-						if REGS_SIZE>ri {
+						if REGS.len()>ri {
 							if REGS[ri].is_empty() {
 								REGS[ri].push(RegObj {
 									o: a,
@@ -1503,7 +1502,7 @@ unsafe fn exec(input: String) {
 						else {
 							cmdstk.last_mut().unwrap().pop().unwrap() as usize
 						};
-						if REGS_SIZE>ri {
+						if REGS.len()>ri {
 							REGS[ri].push(a);
 						}
 						else {
@@ -1532,7 +1531,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
 						}
@@ -1559,7 +1558,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
 						}
@@ -1590,7 +1589,7 @@ unsafe fn exec(input: String) {
 							else {
 								cmdstk.last_mut().unwrap().pop().unwrap() as usize
 							};
-							if REGS_SIZE>ri {
+							if REGS.len()>ri {
 								if REGS[ri].is_empty() {
 									REGS[ri].push(RegObj {
 										o: Obj::n(Float::with_val(WPREC, 0)),	//create default register object if empty
@@ -1644,7 +1643,7 @@ unsafe fn exec(input: String) {
 							else {
 								cmdstk.last_mut().unwrap().pop().unwrap() as usize
 							};
-							if REGS_SIZE>ri {
+							if REGS.len()>ri {
 								if REGS[ri].is_empty() {
 									REGS[ri].push(RegObj {
 										o: Obj::n(Float::with_val(WPREC, 0)),	//create default register object if empty
@@ -1695,7 +1694,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
 						}
@@ -1722,7 +1721,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
 						}
@@ -1749,7 +1748,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						REGS[ri].pop();
 						REGS[ri].push(RO_BUF[0].clone());
 					}
@@ -1772,7 +1771,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						REGS[ri].push(RO_BUF[0].clone());
 					}
 					else {
@@ -1794,7 +1793,7 @@ unsafe fn exec(input: String) {
 					else {
 						cmdstk.last_mut().unwrap().pop().unwrap() as usize
 					};
-					if REGS_SIZE>ri {
+					if REGS.len()>ri {
 						MSTK.push(Obj::n(Float::with_val(WPREC, REGS[ri].len())));
 					}
 					else {
@@ -1810,7 +1809,7 @@ unsafe fn exec(input: String) {
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(ri) = int.to_usize() {
-							if REGS_SIZE>ri {
+							if REGS.len()>ri {
 								DRS = ri;
 								DRS_EN = true;
 							}
@@ -1917,7 +1916,7 @@ unsafe fn exec(input: String) {
 							else {
 								cmdstk.last_mut().unwrap().pop().unwrap() as usize
 							};
-							if REGS_SIZE>ri {
+							if REGS.len()>ri {
 								if REGS[ri].is_empty() {
 									eprintln!("! Register {} is empty", ri);
 								}
