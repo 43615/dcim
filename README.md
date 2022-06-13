@@ -13,7 +13,6 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane (0000-FFFF) can be used as a register name. This is the only arbitrary limit imposed on the user.
 - When saving or loading uninitialized array objects, all previously nonexistent objects are initialized with the number 0. This fixes undefined behaviour like with `123d:ala`.
-- For consistency, negative numbers are printed with `_` instead of `-`.
 - Strings have full Unicode support (stored as UTF-8). The new string manipulation features index all strings by characters.
 - The `!` command for executing OS commands is replaced with `\`, which pops and runs a string.
 ## Number input changes
@@ -24,6 +23,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - Exponential/scientific notation shorthand: `<a>@<b>` is equivalent to `<a>I{<b>}^*`, but is easier to input and might avoid rounding errors. '@' replaces the traditional 'e'/'E' to work with all input bases. The exponent must be a decimal integer and is applied to the input base. If no mantissa is provided, 1 is assumed (`1@123`=`@123`).
 ## Precision and number output changes
 - Numbers are output the normal way if output base is in range 2-36 (inclusive).
+- For consistency, negative numbers are printed with `_` instead of `-`.
 - The precision parameter has been split into output precision (`k`/`K`) and working/mantissa precision (`w`/`W`).
 - Output precision now applies correctly regardless of output base.
 - If output precision is -1 (new default), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
