@@ -75,7 +75,7 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
   - Example: `[vwxyz]_2/` results in "yz".
 - `~` splits a string at character b, pushing the left side first.
 - `g` can also return the length of a string.
-- `a` now converts the least significant 32 bits to a character or a character to its numerical value.
+- `a` now converts a number to a character or a character to its numerical value.
 - `A` either converts a number to a UTF-8 string (like dc `P`, but without printing) or reverses the conversion.
 - `"`, which is also used for the [library of constants](#library-of-constants-and-conversion-factors), converts a number to its string representation (like printing, but without printing). Useful for prettifying output (tabulation etc.).
 ## Direct register number selection
