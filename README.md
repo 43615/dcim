@@ -52,13 +52,14 @@ Features present in GNU dc are not listed here unless different. [Familiarize yo
 - `g`: natural log of a.
 - `G`: bth log of a, effectively a shorthand for `<a>g <b>g /`.
 - `uyt`, `UYT`: sin, cos, tan, asin, acos, atan. Arguments in radians.
+  - Mnemonic/reason for placement: On QWERTY, this is one of two three-key runs not used by GNU dc. T matches "tangent", sin and cos are next to it to create the traditional three-key layout found on many calculators, albeit reversed.
 - All modulo operators (`%`, `~`, `|`) now round their arguments.
 - `N` pushes a random integer in range \[0;a).
 ## New stack/register manipulation commands
 - `C` deletes the top a objects.
 - `D` duplicates the top a objects.
 - `Z`\<reg\> now pushes the depth of a register.
-- `F`\<reg\> now prints an entire register including array contents.
+- `F`\<reg\> now prints an entire register including array contents with indices.
 - `R` rotates the top abs(a) objects: upward if a is positive, downward if negative.
   - Example: `1 2 3 4 3R` results in 1 4 2 3.
 - To enable copying of register arrays, a buffer for one complete register object has been added. Refer to the memory diagram below.
