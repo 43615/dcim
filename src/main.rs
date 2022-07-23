@@ -76,8 +76,7 @@ const REG_DEF: Vec<RegObj> = Vec::new();
 static mut REGS: [Vec<RegObj>; 65536] = [REG_DEF; 65536];	//array of registers
 static mut RO_BUF: Vec<RegObj> = Vec::new();	//vec because constant constructors are impossible, initialized in main
 
-static mut DRS: usize = 0;	//direct register selector
-static mut DRS_EN: bool = false;	//DRS valid?
+static mut DRS: Option<usize> = None;	//direct register selector
 
 static mut RNG: Vec<RandState> = Vec::new();	//same problem as with RO_BUF
 
@@ -145,7 +144,7 @@ fn interactive_mode() {
 			print!("\r");
 			std::process::exit(0);	//stop on end of pipe input
 		}
-		input = input.trim_end_matches('\n').to_string();	//remove trailing LF
+		input = input.trim_end_matches(|c: char| c=='\n'||c=='\r').to_string();	//remove trailing LF
 
 		unsafe {
 			exec(input);
@@ -224,16 +223,16 @@ fn check_n(op: char, n: usize) -> bool {
 fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 	if match op {
 		//'+' can also concatenate strings
-		'+' => (!a&&!b)||(a&&b),
+		'+' => a==b,
 
 		//string manipulation, store into array
-		'-'|'*'|'/'|'~'|':' => (!a&&!b)||(a&&!b),
+		'-'|'*'|'/'|'~'|':' => !b,
 
 		//read file by name, get env variable, execute os command
 		'&'|'$'|'\\' => a,
 
 		//convert both ways, constant lookup by string name or convert number to string, execute macros, get log or string length
-		'a'|'A'|'"'|'x'|'g' => !a||a,
+		'a'|'A'|'"'|'x'|'g' => true,
 
 		//auto-macro
 		'X' => a&&!b,
@@ -343,6 +342,7 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		"Pa" => {Some(Float::with_val(prec, 1))}
 		"atm" => {Some(Float::with_val(prec, 101325))}
 		"psi" => {sci_to_flt(prec, 6894757293168, -9)}
+		"torr" => {Some(constants(prec, "atm".to_string()).unwrap()/760)}
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
 		------------------------------*/
@@ -376,14 +376,19 @@ fn rev_str(mut instr: String) -> String {
 //if output base is over 36, prints in custom "any-base" notation
 //otherwise, applies precision like dc and converts from exponential notation if not too small
 fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
-	if num.is_zero() {
-		return String::from(if obase>36 {"(0)"} else {"0"});	//causes issues, always "0" regardless of parameters
-	}
-	if num.is_infinite() {
-		return String::from("Infinity");
-	}
-	if num.is_nan() {
-		return String::from("Not a number");
+	if !num.is_normal() {
+		if num.is_zero() {
+			return String::from(if obase>36 {"(0)"} else {"0"});	//causes issues, always "0" regardless of parameters
+		}
+		let mut ret = String::from(if num.is_sign_negative() {"-"} else {""});
+		if num.is_infinite() {
+			ret += "∞";
+			return ret;
+		}
+		if num.is_nan() {
+			ret += "NaN";
+			return ret;
+		}
 	}
 
 	if obase>36 {	//any-base printing (original base conversion algorithm out of necessity, limited precision possible)
@@ -417,7 +422,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		}
 		if scale>0 {
 			if let Some((idx, _)) = outstr.rmatch_indices(' ').nth(scale) {	//find location for fractional separator
-				unsafe { outstr.as_bytes_mut()[idx] = '.' as u8; }	//and insert it
+				unsafe { outstr.as_bytes_mut()[idx] = b'.'; }	//and insert it
 			}
 			else {
 				outstr.insert_str(if outstr.starts_with("(-") {2} else {1}, "0.");	//number has no integer part, add "0."
@@ -446,8 +451,8 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 				let bytes = outstr.as_bytes_mut();
 				for ir in 0..=im {	//right offset
 					if ir>10 {break;}	//exponents cannot have more digits, longest is @-323228496
-					if bytes[im-ir]=='e' as u8 {
-						bytes[im-ir] = '@' as u8;	//replace
+					if bytes[im-ir]==b'e' {
+						bytes[im-ir] = b'@';	//replace
 						break;
 					}
 				}
@@ -772,17 +777,12 @@ unsafe fn exec(input: String) {
 
 			//print register
 			'F' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						if !REGS[ri].is_empty(){
 							for i in (0..REGS[ri].len()).rev() {
@@ -871,9 +871,8 @@ unsafe fn exec(input: String) {
 						if a.t {
 							let mut newstr = a.s;
 							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-							if let Some(mut num) = &int.abs_ref().complete().to_usize() {
-								if num*newstr.len()>usize::MAX { num = usize::MAX/newstr.len(); }	//account for too large b
-								newstr = newstr.repeat(num);
+							if let Some(num) = &int.abs_ref().complete().to_usize() {
+								newstr = newstr.repeat(*num);
 								if int<0 { newstr = rev_str(newstr); }	//if b is negative, invert string
 								MSTK.push(Obj::s(newstr));
 							}
@@ -1183,7 +1182,7 @@ unsafe fn exec(input: String) {
 									while a.s.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
 										scale.push(a.s.remove(0));	//extract scale prefix
 									}
-									if scale.is_empty() {scale.push('0');}
+									if scale.is_empty()||scale.ends_with('-') {scale.push('0');}
 
 									let mut power = String::new();
 									while a.s.ends_with(|c: char| c.is_ascii_digit()) {
@@ -1205,7 +1204,7 @@ unsafe fn exec(input: String) {
 									while sfrom.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
 										kfrom.push(sfrom.remove(0));	//extract scale prefix
 									}
-									if kfrom.is_empty() {kfrom.push('0');}
+									if kfrom.is_empty()||kfrom.ends_with('-') {kfrom.push('0');}
 									let mut pfrom = String::new();
 									while sfrom.ends_with(|c: char| c.is_ascii_digit()) {
 										pfrom.insert(0, sfrom.pop().unwrap());	//extract power suffix
@@ -1216,7 +1215,7 @@ unsafe fn exec(input: String) {
 									while sto.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
 										kto.push(sto.remove(0));	//extract scale prefix
 									}
-									if kto.is_empty() {kto.push('0');}
+									if kto.is_empty()||kto.ends_with('-') {kto.push('0');}
 									let mut pto = String::new();
 									while sto.ends_with(|c: char| c.is_ascii_digit()) {
 										pto.insert(0, sto.pop().unwrap());	//extract power suffix
@@ -1400,7 +1399,7 @@ unsafe fn exec(input: String) {
 					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, false, false) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if int>=1 && int<=u32::MAX {
+						if (1..=u32::MAX).contains(&int) {
 							WPREC = int.to_u32().unwrap();
 						}
 						else {
@@ -1447,19 +1446,14 @@ unsafe fn exec(input: String) {
 			--------------------------*/
 			//save to top of register
 			's' => {
-				if check_n(cmd, MSTK.len()) {
-					let a = MSTK.pop().unwrap();					
-					if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
-						eprintln!("! No register number provided");
-					}
-					else {
-						let ri = if DRS_EN {
-							DRS_EN = false;
-							DRS
-						}
-						else {
-							cmdstk.last_mut().unwrap().pop().unwrap() as usize
-						};
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
+					if check_n(cmd, MSTK.len()) {
+						let a = MSTK.pop().unwrap();
 						if REGS.len()>ri {
 							if REGS[ri].is_empty() {
 								REGS[ri].push(RegObj {
@@ -1476,31 +1470,20 @@ unsafe fn exec(input: String) {
 						}
 					}
 				}
-				else {
-					if !DRS_EN {
-						cmdstk.last_mut().unwrap().pop();	//remove register name
-					}
-					DRS_EN = false;	//invalidate DRS
-				}
 			},
 
 			//push to top of register
 			'S' => {
-				if check_n(cmd, MSTK.len()) {
-					let a=RegObj {
-						o: MSTK.pop().unwrap(),
-						a: Vec::new()
-					};
-					if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
-						eprintln!("! No register number provided");
-					}
-					else {
-						let ri = if DRS_EN {
-							DRS_EN = false;
-							DRS
-						}
-						else {
-							cmdstk.last_mut().unwrap().pop().unwrap() as usize
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
+					if check_n(cmd, MSTK.len()) {
+						let a=RegObj {
+							o: MSTK.pop().unwrap(),
+							a: Vec::new()
 						};
 						if REGS.len()>ri {
 							REGS[ri].push(a);
@@ -1510,27 +1493,16 @@ unsafe fn exec(input: String) {
 						}
 					}
 				}
-				else {
-					if !DRS_EN {
-						cmdstk.last_mut().unwrap().pop();	//remove register name
-					}
-					DRS_EN = false;	//invalidate DRS
-				}
 			},
 
 			//load from top of register
 			'l' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
@@ -1547,17 +1519,12 @@ unsafe fn exec(input: String) {
 
 			//pop from top of register
 			'L' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
@@ -1574,21 +1541,16 @@ unsafe fn exec(input: String) {
 
 			//save to top-of-register's array
 			':' => {
-				if check_n(cmd, MSTK.len()) {
-					let b = MSTK.pop().unwrap();
-					let a = MSTK.pop().unwrap();
-					if check_t(cmd, a.t, b.t, false) {
-						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
-							eprintln!("! No register number provided");
-						}
-						else {
-							let ri = if DRS_EN {
-								DRS_EN = false;
-								DRS
-							}
-							else {
-								cmdstk.last_mut().unwrap().pop().unwrap() as usize
-							};
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
+					if check_n(cmd, MSTK.len()) {
+						let b = MSTK.pop().unwrap();
+						let a = MSTK.pop().unwrap();
+						if check_t(cmd, a.t, b.t, false) {
 							if REGS.len()>ri {
 								if REGS[ri].is_empty() {
 									REGS[ri].push(RegObj {
@@ -1612,37 +1574,20 @@ unsafe fn exec(input: String) {
 							}
 						}
 					}
-					else {
-						if !DRS_EN {
-							cmdstk.last_mut().unwrap().pop();	//remove register name
-						}
-						DRS_EN = false;	//invalidate DRS
-					}
-				}
-				else {
-					if !DRS_EN {
-						cmdstk.last_mut().unwrap().pop();	//remove register name
-					}
-					DRS_EN = false;	//invalidate DRS
 				}
 			},
 
 			//load from top-of-register's array
 			';' => {
-				if check_n(cmd, MSTK.len()) {
-					let a = MSTK.pop().unwrap();
-					if check_t(cmd, a.t, false, false) {
-						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
-							eprintln!("! No register number provided");
-						}
-						else {
-							let ri = if DRS_EN {
-								DRS_EN = false;
-								DRS
-							}
-							else {
-								cmdstk.last_mut().unwrap().pop().unwrap() as usize
-							};
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
+					if check_n(cmd, MSTK.len()) {
+						let a = MSTK.pop().unwrap();
+						if check_t(cmd, a.t, false, false) {
 							if REGS.len()>ri {
 								if REGS[ri].is_empty() {
 									REGS[ri].push(RegObj {
@@ -1666,34 +1611,17 @@ unsafe fn exec(input: String) {
 							}
 						}
 					}
-					else {
-						if !DRS_EN {
-							cmdstk.last_mut().unwrap().pop();	//remove register name
-						}
-						DRS_EN = false;	//invalidate DRS
-					}
-				}
-				else {
-					if !DRS_EN {
-						cmdstk.last_mut().unwrap().pop();	//remove register name
-					}
-					DRS_EN = false;	//invalidate DRS
 				}
 			},
 
 			//load top-of-reg into buffer
 			'j' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
@@ -1710,17 +1638,12 @@ unsafe fn exec(input: String) {
 
 			//pop top-of-reg into buffer
 			'J' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						if REGS[ri].is_empty() {
 							eprintln!("! Register {} is empty", ri);
@@ -1737,17 +1660,12 @@ unsafe fn exec(input: String) {
 
 			//save buffer to top-of-reg
 			'h' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						REGS[ri].pop();
 						REGS[ri].push(RO_BUF[0].clone());
@@ -1760,17 +1678,12 @@ unsafe fn exec(input: String) {
 
 			//push buffer to register
 			'H' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						REGS[ri].push(RO_BUF[0].clone());
 					}
@@ -1782,17 +1695,12 @@ unsafe fn exec(input: String) {
 
 			//push register depth
 			'Z' => {
-				if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
 					eprintln!("! No register number provided");
 				}
 				else {
-					let ri = if DRS_EN {
-						DRS_EN = false;
-						DRS
-					}
-					else {
-						cmdstk.last_mut().unwrap().pop().unwrap() as usize
-					};
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
 					if REGS.len()>ri {
 						MSTK.push(Obj::n(Float::with_val(WPREC, REGS[ri].len())));
 					}
@@ -1810,8 +1718,7 @@ unsafe fn exec(input: String) {
 						let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
 						if let Some(ri) = int.to_usize() {
 							if REGS.len()>ri {
-								DRS = ri;
-								DRS_EN = true;
+								DRS = Some(ri);
 							}
 							else {
 								eprintln!("! Register {} is not available", ri);
@@ -1900,22 +1807,17 @@ unsafe fn exec(input: String) {
 
 			//conditionally execute macro
 			'<'|'='|'>' => {
-				if check_n(cmd, MSTK.len()) {
-					let a = MSTK.pop().unwrap();	//deliberately reverse order
-					let b = MSTK.pop().unwrap();
-					if check_t(cmd, a.t, b.t, false) {
-						let mut mac = String::new();
-						if cmdstk.last().unwrap().is_empty()&&!DRS_EN {
-							eprintln!("! No register name provided");
-						}
-						else {
-							let ri = if DRS_EN {
-								DRS_EN = false;
-								DRS
-							}
-							else {
-								cmdstk.last_mut().unwrap().pop().unwrap() as usize
-							};
+				if cmdstk.last().unwrap().is_empty()&&DRS.is_none() {
+					eprintln!("! No register number provided");
+				}
+				else {
+					let ri = DRS.unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize);
+					DRS = None;
+					if check_n(cmd, MSTK.len()) {
+						let a = MSTK.pop().unwrap();	//deliberately reverse order
+						let b = MSTK.pop().unwrap();
+						if check_t(cmd, a.t, b.t, false) {
+							let mut mac = String::new();
 							if REGS.len()>ri {
 								if REGS[ri].is_empty() {
 									eprintln!("! Register {} is empty", ri);
@@ -1927,14 +1829,11 @@ unsafe fn exec(input: String) {
 							else {
 								eprintln!("! Register {} is not available", ri);
 							}
-						}
-						if !mac.is_empty() {
 							if inv != match cmd {	//like xor
 								'<' => { a.n < b.n },
 								'=' => { a.n == b.n },
 								'>' => { a.n > b.n },
-								_ => {false},
-							}
+								_ => {false},}
 							{
 								if cmdstk.last().unwrap().is_empty() {
 									cmdstk.pop();	//optimize tail call
@@ -1943,18 +1842,6 @@ unsafe fn exec(input: String) {
 							}
 						}
 					}
-					else {
-						if !DRS_EN {
-							cmdstk.last_mut().unwrap().pop();	//remove register name
-						}
-						DRS_EN = false;	//invalidate DRS
-					}
-				}
-				else {
-					if !DRS_EN {
-						cmdstk.last_mut().unwrap().pop();	//remove register name
-					}
-					DRS_EN = false;	//invalidate DRS
 				}
 				inv = false;	//always reset inversion
 			},
@@ -1981,7 +1868,7 @@ unsafe fn exec(input: String) {
 
 			//quit dcim
 			'q' => {
-				std::process::exit(if DRS_EN {DRS as i32} else {0});
+				std::process::exit(DRS.unwrap_or(0) as i32);
 			},
 
 			//quit a macro calls
