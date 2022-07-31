@@ -793,7 +793,7 @@ unsafe fn exec(input: String) {
 									println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
 								}
 								if !REGS[ri][i].a.is_empty() {
-									let maxwidth = REGS[ri][i].a.len().to_string().len();	//length of longest index number
+									let maxwidth = (REGS[ri][i].a.len()-1).to_string().len();	//length of longest index number
 									for ai in 0..REGS[ri][i].a.len() {
 										if REGS[ri][i].a[ai].t {
 											println!("\t{:>maxwidth$}: [{}]", ai, REGS[ri][i].a[ai].s);
