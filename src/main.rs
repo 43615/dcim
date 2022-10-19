@@ -17,16 +17,16 @@ Most basic GNU dc features are unaltered, full documentation at https://github.c
 
 Options and syntax:
 
-<nothing> | --interactive | -i | i
+<nothing> | --inter | -i
 	Interactive mode, standard prompt loop.
 
-(--expression | -e | e) expr1 expr2 expr3 ... [?]
+(--expr | -e) expr1 expr2 expr3 ... [?]
 	Expression mode, executes expressions in order. If the last argument is '?', enters interactive mode after expressions are done.
 
-(--file | -f | f) file1 file2 file3 ... [?]
+[(--file | -f)] file1 file2 file3 ... [?]
 	File mode, executes contents of files in order. '?' behaves the same as with -e.
 
---help | -h | h
+--help | -h
 	Print this help message.
 ";
 
@@ -103,23 +103,30 @@ fn main() {
 		interactive_mode();	//default to interactive
 	}
 	else {
-		let mode = args.remove(0);
+		let mode = &args[0];	//first arg, usually mode
 		match mode.as_str() {
-			"--interactive"|"-i"|"i" => {
+			"--inter"|"-i" => {
 				//ability to force interactive mode just in case
 				interactive_mode();
 			},
-			"--expression"|"-e"|"e" => {
+			"--expr"|"-e" => {
+				args.remove(0);
 				expression_mode(args);
 			},
-			"--file"|"-f"|"f" => {
+			"--file"|"-f" => {
+				args.remove(0);
 				file_mode(args);
 			},
-			"--help"|"-h"|"h" => {
+			"--help"|"-h" => {
 				println!("{}", HELPMSG);
 			},
 			_ => {
-				eprintln!("! Invalid option \"{}\", use h for option syntax help", mode);
+				if mode.starts_with('-'){
+					eprintln!("! Invalid option \"{}\", use -h for option syntax help", mode);
+				}
+				else {	//assume filenames
+					file_mode(args);
+				}
 			},
 		}
 	}
