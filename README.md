@@ -59,6 +59,7 @@ This readme only lists changes compared to GNU dc. If you're a beginner, [famili
 - `V`: bth root of a.
 - `g`: natural log of a.
 - `G`: bth log of a, effectively a shorthand for `<a>g <b>g /`.
+- `°`: shorthand for converting an angle from degrees to radians, intuitive syntax. Not found on standard QWERTY, sorry.
 - `uyt`, `UYT`: sin, cos, tan, asin, acos, atan. Arguments in radians.
   - Mnemonic/reason for placement: On QWERTY, this is one of two three-key runs not used by GNU dc. T matches "tangent", sin and cos are next to it to create the traditional three-key layout found on many calculators (albeit reversed).
 - All modulo operators (`%`, `~`, `|`) now round their arguments.

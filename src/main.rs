@@ -1250,6 +1250,16 @@ unsafe fn exec(input: String) {
 					}
 				}
 			},
+
+			//deg -> rad shorthand
+			'°' => {
+				if check_n(cmd, MSTK.len()){
+					let a = MSTK.pop().unwrap();
+					if check_t(cmd, a.t, false, false){
+						MSTK.push(Obj::n(a.n * Float::with_val(WPREC, Constant::Pi) / 180))
+					}
+				}
+			},
 			/*------------------------
 				STACK MANIPULATION
 			------------------------*/
