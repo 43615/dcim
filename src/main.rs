@@ -1,4 +1,4 @@
-use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant}, ops::Pow, rand::RandState};
+use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState};
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, Duration};
 use std::cmp::Ordering;
@@ -356,6 +356,9 @@ fn constants(prec: u32, key: String) -> Option<Float> {
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
 		------------------------------*/
+		"inf" => {Some(Float::with_val(prec, Special::Infinity))}
+		"ninf" => {Some(Float::with_val(prec, Special::NegInfinity))}
+		"nan" => {Some(Float::with_val(prec, Special::Nan))}
 		"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs()))}
 		"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()))}
 		"pid" => {Some(Float::with_val(prec, std::process::id()))}
