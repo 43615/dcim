@@ -94,7 +94,10 @@ Building for Windows is not possible in a standard environment, a premade exe is
 - `*` repeats string a abs(b) times, reversing it if b is negative.
 - `/` removes characters from string a such that abs(b) remain: from the back if b is positive, from the front if negative.
   - Example: `[vwxyz]_2/` results in "yz".
+- `%` isolates the bth character.
 - `~` splits a string at character b, pushing the left side first.
+- `^` finds b in a (index of first match, -1 if not found).
+- `|` searches a for b and replaces with c.
 - `g` can also return the length of a string.
 - `a` now converts a number to a character or a character to its numerical value.
 - `A` either converts a number to a UTF-8 string (like dc `P`, but without printing) or reverses the conversion.

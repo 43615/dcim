@@ -229,16 +229,19 @@ fn check_n(op: char, n: usize) -> bool {
 //a-c: types (.t) of the operands that would be used (in canonical order), use false if not required
 fn check_t(op: char, a: bool, b: bool, c: bool) -> bool {
 	if match op {
-		//'+' can also concatenate strings
-		'+' => a==b,
+		//concat, find
+		'+'|'^' => a==b,
+
+		//replace
+		'|' => a==b && b==c,
 
 		//string manipulation, store into array
-		'-'|'*'|'/'|'~'|':' => !b,
+		'-'|'*'|'/'|'%'|'~'|':' => !b,
 
 		//read file by name, get env variable, execute os command
 		'&'|'$'|'\\' => a,
 
-		//convert both ways, constant lookup by string name or convert number to string, execute macros, get log or string length
+		//convert both ways, constant lookup or print to string, execute macros, log or string length
 		'a'|'A'|'"'|'x'|'g' => true,
 
 		//auto-macro
@@ -928,19 +931,35 @@ unsafe fn exec(input: String) {
 				}
 			},
 
-			//modulo, integers only
+			//modulo or isolate char
 			'%' => {
 				if check_n(cmd, MSTK.len()) {
 					let b = MSTK.pop().unwrap();
 					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if ib==0 {
-							eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						if a.t {
+							let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							if let Some(idx) = int.to_usize() {
+								if let Some(chr) = a.s.chars().nth(idx) {
+									MSTK.push(Obj::s(chr.to_string()));
+								}
+								else {
+									eprintln!("! String \"{}\" is too short for index {}", a.s, idx);
+								}
+							}
+							else {
+								eprintln!("! Cannot possibly isolate character at index {}", int);
+							}
 						}
 						else {
-							MSTK.push(Obj::n(Float::with_val(WPREC, ia % ib)));
+							let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							if ib==0 {
+								eprintln!("! Arithmetic error: Attempted reduction mod 0");
+							}
+							else {
+								MSTK.push(Obj::n(Float::with_val(WPREC, ia % ib)));
+							}
 						}
 					}
 				}
@@ -980,41 +999,57 @@ unsafe fn exec(input: String) {
 				}
 			},
 
-			//exponentiation
+			//exponentiation or find in string
 			'^' => {
 				if check_n(cmd, MSTK.len()) {
 					let b = MSTK.pop().unwrap();
 					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, false) {
-						if a.n<0&&b.n.clone().abs()<1{
-							eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+						if a.t {
+							if let Some(bidx) = a.s.find(&b.s) {	//find byte index
+								let cidx = a.s.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
+								MSTK.push(Obj::n(Float::with_val(WPREC, cidx)));
+							}
+							else {
+								MSTK.push(Obj::n(Float::with_val(WPREC, -1)));	//not found, silent error
+							}
 						}
 						else {
-							MSTK.push(Obj::n(Float::with_val(WPREC, a.n.pow(b.n))));
+							if a.n<0&&b.n.clone().abs()<1{
+								eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+							}
+							else {
+								MSTK.push(Obj::n(Float::with_val(WPREC, a.n.pow(b.n))));
+							}
 						}
 					}
 				}
 			},
 
-			//modular exponentiation, integers only
+			//modular exponentiation or find/replace in string
 			'|' => {
 				if check_n(cmd, MSTK.len()) {
 					let c = MSTK.pop().unwrap();
 					let b = MSTK.pop().unwrap();
 					let a = MSTK.pop().unwrap();
 					if check_t(cmd, a.t, b.t, c.t) {
-						let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ic = c.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						if ic==0 {
-							eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						if a.t {
+							MSTK.push(Obj::s(a.s.replace(&b.s, &c.s)));
 						}
 						else {
-							if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
-								MSTK.push(Obj::n(Float::with_val(WPREC, res)));
+							let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							let ic = c.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+							if ic==0 {
+								eprintln!("! Arithmetic error: Attempted reduction mod 0");
 							}
 							else {
-								eprintln!("! Arithmetic error: {} doesn't have an inverse mod {}", ia, ic);
+								if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
+									MSTK.push(Obj::n(Float::with_val(WPREC, res)));
+								}
+								else {
+									eprintln!("! Arithmetic error: {} doesn't have an inverse mod {}", ia, ic);
+								}
 							}
 						}
 					}
