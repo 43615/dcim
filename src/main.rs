@@ -578,6 +578,7 @@ unsafe fn exec(input: String) {
 			proceed = false;
 		}
 
+		let mut dummy = false;	//placeholder Objs, don't push back
 		let (c, b, a) = if MSTK.len() >= adicity as usize {	//if enough args on stack
 			match adicity {	//pop required amount
 				Adicity::Niladic => (Obj::default(), Obj::default(), Obj::default()),
@@ -589,6 +590,7 @@ unsafe fn exec(input: String) {
 		else {
 			eprintln!("! Insufficient arguments for command '{}'", cmd);
 			proceed = false;
+			dummy = true;
 			(Obj::default(), Obj::default(), Obj::default())
 		};
 
@@ -603,7 +605,7 @@ unsafe fn exec(input: String) {
 			proceed = false;
 		}
 
-		if !proceed {
+		if !proceed && !dummy {
 			match adicity {	//push args back
 				Adicity::Niladic => {},
 				Adicity::Monadic => {MSTK.push(a.clone());},
