@@ -252,7 +252,7 @@ fn get_adicity(cmd: char) -> Adicity {
 //defines whether a command needs a register number
 fn uses_reg(cmd: char) -> bool {
 	match cmd {
-		'F'|'s'|'S'|'l'|'L'|':'|';'|'j'|'J'|'h'|'H'|'Z' => true,
+		'F'|'s'|'S'|'l'|'L'|':'|';'|'j'|'J'|'h'|'H'|'Z'|'<'|'='|'>' => true,
 		_ => false
 	}
 }
