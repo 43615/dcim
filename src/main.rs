@@ -261,25 +261,19 @@ fn uses_reg(cmd: char) -> bool {
 //a-c: types (.t) of the operands that would be used (in canonical order), use false if not required
 fn types_match(cmd: char, a: bool, b: bool, c: bool) -> bool {
 	match cmd {
-		//concat, find
 		'+'|'^' => a==b,
 
-		//replace
 		'|' => a==b && b==c,
 
-		//string manipulation, store into array
 		'-'|'*'|'/'|'%'|'~'|':' => !b,
 
-		//read file by name, get env variable, execute os command
 		'&'|'$'|'\\' => a,
 
-		//convert both ways, constant lookup or print to string, execute macros, log or string length
-		'a'|'A'|'"'|'x'|'g' => true,
+		'n'|'P'|'a'|'A'|'"'|'x'|'g'|'s'|'S' => true,
 
-		//auto-macro
 		'X' => a&&!b,
 
-		//all other ops can only have numbers
+		//default: only numbers
 		_ => !a&&!b&&!c,
 	}
 }
