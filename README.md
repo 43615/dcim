@@ -20,13 +20,14 @@ cd ..;
 mv temp/target/release/dcim .;
 rm -rf temp
 ```
-Building for Windows is not possible in a standard environment, a premade exe is provided. [Learn more here, under "Building on Windows".](https://crates.io/crates/gmp-mpfr-sys)
+Building on Windows is similar, but `gmp-mpfr-sys` might fail depending on the building environment. If it does, follow the instructions [here](https://crates.io/crates/gmp-mpfr-sys), under "Building on Windows".
 
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - The file and expression modes now accept and execute any number of arguments. If the last expression or filename is `?`, it will enter interactive mode after finishing.
 - File mode removes all #comments before executing.
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
+- When errors occur, all used objects are returned to the stack.
 - `P` is now like `n`, but with a newline. The conversion feature is moved to `A`.
 - "Diagnostic" printing commands (all except `n` and `P`) now print brackets around strings for clarity.
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
