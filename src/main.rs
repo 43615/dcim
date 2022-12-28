@@ -599,18 +599,19 @@ unsafe fn exec(input: String) {
 			proceed = false;
 		}
 
-		if !proceed && !dummy {
-			match adicity {	//push args back
-				Adicity::Niladic => {},
-				Adicity::Monadic => {MSTK.push(a.clone());},
-				Adicity::Dyadic => {MSTK.push(a.clone()); MSTK.push(b.clone());},
-				Adicity::Triadic => {MSTK.push(a.clone()); MSTK.push(b.clone()); MSTK.push(c.clone());},
+		if !proceed {	//staggered ifs to avoid moving a,b,c
+			if !dummy {	//if real a,b,c were popped
+				match adicity {	//push them back
+					Adicity::Niladic => {},
+					Adicity::Monadic => {MSTK.push(a);},
+					Adicity::Dyadic => {MSTK.push(a); MSTK.push(b);},
+					Adicity::Triadic => {MSTK.push(a); MSTK.push(b); MSTK.push(c);},
+				}
 			}
 		}
-
 		//one match to rule them all
 		//and in the branches run them
-		if proceed { match cmd {
+		else { match cmd {
 			/*------------------
 				OBJECT INPUT
 			------------------*/
