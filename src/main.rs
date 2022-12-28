@@ -40,38 +40,22 @@ fn odef() -> Integer { Integer::from(10) }
 static mut ENVSTK: Vec<(Integer, Integer, Integer)> = Vec::new();	//stores (k,i,o) tuples, used by '{' and '}'
 static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
 
-//basic object on a dc stack
-#[derive(Clone)]
-struct Obj {
-	t: bool,	//type: is string?
-	n: Float,	//number
-	s: String,	//string
+#[derive(Clone, PartialEq)]
+#[repr(u8)]
+enum Obj {
+	N(Float),
+	S(String)
 }
-
-//shorthand constructors
-impl Obj {
-	fn n(number: Float) -> Self {	//number variant
-		Self {
-			t: false,
-			n: number,
-			s: String::new()
-		}
-	}
-	fn s(string: String) -> Self {	//string variant
-		Self {
-			t: true,
-			n: flt_def(),
-			s: string
-		}
-	}
-}
-
 impl Default for Obj {
 	fn default() -> Self {
-		Self {
-			t: false,
-			n: flt_def(),
-			s: String::new()
+		Obj::N(Float::new(1))
+	}
+}
+impl Obj {
+	fn type_bool(&self) -> bool {
+		match self {
+			Obj::N(_) => false,
+			Obj::S(_) => true
 		}
 	}
 }
@@ -93,6 +77,7 @@ impl RegObj {
 }
 
 #[derive(Clone, Copy)]
+#[repr(u8)]
 enum Adicity {	//possible command adicities
 	Niladic,
 	Monadic,
@@ -111,7 +96,6 @@ static mut DRS: Option<usize> = None;	//direct register selector
 static mut RNG: Vec<RandState> = Vec::new();	//same problem as with RO_BUF
 
 const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);	//default tuple for to_integer_round().unwrap_or()
-fn flt_def() -> Float {Float::with_val(1, Special::Nan)}	//default Float value for unused Obj.n
 
 fn main() {
 	let mut args: Vec<String> = std::env::args().collect();
@@ -122,7 +106,7 @@ fn main() {
 		ENVSTK.push((kdef(), idef(), odef()));	//initialize env params
 		RO_BUF.push(RegObj{	//and RegObj buffer
 			a: Vec::new(),
-			o: Obj::n(Float::with_val(WPREC, 0))
+			o: Obj::N(Float::with_val(WPREC, 0))
 		});
 		//initialize RNG with system time (* PID for a bit less predictability)
 		RNG.push(RandState::new());
@@ -257,24 +241,25 @@ fn uses_reg(cmd: char) -> bool {
 	}
 }
 
-//checks if a command can be used on provided argument types
-//a-c: types (.t) of the operands that would be used (in canonical order), use false if not required
-fn types_match(cmd: char, a: bool, b: bool, c: bool) -> bool {
+//defines correct argument types for all commands
+//dummy Objs are numbers => default is false
+fn types_match(cmd: char, a: &Obj, b: &Obj, c: &Obj) -> bool {
+	let (ta, tb, tc) = (a.type_bool(), b.type_bool(), c.type_bool());
 	match cmd {
-		'+'|'^' => a==b,
+		'+'|'^' => ta==tb,
 
-		'|' => a==b && b==c,
+		'|' => ta==tb && tb==tc,
 
-		'-'|'*'|'/'|'%'|'~'|':' => !b,
+		'-'|'*'|'/'|'%'|'~'|':' => !tb,
 
-		'&'|'$'|'\\' => a,
+		'&'|'$'|'\\' => ta,
 
 		'n'|'P'|'a'|'A'|'"'|'x'|'g'|'s'|'S' => true,
 
-		'X' => a&&!b,
+		'X' => ta&&!tb,
 
 		//default: only numbers
-		_ => !a&&!b&&!c,
+		_ => !ta&&!tb&&!tc,
 	}
 }
 
@@ -400,7 +385,7 @@ fn constants(prec: u32, query: &str) -> Option<Float> {
 		"crash" => {constants(prec, "crash")}	//stack overflow through recursion
 		"panic" => {std::panic::panic_any(
 			unsafe {if let Some(ptr) = MSTK.last() {
-				if ptr.t {&ptr.s} else {"Manual panic"}}
+				if let Obj::S(s) = ptr {s} else {"Manual panic"}}
 			else {"INTENTIONAL PANIC"}});}
 		"author" => {flt(prec, 43615)}	//why not
 		
@@ -592,13 +577,7 @@ unsafe fn exec(input: String) {
 			(Obj::default(), Obj::default(), Obj::default())
 		};
 
-		let (ta, tb, tc) = match adicity {	//arg types for lookup, false if not used
-			Adicity::Niladic => (false, false, false),
-			Adicity::Monadic => (a.t, false, false),
-			Adicity::Dyadic => (a.t, b.t, false),
-			Adicity::Triadic => (a.t, b.t, c.t),
-		};
-		if !types_match(cmd, ta, tb, tc) {
+		if !types_match(cmd, &a, &b, &c) {
 			eprintln!("! Invalid argument type(s) for command '{}'", cmd);
 			proceed = false;
 		}
@@ -666,7 +645,7 @@ unsafe fn exec(input: String) {
 					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
 					match Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1.to_i32().unwrap()) {		
 						Ok(res) => {
-							MSTK.push(Obj::n(Float::with_val(WPREC, res)));
+							MSTK.push(Obj::N(Float::with_val(WPREC, res)));
 						},
 						Err(error) => {
 							eprintln!("! Unable to parse number \"{}\": {}", numstr, error);
@@ -679,7 +658,7 @@ unsafe fn exec(input: String) {
 			'(' => {
 				let mut num = Integer::from(0);	//resulting number
 				if cmdstk.last().unwrap().is_empty() {
-					MSTK.push(Obj::n(Float::with_val(WPREC, num)));	//default to 0 if on end of input
+					MSTK.push(Obj::N(Float::with_val(WPREC, num)));	//default to 0 if on end of input
 				}
 				else {
 					let ibase = ENVSTK.last().unwrap().1.clone();
@@ -794,7 +773,7 @@ unsafe fn exec(input: String) {
 									if scale>1 {
 										scale /= ibase.clone();	//correct off-by-one error
 									}
-									MSTK.push(Obj::n(Float::with_val(WPREC, num * if neg {-1} else {1}) / scale
+									MSTK.push(Obj::N(Float::with_val(WPREC, num * if neg {-1} else {1}) / scale
 										* Float::with_val(WPREC, ibase).pow(escale)));
 									break;
 								}
@@ -825,7 +804,7 @@ unsafe fn exec(input: String) {
 					if cmd == ']' { nest-=1; }
 					if nest==0 {	//string finished
 						res.pop();	//remove closing bracket
-						MSTK.push(Obj::s(res));
+						MSTK.push(Obj::S(res));
 						break;
 					}
 					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
@@ -841,11 +820,9 @@ unsafe fn exec(input: String) {
 			//print top with newline
 			'p' => {
 				if !MSTK.is_empty() {
-					if MSTK.last().unwrap().t {
-						println!("[{}]", MSTK.last().unwrap().s.clone());
-					}
-					else {
-						println!("{}", flt_to_str(MSTK.last().unwrap().n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+					match MSTK.last().unwrap() {
+						Obj::N(n) => {println!("{}", flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
+						Obj::S(s) => {println!("[{}]", s);},
 					}
 				}
 			},
@@ -854,11 +831,9 @@ unsafe fn exec(input: String) {
 			'f' => {
 				if !MSTK.is_empty() {
 					for i in (0..MSTK.len()).rev() {
-						if MSTK[i].t {
-							println!("[{}]", MSTK[i].s.clone());
-						}
-						else {
-							println!("{}", flt_to_str(MSTK[i].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+						match &MSTK[i] {
+							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
+							Obj::S(s) => {println!("[{}]", s);},
 						}
 					}
 				}
@@ -866,23 +841,23 @@ unsafe fn exec(input: String) {
 
 			//pop and print without newline
 			'n' => {
-				if a.t {
-					print!("{}", a.s);
-					stdout().flush().unwrap();
-				}
-				else {
-					print!("{}", flt_to_str(a.n, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
-					stdout().flush().unwrap();
+				match a {
+					Obj::N(na) => {
+						print!("{}", flt_to_str(na, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+						stdout().flush().unwrap();
+					},
+					Obj::S(sa) => {
+						print!("{}", sa);
+						stdout().flush().unwrap();
+					},
 				}
 			},
 
 			//pop and print with newline
 			'P' => {
-				if a.t {
-					println!("{}", a.s);
-				}
-				else {
-					println!("{}", flt_to_str(a.n, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+				match a {
+					Obj::N(na) => {println!("{}", flt_to_str(na, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
+					Obj::S(sa) => {println!("{}", sa);},
 				}
 			},
 
@@ -890,20 +865,16 @@ unsafe fn exec(input: String) {
 			'F' => {
 				if !REGS[ri].is_empty(){
 					for i in (0..REGS[ri].len()).rev() {
-						if REGS[ri][i].o.t {
-							println!("[{}]", REGS[ri][i].o.s.clone());
-						}
-						else {
-							println!("{}", flt_to_str(REGS[ri][i].o.n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+						match &REGS[ri][i].o {
+							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
+							Obj::S(s) => {println!("[{}]", s);},
 						}
 						if !REGS[ri][i].a.is_empty() {
 							let maxwidth = (REGS[ri][i].a.len()-1).to_string().len();	//length of longest index number
 							for ai in 0..REGS[ri][i].a.len() {
-								if REGS[ri][i].a[ai].t {
-									println!("\t{:>maxwidth$}: [{}]", ai, REGS[ri][i].a[ai].s);
-								}
-								else {
-									println!("\t{:>maxwidth$}: {}", ai, flt_to_str(REGS[ri][i].a[ai].n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+								match &REGS[ri][i].a[ai] {
+									Obj::N(n) => {println!("\t{:>maxwidth$}: {}", ai, flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
+									Obj::S(s) => {println!("\t{:>maxwidth$}: [{}]", ai, s);},
 								}
 							}
 						}
@@ -915,360 +886,394 @@ unsafe fn exec(input: String) {
 			----------------*/
 			//add or concatenate strings
 			'+' => {
-				//concat strings
-				if a.t {
-					MSTK.push(Obj::s(a.s + &b.s));
-				}
-				//add numbers
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n + b.n)));
+				match (a, b) {
+					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na + nb)));},
+					(Obj::S(sa), Obj::S(sb)) => {MSTK.push(Obj::S(sa + &sb));},
+					_ => {}
 				}
 			},
 
 			//subtract or remove chars from string
 			'-' => {
-				//remove b chars from string a
-				if a.t {
-					let mut newstr = a.s.chars().collect::<Vec<char>>();
-					let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-					if let Some(mut num) = &int.abs_ref().complete().to_usize() {
-						if num>newstr.len() { num = newstr.len(); }	//account for too large b
-						if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
-						newstr.truncate(newstr.len()-num);
-						if int<0 { newstr.reverse(); }	//undo reversal
-						MSTK.push(Obj::s(newstr.iter().collect::<String>()));
-					}
-					else {
-						eprintln!("! Cannot possibly remove {} characters from a string", int);
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-				}
-				//subtract numbers
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n - b.n)));
+				match (&a, &b) {
+					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na - nb)));},
+					(Obj::S(sa), Obj::N(nb)) => {
+						let mut newstr = sa.chars().collect::<Vec<char>>();
+						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
+						if let Some(mut num) = &int.abs_ref().complete().to_usize() {
+							if num>newstr.len() { num = newstr.len(); }	//account for too large b
+							if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
+							newstr.truncate(newstr.len()-num);
+							if int<0 { newstr.reverse(); }	//undo reversal
+							MSTK.push(Obj::S(newstr.iter().collect::<String>()));
+						}
+						else {
+							eprintln!("! Cannot possibly remove {} characters from a string", int);
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+					},
+					_ => {}
 				}
 			},
 
 			//multiply or repeat/invert string
 			'*' => {
-				//repeat string a b times
-				if a.t {
-					let mut newstr = a.s.clone();
-					let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-					if let Some(num) = &int.abs_ref().complete().to_usize() {
-						newstr = newstr.repeat(*num);
-						if int<0 { newstr = newstr.chars().rev().collect(); }	//if b is negative, invert string
-						MSTK.push(Obj::s(newstr));
-					}
-					else {
-						eprintln!("! Cannot possibly repeat a string {} times", int);
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-				}
-				//multiply numbers
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n * b.n)));
+				match (&a, &b) {
+					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na * nb)));},
+					(Obj::S(sa), Obj::N(nb)) => {
+						let mut newstr = sa.clone();
+						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
+						if let Some(num) = &int.abs_ref().complete().to_usize() {
+							newstr = newstr.repeat(*num);
+							if int<0 { newstr = newstr.chars().rev().collect(); }	//if b is negative, invert string
+							MSTK.push(Obj::S(newstr));
+						}
+						else {
+							eprintln!("! Cannot possibly repeat a string {} times", int);
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+					},
+					_ => {}
 				}
 			},
 			
 			//divide or shorten string to length
 			'/' => {
-				//shorten string a to length b
-				if a.t {
-					let mut newstr = a.s.chars().collect::<Vec<char>>();
-					let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
-					if let Some(num) = &int.abs_ref().complete().to_usize() {
-						if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
-						newstr.truncate(*num);
-						if int<0 { newstr.reverse(); }	//undo reversal
-						MSTK.push(Obj::s(newstr.iter().collect::<String>()));
-					}
-					else {
-						eprintln!("! Cannot possibly shorten a string to {} characters", int);
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-				}
-				//divide numbers
-				else {
-					if b.n==0 {
-						eprintln!("! Arithmetic error: Attempted division by zero");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-					else {
-						MSTK.push(Obj::n(Float::with_val(WPREC, a.n / b.n)));
-					}
+				match (&a, &b) {
+					(Obj::N(na), Obj::N(nb)) => {
+						if nb.is_zero() {
+							eprintln!("! Arithmetic error: Attempted division by zero");
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+						else {
+							MSTK.push(Obj::N(Float::with_val(WPREC, na / nb)));
+						}
+					},
+					(Obj::S(sa), Obj::N(nb)) => {
+						let mut newstr = sa.chars().collect::<Vec<char>>();
+						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
+						if let Some(num) = &int.abs_ref().complete().to_usize() {
+							if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
+							newstr.truncate(*num);
+							if int<0 { newstr.reverse(); }	//undo reversal
+							MSTK.push(Obj::S(newstr.iter().collect::<String>()));
+						}
+						else {
+							eprintln!("! Cannot possibly shorten a string to {} characters", int);
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+					},
+					_ => {}
 				}
 			},
 
 			//modulo or isolate char
 			'%' => {
-				if a.t {
-					let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					if let Some(idx) = int.to_usize() {
-						if let Some(chr) = a.s.chars().nth(idx) {
-							MSTK.push(Obj::s(chr.to_string()));
-						}
-						else {
-							eprintln!("! String is too short for index {}", idx);
+				match (&a, &b) {
+					(Obj::N(na), Obj::N(nb)) => {
+						let ia = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ib = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						if ib==0 {
+							eprintln!("! Arithmetic error: Attempted reduction mod 0");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
-					}
-					else {
-						eprintln!("! Cannot possibly isolate character at index {}", int);
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-				}
-				else {
-					let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					if ib==0 {
-						eprintln!("! Arithmetic error: Attempted reduction mod 0");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-					else {
-						MSTK.push(Obj::n(Float::with_val(WPREC, ia % ib)));
-					}
+						else {
+							MSTK.push(Obj::N(Float::with_val(WPREC, ia % ib)));
+						}
+					},
+					(Obj::S(sa), Obj::N(nb)) => {
+						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						if let Some(idx) = int.to_usize() {
+							if let Some(chr) = sa.chars().nth(idx) {
+								MSTK.push(Obj::S(chr.to_string()));
+							}
+							else {
+								eprintln!("! String is too short for index {}", idx);
+								MSTK.push(a);
+								MSTK.push(b);
+							}
+						}
+						else {
+							eprintln!("! Cannot possibly isolate character at index {}", int);
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+					},
+					_ => {}
 				}
 			},
 
 			//euclidean division or split string
 			'~' => {
-				if a.t {
-					let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					if let Some(mut idx) = &int.to_usize() {
-						let cvec = a.s.chars().collect::<Vec<char>>();
-						if idx>cvec.len() { idx=cvec.len(); }	//if too large, split at max index to preserve signature
-						MSTK.push(Obj::s(cvec[0..idx].iter().collect::<String>()));
-						MSTK.push(Obj::s(cvec[idx..].iter().collect::<String>()));
-					}
-					else {
-						eprintln!("! Cannot possibly split a string at character {}", int);
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-				}
-				else {
-					let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					if ib==0 {
-						eprintln!("! Arithmetic error: Attempted reduction mod 0");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-					else {
-						let (quot, rem)=ia.div_rem_euc(ib);
-						MSTK.push(Obj::n(Float::with_val(WPREC, quot)));
-						MSTK.push(Obj::n(Float::with_val(WPREC, rem)));
-					}
+				match (&a, &b) {
+					(Obj::N(na), Obj::N(nb)) => {
+						let ia = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ib = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						if ib==0 {
+							eprintln!("! Arithmetic error: Attempted reduction mod 0");
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+						else {
+							let (quot, rem)=ia.div_rem_euc(ib);
+							MSTK.push(Obj::N(Float::with_val(WPREC, quot)));
+							MSTK.push(Obj::N(Float::with_val(WPREC, rem)));
+						}
+					},
+					(Obj::S(sa), Obj::N(nb)) => {
+						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						if let Some(mut idx) = &int.to_usize() {
+							let cvec = sa.chars().collect::<Vec<char>>();
+							if idx>cvec.len() { idx=cvec.len(); }	//if too large, split at max index to preserve signature
+							MSTK.push(Obj::S(cvec[0..idx].iter().collect::<String>()));
+							MSTK.push(Obj::S(cvec[idx..].iter().collect::<String>()));
+						}
+						else {
+							eprintln!("! Cannot possibly split a string at character {}", int);
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+					},
+					_ => {}
 				}
 			},
 
 			//exponentiation or find in string
 			'^' => {
-				if a.t {
-					if let Some(bidx) = a.s.find(&b.s) {	//find byte index
-						let cidx = a.s.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
-						MSTK.push(Obj::n(Float::with_val(WPREC, cidx)));
-					}
-					else {
-						MSTK.push(Obj::n(Float::with_val(WPREC, -1)));	//not found, silent error
-					}
-				}
-				else {
-					if a.n<0&&b.n.clone().abs()<1{
-						eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-					else {
-						MSTK.push(Obj::n(Float::with_val(WPREC, a.n.pow(b.n))));
-					}
+				match (&a, &b) {
+					(Obj::N(na), Obj::N(nb)) => {
+						if na<&0 && nb.clone().abs()<1{
+							eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+							MSTK.push(a);
+							MSTK.push(b);
+						}
+						else {
+							MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb))));
+						}
+					},
+					(Obj::S(sa), Obj::S(sb)) => {
+						if let Some(bidx) = sa.find(sb) {	//find byte index
+							let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
+							MSTK.push(Obj::N(Float::with_val(WPREC, cidx)));
+						}
+						else {
+							MSTK.push(Obj::N(Float::with_val(WPREC, -1)));	//not found, silent error
+						}
+					},
+					_ => {}
 				}
 			},
 
 			//modular exponentiation or find/replace in string
 			'|' => {
-				if a.t {
-					MSTK.push(Obj::s(a.s.replace(&b.s, &c.s)));
-				}
-				else {
-					let ia = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					let ib = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					let ic = c.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-					if ic==0 {
-						eprintln!("! Arithmetic error: Attempted reduction mod 0");
-						MSTK.push(a);
-						MSTK.push(b);
-						MSTK.push(c);
-					}
-					else {
-						if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
-							MSTK.push(Obj::n(Float::with_val(WPREC, res)));
-						}
-						else {
-							eprintln!("! Arithmetic error: {} doesn't have an inverse mod {}", ia, ic);
+				match (&a, &b, &c) {
+					(Obj::N(na), Obj::N(nb), Obj::N(nc)) => {
+						let ia = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ib = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ic = nc.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						if ic==0 {
+							eprintln!("! Arithmetic error: Attempted reduction mod 0");
 							MSTK.push(a);
 							MSTK.push(b);
 							MSTK.push(c);
 						}
-					}
+						else {
+							if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
+								MSTK.push(Obj::N(Float::with_val(WPREC, res)));
+							}
+							else {
+								eprintln!("! Arithmetic error: {} doesn't have an inverse mod {}", ia, ic);
+								MSTK.push(a);
+								MSTK.push(b);
+								MSTK.push(c);
+							}
+						}
+					},
+					(Obj::S(sa), Obj::S(sb), Obj::S(sc)) => {
+						MSTK.push(Obj::S(sa.replace(sb, sc)));
+					},
+					_ => {}
 				}
 			},
 
 			//square root
 			'v' => {
-				if a.n<0 {
-					eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
-					MSTK.push(a);
-				}
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n.sqrt())));
+				if let Obj::N(na) = &a {
+					if na<&0 {
+						eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+						MSTK.push(a);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na.sqrt_ref())));
+					}
 				}
 			},
 
 			//bth root
 			'V' => {
-				if a.n<0&&b.n.clone().abs()>1{
-					eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
-					MSTK.push(a);
-					MSTK.push(b);
-				}
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n.pow(b.n.recip()))));
+				if let (Obj::N(na), Obj::N(nb)) = (&a, &b) {
+					if na<&0 && nb.clone().abs()>1{
+						eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb.clone().recip()))));
+					}
 				}
 			},
 
 			//length of string or natural logarithm
 			'g' => {
-				if a.t {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.s.chars().count())));
-				}
-				else {
-					if a.n<=0 {
-						eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
-						MSTK.push(a);
-					}
-					else {
-						MSTK.push(Obj::n(Float::with_val(WPREC, a.n.ln())));
-					}
+				match &a {
+					Obj::N(na) => {
+						if na<=&0 {
+							eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
+							MSTK.push(a);
+						}
+						else {
+							MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().ln())));
+						}
+					},
+					Obj::S(sa) => {
+						MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().count())));
+					},
 				}
 			},
 
 			//base b logarithm
 			'G' => {
-				if a.n<=0 {
-					eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
-					MSTK.push(a);
-					MSTK.push(b);
-				}
-				else if b.n==1||b.n<=0{
-					eprintln!("! Arithmetic error: Logarithm base must be positive and not equal to 1");
-					MSTK.push(a);
-					MSTK.push(b);
-				}
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n.ln()/b.n.ln())));
+				if let (Obj::N(na), Obj::N(nb)) = (&a, &b) {
+					if na<=&0 {
+						eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
+					else if nb==&1||nb<=&0{
+						eprintln!("! Arithmetic error: Logarithm base must be positive and not equal to 1");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().ln()/nb.clone().ln())));
+					}
 				}
 			},
 
 			//sine
 			'u' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, a.n.sin())));
+				if let Obj::N(na) = a {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.sin())));
+				}
 			},
 
 			//cosine
 			'y' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, a.n.cos())));
+				if let Obj::N(na) = a {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.cos())));
+				}
 			},
 
 			//tangent
 			't' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, a.n.tan())));
+				if let Obj::N(na) = a {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.tan())));
+				}
 			},
 
 			//arc-sine
 			'U' => {
-				if a.n.clone().abs()>1 {
-					eprintln!("! Arithmetic error: Arc-sine of value outside [-1,1]");
-					MSTK.push(a);
-				}
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n.asin())));
+				if let Obj::N(na) = &a {
+					if na.clone().abs()>1 {
+						eprintln!("! Arithmetic error: Arc-sine of value outside [-1,1]");
+						MSTK.push(a);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().asin())));
+					}
 				}
 			},
 
 			//arc-cosine
 			'Y' => {
-				if a.n.clone().abs()>1 {
-					eprintln!("! Arithmetic error: Arc-cosine of value outside [-1,1]");
-					MSTK.push(a);
-				}
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, a.n.acos())));
+				if let Obj::N(na) = &a {
+					if na.clone().abs()>1 {
+						eprintln!("! Arithmetic error: Arc-cosine of value outside [-1,1]");
+						MSTK.push(a);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().acos())));
+					}
 				}
 			},
 
 			//arc-tangent
 			'T' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, a.n.atan())));
+				if let Obj::N(na) = a {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.atan())));
+				}
 			},
 
 			//random integer [0;a)
 			'N' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if int<=0 {
-					eprintln!("! Upper bound for random value must be above 0");
-					MSTK.push(a);
-				}
-				else {
-					MSTK.push(Obj::n(Float::with_val(WPREC, int.random_below(&mut RNG[0]))));
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if int<=0 {
+						eprintln!("! Upper bound for random value must be above 0");
+						MSTK.push(a);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, int.random_below(&mut RNG[0]))));
+					}
 				}
 			},
 
 			//constant/conversion factor lookup or convert number to string
 			'"' => {
-				if a.t {	//constant lookup
-					match a.s.matches(' ').count() {
-						0 => {	//normal lookup
-							if let Some(res) = const_affixes(WPREC, &a.s) {
-								MSTK.push(Obj::n(res))
-							}
-							else {
-								eprintln!("! Constant/conversion factor not found");
+				match &a {
+					Obj::N(na) => {
+						MSTK.push(Obj::S(flt_to_str(na.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone())));
+					},
+					Obj::S(sa) => {
+						match sa.matches(' ').count() {
+							0 => {	//normal lookup
+								if let Some(res) = const_affixes(WPREC, &sa) {
+									MSTK.push(Obj::N(res))
+								}
+								else {
+									eprintln!("! Constant/conversion factor not found");
+									MSTK.push(a);
+								}
+							},
+							1 => {	//conversion shorthand, left divided by right
+								let (sl, sr) = sa.split_once(' ').unwrap();
+								if let (Some(nl), Some(nr)) = (const_affixes(WPREC, sl), const_affixes(WPREC, sr)) {
+									MSTK.push(Obj::N(nl/nr))
+								}
+								else {
+									eprintln!("! Constant/conversion factor not found");
+									MSTK.push(a);
+								}
+							},
+							_ => {
+								eprintln!("! Too many spaces in constant/conversion string");
 								MSTK.push(a);
-							}
-						},
-						1 => {	//conversion shorthand, first divided by second
-							let (sa, sb) = a.s.split_once(' ').unwrap();
-							if let (Some(na), Some(nb)) = (const_affixes(WPREC, sa), const_affixes(WPREC, sb)) {
-								MSTK.push(Obj::n(na/nb))
-							}
-							else {
-								eprintln!("! Constant/conversion factor not found");
-								MSTK.push(a);
-							}
-						},
-						_ => {
-							eprintln!("! Too many spaces in constant/conversion string");
-							MSTK.push(a);
-						},
-					}
-				}
-				else {	//"print" number to string
-					MSTK.push(Obj::s(flt_to_str(a.n, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone())));
+							},
+						}
+					},
 				}
 			},
 
 			//deg -> rad shorthand
 			'°' => {
-				MSTK.push(Obj::n(a.n * Float::with_val(WPREC, Constant::Pi) / 180))
+				if let Obj::N(na) = a {
+					MSTK.push(Obj::N(na * Float::with_val(WPREC, Constant::Pi) / 180))
+				}
 			},
 			/*------------------------
 				STACK MANIPULATION
@@ -1280,14 +1285,16 @@ unsafe fn exec(input: String) {
 
 			//remove top a objects from stack
 			'C' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if let Some(mut num) = int.to_usize() {
-					if num>MSTK.len() { num = MSTK.len(); }	//limit clear count
-					MSTK.truncate(MSTK.len()-num);
-				}
-				else {
-					eprintln!("! Cannot possibly remove {} objects from the main stack", int);
-					MSTK.push(a);
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if let Some(mut num) = int.to_usize() {
+						if num>MSTK.len() { num = MSTK.len(); }	//limit clear count
+						MSTK.truncate(MSTK.len()-num);
+					}
+					else {
+						eprintln!("! Cannot possibly remove {} objects from the main stack", int);
+						MSTK.push(a);
+					}
 				}
 			},
 
@@ -1303,19 +1310,21 @@ unsafe fn exec(input: String) {
 
 			//duplicate top a objects
 			'D' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if let Some(num) = int.to_usize() {
-					if num<=MSTK.len() {
-						MSTK.extend_from_within(MSTK.len()-num..);
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if let Some(num) = int.to_usize() {
+						if num<=MSTK.len() {
+							MSTK.extend_from_within(MSTK.len()-num..);
+						}
+						else {
+							eprintln!("! Not enough objects to duplicate");
+							MSTK.push(a);
+						}
 					}
 					else {
-						eprintln!("! Not enough objects to duplicate");
+						eprintln!("! Cannot possibly duplicate {} objects", int);
 						MSTK.push(a);
 					}
-				}
-				else {
-					eprintln!("! Cannot possibly duplicate {} objects", int);
-					MSTK.push(a);
 				}
 			},
 
@@ -1331,103 +1340,113 @@ unsafe fn exec(input: String) {
 
 			//rotate top a objects
 			'R' => {
-				let mut int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
-				if let Some(num) = int.clone().abs().to_usize() {
-					if num<=MSTK.len() {
-						let sl = MSTK.as_mut_slice();
-						if int<0 {
-							sl[MSTK.len()-num..].rotate_left(1);	//if negative, rotate left/down
+				if let Obj::N(na) = &a {
+					let mut int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
+					if let Some(num) = int.clone().abs().to_usize() {
+						if num<=MSTK.len() {
+							let sl = MSTK.as_mut_slice();
+							if int<0 {
+								sl[MSTK.len()-num..].rotate_left(1);	//if negative, rotate left/down
+							}
+							else {
+								sl[MSTK.len()-num..].rotate_right(1);	//right/up otherwise
+							}
+							MSTK = sl.to_vec();
 						}
 						else {
-							sl[MSTK.len()-num..].rotate_right(1);	//right/up otherwise
+							eprintln!("! Not enough objects to rotate");
+							MSTK.push(a);
 						}
-						MSTK = sl.to_vec();
 					}
 					else {
-						eprintln!("! Not enough objects to rotate");
+						eprintln!("! Cannot possibly rotate {} objects", int.abs());
 						MSTK.push(a);
 					}
-				}
-				else {
-					eprintln!("! Cannot possibly rotate {} objects", int.abs());
-					MSTK.push(a);
 				}
 			},
 
 			//push stack depth
 			'z' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, MSTK.len())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, MSTK.len())));
 			},
 			/*----------------------------
 				ENVIRONMENT PARAMETERS
 			----------------------------*/
 			//set output precision
 			'k' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if int>=-1 {
-					ENVSTK.last_mut().unwrap().0 = int;
-				}
-				else {
-					eprintln!("! Output precision must be at least -1");
-					MSTK.push(a);
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if int>=-1 {
+						ENVSTK.last_mut().unwrap().0 = int;
+					}
+					else {
+						eprintln!("! Output precision must be at least -1");
+						MSTK.push(a);
+					}
 				}
 			},
 
 			//set input base
 			'i' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if int>=2 {
-					ENVSTK.last_mut().unwrap().1 = int;
-				}
-				else {
-					eprintln!("! Input base must be at least 2");
-					MSTK.push(a);
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if int>=2 {
+						ENVSTK.last_mut().unwrap().1 = int;
+					}
+					else {
+						eprintln!("! Input base must be at least 2");
+						MSTK.push(a);
+					}
 				}
 			},
 
 			//set output base
 			'o' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if int>=2 {
-					ENVSTK.last_mut().unwrap().2 = int;
-				}
-				else {
-					eprintln!("! Output base must be at least 2");
-					MSTK.push(a);
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if int>=2 {
+						ENVSTK.last_mut().unwrap().2 = int;
+					}
+					else {
+						eprintln!("! Output base must be at least 2");
+						MSTK.push(a);
+					}
 				}
 			},
 
 			//set working precision
 			'w' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if (1..=u32::MAX).contains(&int) {
-					WPREC = int.to_u32().unwrap();
-				}
-				else {
-					eprintln!("! Working precision must be between {} and {} (inclusive)", 1, u32::MAX);
-					MSTK.push(a);
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if (1..=u32::MAX).contains(&int) {
+						WPREC = int.to_u32().unwrap();
+					}
+					else {
+						eprintln!("! Working precision must be between {} and {} (inclusive)", 1, u32::MAX);
+						MSTK.push(a);
+					}
 				}
 			},
 
 			//push output precision
 			'K' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, ENVSTK.last().unwrap().0.clone())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, ENVSTK.last().unwrap().0.clone())));
 			},
 
 			//push input base
 			'I' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, ENVSTK.last().unwrap().1.clone())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, ENVSTK.last().unwrap().1.clone())));
 			},
 
 			//push output base
 			'O' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, ENVSTK.last().unwrap().2.clone())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, ENVSTK.last().unwrap().2.clone())));
 			},
 
 			//push working precision
 			'W' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, WPREC)));
+				MSTK.push(Obj::N(Float::with_val(WPREC, WPREC)));
 			},
 
 			//create new k,i,o context
@@ -1485,44 +1504,48 @@ unsafe fn exec(input: String) {
 
 			//save to top-of-register's array
 			':' => {
-				if REGS[ri].is_empty() {
-					REGS[ri].push(RegObj {
-						o: Obj::n(Float::with_val(WPREC, 0)),	//create default register object if empty
-						a: Vec::new()
-					});
-				}
-				let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if let Some(rai) = int.to_usize() {
-					if rai>=REGS[ri].last().unwrap().a.len() {
-						REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::n(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
+				if let Obj::N(nb) = &b {
+					if REGS[ri].is_empty() {
+						REGS[ri].push(RegObj {
+							o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
+							a: Vec::new()
+						});
 					}
-					REGS[ri].last_mut().unwrap().a[rai] = a;
-				}
-				else {
-					eprintln!("! Cannot possibly save to array index {}", int);
-					MSTK.push(a);
-					MSTK.push(b);
+					let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if let Some(rai) = int.to_usize() {
+						if rai>=REGS[ri].last().unwrap().a.len() {
+							REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
+						}
+						REGS[ri].last_mut().unwrap().a[rai] = a;
+					}
+					else {
+						eprintln!("! Cannot possibly save to array index {}", int);
+						MSTK.push(a);
+						MSTK.push(b);
+					}
 				}
 			},
 
 			//load from top-of-register's array
 			';' => {
-				if REGS[ri].is_empty() {
-					REGS[ri].push(RegObj {
-						o: Obj::n(Float::with_val(WPREC, 0)),	//create default register object if empty
-						a: Vec::new()
-					});
-				}
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if let Some(rai) = int.to_usize() {
-					if rai>=REGS[ri].last().unwrap().a.len() {
-						REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::n(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
+				if let Obj::N(na) = &a {
+					if REGS[ri].is_empty() {
+						REGS[ri].push(RegObj {
+							o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
+							a: Vec::new()
+						});
 					}
-					MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
-				}
-				else {
-					eprintln!("! Cannot possibly load from array index {}", int);
-					MSTK.push(a);
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if let Some(rai) = int.to_usize() {
+						if rai>=REGS[ri].last().unwrap().a.len() {
+							REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
+						}
+						MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
+					}
+					else {
+						eprintln!("! Cannot possibly load from array index {}", int);
+						MSTK.push(a);
+					}
 				}
 			},
 
@@ -1559,83 +1582,87 @@ unsafe fn exec(input: String) {
 
 			//push register depth
 			'Z' => {
-				MSTK.push(Obj::n(Float::with_val(WPREC, REGS[ri].len())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, REGS[ri].len())));
 			},
 
 			//specify manual register index
 			',' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if let Some(ri) = int.to_usize() {
-					if REGS.len()>ri {
-						DRS = Some(ri);
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if let Some(new_ri) = int.to_usize() {
+						if REGS.len()>new_ri {
+							DRS = Some(new_ri);
+						}
+						else {
+							eprintln!("! Register {} is not available", new_ri);
+							MSTK.push(a);
+						}
 					}
 					else {
-						eprintln!("! Register {} is not available", ri);
+						eprintln!("! Register {} cannot possibly exist", int);
 						MSTK.push(a);
 					}
-				}
-				else {
-					eprintln!("! Register {} cannot possibly exist", int);
-					MSTK.push(a);
 				}
 			},
 			/*------------
 				MACROS
 			------------*/
-
 			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
-				if a.t {
-					if a.s.is_empty() {
-						eprintln!("! Cannot convert empty string to number");
-						MSTK.push(a);
-					}
-					else {
-						MSTK.push(Obj::n(Float::with_val(WPREC, a.s.chars().nth(0).unwrap() as u32)));
-					}
-				}
-				else {
-					if let Some(ia) = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_u32() {
-						if let Some(res) = char::from_u32(ia) {
-							MSTK.push(Obj::s(res.to_string()));
+				match &a {
+					Obj::N(na) => {
+						if let Some(ia) = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_u32() {
+							if let Some(res) = char::from_u32(ia) {
+								MSTK.push(Obj::S(res.to_string()));
+							}
+							else {
+								eprintln!("! Unable to convert number {} to character: not a valid Unicode value", ia);
+								MSTK.push(a);
+							}
 						}
 						else {
-							eprintln!("! Unable to convert number {} to character: not a valid Unicode value", ia);
+							eprintln!("! Unable to convert number {} to character: valid range is 0 to {}", na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0, u32::MAX);
 							MSTK.push(a);
 						}
-					}
-					else {
-						eprintln!("! Unable to convert number {} to character: valid range is 0 to {}", a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0, u32::MAX);
-						MSTK.push(a);
-					}
+					},
+					Obj::S(sa) => {
+						if sa.is_empty() {
+							eprintln!("! Cannot convert empty string to number");
+							MSTK.push(a);
+						}
+						else {
+							MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().nth(0).unwrap() as u32)));
+						}
+					},
 				}
 			},
 
 			//convert number to UTF-8 string or back
 			'A' => {
-				if a.t {
-					MSTK.push(Obj::n(Float::with_val(WPREC, Integer::from_digits(a.s.as_bytes(), Order::Msf))));
-				}
-				else {
-					if let Ok(res) = String::from_utf8(a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
-						MSTK.push(Obj::s(res));
-					}
-					else {
-						eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
-						MSTK.push(a);
-					}
+				match &a {
+					Obj::N(na) => {
+						if let Ok(res) = String::from_utf8(na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
+							MSTK.push(Obj::S(res));
+						}
+						else {
+							eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
+							MSTK.push(a);
+						}
+					},
+					Obj::S(sa) => {
+						MSTK.push(Obj::N(Float::with_val(WPREC, Integer::from_digits(sa.as_bytes(), Order::Msf))));
+					},
 				}
 			},
 
 			//execute string as macro
 			'x' => {
-				if a.t {
-					if cmdstk.last().unwrap().is_empty() {
-						cmdstk.pop();	//optimize tail call
-					}
-					cmdstk.push(a.s.chars().rev().collect());
-				}
-				else {
+				if let Obj::S(sa) = a {
+						if cmdstk.last().unwrap().is_empty() {
+							cmdstk.pop();	//optimize tail call
+						}
+						cmdstk.push(sa.chars().rev().collect());
+				} else {
 					MSTK.push(a);
 				}
 			},
@@ -1647,40 +1674,47 @@ unsafe fn exec(input: String) {
 
 			//conditionally execute macro
 			'<'|'='|'>' => {
-				let mut mac = String::new();
-				if REGS[ri].is_empty() {
-					eprintln!("! Register {} is empty", ri);
-				}
-				else {
-					mac = REGS[ri].last().unwrap().clone().o.s;	//get macro if possible
-				}
-				if inv != match cmd {
-					'<' => { b.n < a.n },	//reverse order, GNU dc convention
-					'=' => { b.n == a.n },
-					'>' => { b.n > a.n },
-					_ => {false},}
-				{
-					if cmdstk.last().unwrap().is_empty() {
-						cmdstk.pop();	//optimize tail call
+				if let (Obj::N(na), Obj::N(nb)) = (&a, &b) {
+					if REGS[ri].is_empty() {
+						eprintln!("! Register {} is empty", ri);
 					}
-					cmdstk.push(mac.chars().rev().collect());
+					else {
+						if let Obj::S(mac) = &REGS[ri].last().unwrap().o {
+							if inv != match cmd {
+							'<' => { nb < na },	//reverse order, GNU dc convention
+							'=' => { nb == na },
+							'>' => { nb > na },
+							_ => {false},}
+							{
+								if cmdstk.last().unwrap().is_empty() {
+									cmdstk.pop();	//optimize tail call
+								}
+								cmdstk.push(mac.chars().rev().collect());
+							}
+						}
+						else {
+							eprintln!("! Top of register {} is not a string", ri);
+						}
+					}
 				}
 				inv = false;	//always reset inversion
 			},
 
 			//auto-macro
 			'X' => {
-				let int = b.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if let Some(reps) = int.to_usize() {
-					if cmdstk.last().unwrap().is_empty() {
-						cmdstk.pop();	//optimize tail call
+				if let (Obj::S(sa), Obj::N(nb)) = (&a, &b) {
+					let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if let Some(reps) = int.to_usize() {
+						if cmdstk.last().unwrap().is_empty() {
+							cmdstk.pop();	//optimize tail call
+						}
+						cmdstk.resize(cmdstk.len()+reps, sa.chars().rev().collect());
 					}
-					cmdstk.resize(cmdstk.len()+reps, a.s.chars().rev().collect());
-				}
-				else {
-					eprintln!("! Invalid macro repeat count: {}", int);
-					MSTK.push(a);
-					MSTK.push(b);
+					else {
+						eprintln!("! Invalid macro repeat count: {}", int);
+						MSTK.push(a);
+						MSTK.push(b);
+					}
 				}
 			},
 
@@ -1691,17 +1725,19 @@ unsafe fn exec(input: String) {
 
 			//quit a macro calls
 			'Q' => {
-				let int = a.n.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-				if let Some(mut num) = int.to_usize() {
-					if num>cmdstk.len() {num=cmdstk.len();}
-					cmdstk.truncate(cmdstk.len()-num);
-					if cmdstk.is_empty() {
-						cmdstk.push(String::new());	//guarantee at least one object
+				if let Obj::N(na) = &a {
+					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					if let Some(mut num) = int.to_usize() {
+						if num>cmdstk.len() {num=cmdstk.len();}
+						cmdstk.truncate(cmdstk.len()-num);
+						if cmdstk.is_empty() {
+							cmdstk.push(String::new());	//guarantee at least one object
+						}
 					}
-				}
-				else {
-					eprintln!("! Cannot possibly quit {} levels", int);
-					MSTK.push(a);
+					else {
+						eprintln!("! Cannot possibly quit {} levels", int);
+						MSTK.push(a);
+					}
 				}
 			},
 
@@ -1718,54 +1754,60 @@ unsafe fn exec(input: String) {
 
 			//execute file as script
 			'&' => {
-				match std::fs::read_to_string(a.s.clone()) {
-					Ok(script) => {
-						let mut script_nc = String::new();	//script with comments removed
-						for line in script.split('\n') {
-							script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
-							script_nc.push('\n');
-						}
-						cmdstk.push(script_nc.chars().rev().collect());
-					},
-					Err(error) => {
-						eprintln!("! Unable to read file \"{}\": {}", a.s, error);
-						MSTK.push(a);
-					},
+				if let Obj::S(sa) = &a {
+					match std::fs::read_to_string(sa) {
+						Ok(script) => {
+							let mut script_nc = String::new();	//script with comments removed
+							for line in script.split('\n') {
+								script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
+								script_nc.push('\n');
+							}
+							cmdstk.push(script_nc.chars().rev().collect());
+						},
+						Err(error) => {
+							eprintln!("! Unable to read file \"{}\": {}", sa, error);
+							MSTK.push(a);
+						},
+					}
 				}
 			},
 
 			//get environment variable
 			'$' => {
-				match std::env::var(&a.s) {
-					Ok(val) => {
-						MSTK.push(Obj::s(val));
-					},
-					Err(err) => {
-						eprintln!("! Unable to get value of \"{}\": {}", a.s, err);
-						MSTK.push(a);
-					},
+				if let Obj::S(sa) = &a {
+					match std::env::var(sa) {
+						Ok(val) => {
+							MSTK.push(Obj::S(val));
+						},
+						Err(err) => {
+							eprintln!("! Unable to get value of \"{}\": {}", sa, err);
+							MSTK.push(a);
+						},
+					}
 				}
 			},
 
 			//execute os command(s)
 			'\\' => {
-				for oscmd in a.s.clone().split(';') {
-					if let Some((var, val)) = oscmd.split_once('=') {	//set variable
-						std::env::set_var(var, val);
-					}
-					else {	//normal command
-						let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
-						match std::process::Command::new(args.remove(0)).args(args).spawn() {
-							Ok(mut child) => {
-								if let Ok(stat) = child.wait() {
-									if let Some(code) = stat.code() {
-										if code!=0 {eprintln!("! OS command \"{}\" exited with code {}", oscmd, code);}
+				if let Obj::S(sa) = a {
+					for oscmd in sa.clone().split(';') {
+						if let Some((var, val)) = oscmd.split_once('=') {	//set variable
+							std::env::set_var(var, val);
+						}
+						else {	//normal command
+							let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
+							match std::process::Command::new(args.remove(0)).args(args).spawn() {
+								Ok(mut child) => {
+									if let Ok(stat) = child.wait() {
+										if let Some(code) = stat.code() {
+											if code!=0 {eprintln!("! OS command \"{}\" exited with code {}", oscmd, code);}
+										}
 									}
-								}
-							},
-							Err(error) => {
-								eprintln!("! Unable to execute OS command \"{}\": {}", oscmd, error);
-							},
+								},
+								Err(error) => {
+									eprintln!("! Unable to execute OS command \"{}\": {}", oscmd, error);
+								},
+							}
 						}
 					}
 				}
