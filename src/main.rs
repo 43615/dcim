@@ -374,6 +374,10 @@ fn constants(prec: u32, query: &str) -> Option<Float> {
 		"h" => {Some(constants(prec, "min").unwrap()*60)}
 		"d" => {Some(constants(prec, "h").unwrap()*24)}
 		"w" => {Some(constants(prec, "d").unwrap()*7)}
+		"mo" => {Some(constants(prec, "d").unwrap()*30)}
+		"a" => {Some(constants(prec, "d").unwrap()*365)}
+		"aj" => {Some(constants(prec, "d").unwrap()*36525/100)}
+		"ag" => {Some(constants(prec, "d").unwrap()*3652425/10000)}
 		/*-----------------
 			OTHER UNITS
 		-----------------*/
