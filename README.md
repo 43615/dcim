@@ -11,17 +11,6 @@
 
 This readme only lists changes compared to GNU dc. If you're unfamiliar with it, read the [Wikipedia article about dc](https://en.wikipedia.org/wiki/dc_(computer_program)) or see the [***full reference manual***](../../wiki).
 
-## Building
-```
-git clone https://github.com/43615/dcim temp;
-cd temp;
-cargo b -r;
-cd ..;
-mv temp/target/release/dcim .;
-rm -rf temp
-```
-Building on Windows is similar, but `gmp-mpfr-sys` might fail depending on the build environment. If it does, follow the instructions [here](https://crates.io/crates/gmp-mpfr-sys), under "Building on Windows".
-
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - The file and expression modes now accept and execute any number of arguments. If the last expression or filename is `?`, it will enter interactive mode after finishing.
