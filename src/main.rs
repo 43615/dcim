@@ -1,5 +1,6 @@
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
-use std::io::{stdin, stdout, Write};
+use std::io::{stdout, Write};
+use read_input::prelude::*;
 use std::time::{SystemTime, Duration};
 use std::cmp::Ordering;
 
@@ -147,30 +148,11 @@ fn main() {
 }
 
 //interactive/shell mode, the default
-fn interactive_mode(custom_prompt: Option<String>) {
-	let prompt = custom_prompt.unwrap_or("> ".to_string());
-	//prompt loop
+fn interactive_mode(prompt: Option<String>) {
+	let inputter = input::<String>().repeat_msg(prompt.unwrap_or("> ".into()));
 	loop {
-		//prompt for user input
-		print!("{}", prompt);
-		stdout().flush().unwrap();
-		let mut input = String::new();
-		match stdin().read_line(&mut input) {
-			Ok(_) => {},
-			Err(error) => {
-				eprintln!("! Unable to read standard input: {}", error);
-				break;
-			}
-		}
-		if input.is_empty() {
-			print!("\r");
-			std::process::exit(0);	//stop on end of pipe input
-		}
-		input = input.trim_end_matches(|c: char| c=='\n'||c=='\r').to_string();	//remove trailing LF
-
-		unsafe {
-			exec(input);
-		}
+		let input = inputter.get();
+		unsafe{exec(input);}
 	}
 }
 
@@ -531,11 +513,11 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 
 //CORE EXECUTION ENGINE
 //unsafe for accessing static mut objects across different runs
-unsafe fn exec(input: String) {
+unsafe fn exec(commands: String) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
-	if !input.is_empty() {	//loop expects contents, do nothing if none provided
-		cmdstk.push(input.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
+	if !commands.is_empty() {	//loop expects contents, do nothing if none provided
+		cmdstk.push(commands.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
 	}
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
@@ -546,7 +528,7 @@ unsafe fn exec(input: String) {
 
 		let ri = if uses_reg(cmd) {	//get register number for commands that need it
 			if cmdstk.last().unwrap().is_empty() && DRS.is_none() {
-				eprintln!("! No register number provided");
+				eprintln!("! Command '{}' needs a register number", cmd);
 				proceed = false;
 				0
 			}
@@ -1743,9 +1725,7 @@ unsafe fn exec(input: String) {
 
 			//prompt and execute
 			'?' => {
-				let mut prompt_in = String::new();
-				stdin().read_line(&mut prompt_in).expect("Unable to read input");
-				prompt_in = prompt_in.trim_end_matches(char::is_whitespace).to_string();	//trim trailing LF
+				let prompt_in = input::<String>().get();
 				if cmdstk.last().unwrap().is_empty() {
 					cmdstk.pop();	//optimize tail call
 				}
