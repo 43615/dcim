@@ -11,9 +11,15 @@
 
 This readme only lists changes compared to GNU dc. If you're unfamiliar with it, read the [Wikipedia article about dc](https://en.wikipedia.org/wiki/dc_(computer_program)) or see the [***full reference manual***](../../wiki).
 ## Building
-### *nix
+(Assuming complete and up-to-date environment)
+### In general
 ```
 cargo install --git https://github.com/43615/dcim
+```
+### Android (Termux)
+Need to add this argument first:
+```
+export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 ```
 ### Windows
 `gmp-mpfr-sys` requires some extra setup. Follow the instructions [here](https://crates.io/crates/gmp-mpfr-sys), under "Building on Windows". After building it in MinGW once, new dc:im versions can be built normally until I update it to a new version of `gmp-mpfr-sys`.
