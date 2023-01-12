@@ -2,7 +2,6 @@ use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Spe
 use std::io::{stdout, Write};
 use read_input::prelude::*;
 use std::time::{SystemTime, Duration};
-use std::cmp::Ordering;
 
 const HELPMSG: &str = "
 ╭─────────────────────────╮
@@ -34,30 +33,14 @@ Options and syntax:
 	Print this help message.
 ";
 
-//environment parameter defaults and storage, initialized in main
-fn kdef() -> Integer { Integer::from(-1) }
-fn idef() -> Integer { Integer::from(10) }
-fn odef() -> Integer { Integer::from(10) }
-static mut ENVSTK: Vec<(Integer, Integer, Integer)> = Vec::new();	//stores (k,i,o) tuples, used by '{' and '}'
-static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
-
-#[derive(Clone, PartialEq)]
-#[repr(u8)]
+#[derive(Clone)]
 enum Obj {
 	N(Float),
 	S(String)
 }
-impl Default for Obj {
-	fn default() -> Self {
-		Obj::N(Float::new(1))
-	}
-}
 impl Obj {
-	fn type_bool(&self) -> bool {
-		match self {
-			Obj::N(_) => false,
-			Obj::S(_) => true
-		}
+	fn dummy() -> Self {
+		Self::N(Float::new(1))
 	}
 }
 
@@ -68,15 +51,6 @@ struct RegObj {
 	a: Vec<Obj>,	//associated array
 }
 
-impl RegObj {
-	fn o(principal: Obj) -> Self {	//shorthand for RegObj from Obj
-		Self {
-			o: principal,
-			a: Vec::new()
-		}
-	}
-}
-
 #[derive(Clone, Copy)]
 #[repr(u8)]
 enum Adicity {	//possible command adicities
@@ -84,6 +58,28 @@ enum Adicity {	//possible command adicities
 	Monadic,
 	Dyadic,
 	Triadic
+}
+
+struct ParamStk {	//wrapper for brevity and safety
+	v: Vec<(Integer, Integer, Integer)>
+}
+impl ParamStk {
+	const fn new() -> Self {
+		Self{v: Vec::new()}
+	}
+	fn create(&mut self) {	//new param context
+		self.v.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
+	}
+	fn destroy(&mut self) {	//return to previous context
+		self.v.pop();
+		if self.v.is_empty() {self.create()}
+	}
+	fn set_k(&mut self, n: Integer) {self.v.last_mut().unwrap().0 = n;}
+	fn set_i(&mut self, n: Integer) {self.v.last_mut().unwrap().1 = n;}
+	fn set_o(&mut self, n: Integer) {self.v.last_mut().unwrap().2 = n;}
+	fn k(&self) -> Integer {self.v.last().unwrap().0.clone()}
+	fn i(&self) -> Integer {self.v.last().unwrap().1.clone()}
+	fn o(&self) -> Integer {self.v.last().unwrap().2.clone()}
 }
 
 static mut MSTK: Vec<Obj> = Vec::new();	//main stack
@@ -96,7 +92,13 @@ static mut DRS: Option<usize> = None;	//direct register selector
 
 static mut RNG: Vec<RandState> = Vec::new();	//same problem as with RO_BUF
 
-const INT_ORD_DEF: (Integer, Ordering) = (Integer::ZERO, Ordering::Equal);	//default tuple for to_integer_round().unwrap_or()
+static mut PARAMS: ParamStk = ParamStk::new();	//environment parameters
+static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
+
+
+fn int(n: &Float) -> Integer {	//discard fractional part if finite, default to 0 otherwise
+	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
+}
 
 fn main() {
 	let mut args: Vec<String> = std::env::args().collect();
@@ -104,7 +106,7 @@ fn main() {
 
 	//init everything that doesn't have a const constructor
 	unsafe {
-		ENVSTK.push((kdef(), idef(), odef()));	//initialize env params
+		PARAMS.create();	//initialize env params
 		RO_BUF.push(RegObj{	//and RegObj buffer
 			a: Vec::new(),
 			o: Obj::N(Float::with_val(WPREC, 0))
@@ -133,11 +135,11 @@ fn main() {
 				file_mode(args);
 			},
 			"--help"|"-h" => {
-				println!("{}", HELPMSG);
+				println!("{HELPMSG}");
 			},
 			_ => {
 				if mode.starts_with('-'){
-					eprintln!("! Invalid option \"{}\", use -h for option syntax help", mode);
+					eprintln!("! Invalid option \"{mode}\", use -h for option syntax help");
 				}
 				else {	//assume filenames
 					file_mode(args);
@@ -149,55 +151,57 @@ fn main() {
 
 //interactive/shell mode, the default
 fn interactive_mode(prompt: Option<String>) {
-	let inputter = input::<String>().repeat_msg(prompt.unwrap_or("> ".into()));
+	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	loop {
 		let input = inputter.get();
 		unsafe{exec(input);}
 	}
 }
 
-fn expression_mode(exprs: Vec<String>) {
+fn expression_mode(mut exprs: Vec<String>) {
 	if !exprs.is_empty() {
-		for i in 0..exprs.len() {
-			if i==exprs.len()-1&&exprs[i]=="?" {
-				interactive_mode(None);	//if last expression is "?", enter prompt loop
-			}
-			else {
-				unsafe {
-					exec(exprs[i].clone());
-				}
-			}
+		let inter = if exprs.last().unwrap() == "?" {	//enter interactive mode when done?
+			exprs.pop();
+			true
+		} else {false};
+		for expr in exprs {
+			unsafe{exec(expr);}
+		}
+		if inter {
+			interactive_mode(None);
 		}
 	}
 }
 
-fn file_mode(files: Vec<String>) {
+fn file_mode(mut files: Vec<String>) {
 	if files.is_empty() {
 		eprintln!("! No file name provided");
 	}
 	else {
-		for i in 0..files.len() {
-			if i==files.len()-1&&files[i]=="?"{
-				interactive_mode(None);	//if last filename is "?", enter prompt loop
+		let inter = if files.last().unwrap() == "?" {	//enter interactive mode when done?
+			files.pop();
+			true
+		} else {false};
+		for file in files {
+			match std::fs::read_to_string(&file) {
+				Ok(script) => {
+					let mut script_nc = String::new();	//script with comments removed
+					for line in script.split('\n') {
+						script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
+						script_nc.push('\n');
+					}
+					unsafe {
+						exec(script_nc);
+					}
+							
+				},
+				Err(error) => {
+					eprintln!("! Unable to read file \"{file}\": {error}");
+				},
 			}
-			else {
-				match std::fs::read_to_string(files[i].clone()) {
-					Ok(script) => {
-						let mut script_nc = String::new();	//script with comments removed
-						for line in script.split('\n') {
-							script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
-							script_nc.push('\n');
-						}
-						unsafe {
-							exec(script_nc);
-						}
-								
-					},
-					Err(error) => {
-						eprintln!("! Unable to read file \"{}\": {}", files[i], error);
-					},
-				}
-			}
+		}
+		if inter {
+			interactive_mode(None);
 		}
 	}
 }
@@ -217,31 +221,28 @@ fn get_adicity(cmd: char) -> Adicity {
 
 //defines whether a command needs a register number
 fn uses_reg(cmd: char) -> bool {
-	match cmd {
-		'F'|'s'|'S'|'l'|'L'|':'|';'|'j'|'J'|'h'|'H'|'Z'|'<'|'='|'>' => true,
-		_ => false
-	}
+	matches!(cmd, 'F'|'s'|'S'|'l'|'L'|':'|';'|'j'|'J'|'h'|'H'|'Z'|'<'|'='|'>')
 }
 
 //defines correct argument types for all commands
 //dummy Objs are numbers => default is false
 fn types_match(cmd: char, a: &Obj, b: &Obj, c: &Obj) -> bool {
-	let (ta, tb, tc) = (a.type_bool(), b.type_bool(), c.type_bool());
+	let t: [bool; 3] = [a, b, c].map(|o| matches!(o, Obj::S(_)));	//map types to bool, easier to work with
 	match cmd {
-		'+'|'^' => ta==tb,
+		'+'|'^' => t[0]==t[1],
 
-		'|' => ta==tb && tb==tc,
+		'|' => t[0]==t[1] && t[1]==t[2],
 
-		'-'|'*'|'/'|'%'|'~'|':' => !tb,
+		'-'|'*'|'/'|'%'|'~'|':' => !t[1],
 
-		'&'|'$'|'\\' => ta,
+		'&'|'$'|'\\' => t[0],
 
 		'n'|'P'|'a'|'A'|'"'|'x'|'g'|'s'|'S' => true,
 
-		'X' => ta&&!tb,
+		'X' => t[0]&&!t[1],
 
 		//default: only numbers
-		_ => !ta&&!tb&&!tc,
+		_ => !t[0]&&!t[1]&&!t[2],
 	}
 }
 
@@ -254,7 +255,7 @@ where Float: Assign<T>
 
 //scientific notation wrapper for brevity
 fn sciflt<T, U>(prec: u32, man: T, exp: U) -> Option<Float>
-where Float: Assign<T>, Float: Assign<U>
+where Float: Assign<T> + Assign<U>
 {
 	Some(Float::with_val(prec, man)*Float::with_val(prec, exp).exp10())
 }
@@ -366,9 +367,9 @@ fn constants(prec: u32, query: &str) -> Option<Float> {
 		"abort" => {std::process::abort();}
 		"crash" => {constants(prec, "crash")}	//stack overflow through recursion
 		"panic" => {std::panic::panic_any(
-			unsafe {if let Some(ptr) = MSTK.last() {
-				if let Obj::S(s) = ptr {s} else {"Manual panic"}}
-			else {"INTENTIONAL PANIC"}});}
+			unsafe {
+				if let Some(Obj::S(s)) = MSTK.last() {s} else {"Expected, [panic]\" was executed"}	//if top-of-stack is a string, display it
+			});}
 		"author" => {flt(prec, 43615)}	//why not
 		
 		_ => {None}
@@ -392,10 +393,7 @@ fn const_affixes(prec: u32, query: &str) -> Option<Float> {
 	if power.is_empty() {power.push('1');}
 	let p = Float::with_val(prec, Integer::parse(power).unwrap().complete());
 
-	if let Some(n) = constants(prec, &q) {
-		Some((s*n).pow(p))
-	}
-	else {None}
+	constants(prec, &q).map(|n| (s*n).pow(p))
 }
 
 //custom number printing function
@@ -492,7 +490,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 			mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
 			let eint = epart.parse::<i32>().unwrap();	//isolate exponential part
 			if eint<0 && eint>-10 {
-				outstr = "0.".to_string() + &"0".repeat(eint.abs() as usize -1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
+				outstr = "0.".to_string() + &"0".repeat(eint.unsigned_abs() as usize -1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
 				if num<0 {
 					let (ipart, fpart) = outstr.split_once('_').unwrap();
 					outstr = "_".to_string() + ipart + fpart;	//move negative sign to front
@@ -528,7 +526,7 @@ unsafe fn exec(commands: String) {
 
 		let ri = if uses_reg(cmd) {	//get register number for commands that need it
 			if cmdstk.last().unwrap().is_empty() && DRS.is_none() {
-				eprintln!("! Command '{}' needs a register number", cmd);
+				eprintln!("! Command '{cmd}' needs a register number");
 				proceed = false;
 				0
 			}
@@ -539,28 +537,28 @@ unsafe fn exec(commands: String) {
 		else {0};
 
 		if ri>=REGS.len() {
-			eprintln!("! Register {} is not available", ri);
+			eprintln!("! Register {ri} is not available");
 			proceed = false;
 		}
 
 		let mut dummy = false;	//placeholder Objs, don't push back
 		let (c, b, a) = if MSTK.len() >= adicity as usize {	//if enough args on stack
 			match adicity {	//pop required amount
-				Adicity::Niladic => (Obj::default(), Obj::default(), Obj::default()),
-				Adicity::Monadic => (Obj::default(), Obj::default(), MSTK.pop().unwrap()),
-				Adicity::Dyadic => (Obj::default(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
+				Adicity::Niladic => (Obj::dummy(), Obj::dummy(), Obj::dummy()),
+				Adicity::Monadic => (Obj::dummy(), Obj::dummy(), MSTK.pop().unwrap()),
+				Adicity::Dyadic => (Obj::dummy(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
 				Adicity::Triadic => (MSTK.pop().unwrap(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
 			}
 		}
 		else {
-			eprintln!("! Insufficient arguments for command '{}'", cmd);
+			eprintln!("! Insufficient arguments for command '{cmd}'");
 			proceed = false;
 			dummy = true;
-			(Obj::default(), Obj::default(), Obj::default())
+			(Obj::dummy(), Obj::dummy(), Obj::dummy())
 		};
 
 		if !types_match(cmd, &a, &b, &c) {
-			eprintln!("! Invalid argument type(s) for command '{}'", cmd);
+			eprintln!("! Invalid argument type(s) for command '{cmd}'");
 			proceed = false;
 		}
 
@@ -582,7 +580,7 @@ unsafe fn exec(commands: String) {
 			------------------*/
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
-				if ENVSTK.last().unwrap().1>36 {
+				if PARAMS.i()>36 {
 					eprintln!("! Any-base input must be used for input bases over 36");
 				}
 				else {
@@ -625,12 +623,12 @@ unsafe fn exec(commands: String) {
 					if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
 					if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
 					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
-					match Float::parse_radix(numstr.clone(), ENVSTK.last().unwrap().1.to_i32().unwrap()) {		
+					match Float::parse_radix(numstr.clone(), PARAMS.i().to_i32().unwrap()) {		
 						Ok(res) => {
 							MSTK.push(Obj::N(Float::with_val(WPREC, res)));
 						},
 						Err(error) => {
-							eprintln!("! Unable to parse number \"{}\": {}", numstr, error);
+							eprintln!("! Unable to parse number \"{numstr}\": {error}");
 						},
 					}
 				}
@@ -643,7 +641,7 @@ unsafe fn exec(commands: String) {
 					MSTK.push(Obj::N(Float::with_val(WPREC, num)));	//default to 0 if on end of input
 				}
 				else {
-					let ibase = ENVSTK.last().unwrap().1.clone();
+					let ibase = PARAMS.i();
 					let mut dig = String::new();	//digit being parsed
 					let mut neg = false;	//number negative?
 					let mut frac = false;	//fractional separator has occurred
@@ -689,7 +687,7 @@ unsafe fn exec(commands: String) {
 							' '|')' => {	//if digit or whole number is finished
 								let digint = if dig.clone().is_empty() {Integer::ZERO} else {Integer::parse(dig.clone()).unwrap().complete()};	//parse digit, default to 0
 								if digint >= ibase {
-									eprintln!("! Unable to parse any-base number: digit '{}' is too high for base {}", digint, ibase);
+									eprintln!("! Unable to parse any-base number: digit '{digint}' is too high for base {ibase}");
 									if cmd==')' {break;}
 									else {
 										if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
@@ -735,7 +733,7 @@ unsafe fn exec(commands: String) {
 												break;
 											},
 											_ => {
-												eprintln!("! Unable to parse any-base number: invalid character '{}' in exponent", cmd);
+												eprintln!("! Unable to parse any-base number: invalid character '{cmd}' in exponent");
 												if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
 													cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
 												}
@@ -761,7 +759,7 @@ unsafe fn exec(commands: String) {
 								}
 							},
 							_ => {
-								eprintln!("! Invalid character in any-base number: '{}'", cmd);
+								eprintln!("! Invalid character in any-base number: '{cmd}'");
 								if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
 									cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
 								}
@@ -790,7 +788,7 @@ unsafe fn exec(commands: String) {
 						break;
 					}
 					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
-						eprintln!("! Unable to parse string \"[{}\": missing closing bracket", res);
+						eprintln!("! Unable to parse string \"[{res}\": missing closing bracket");
 						break;
 					}
 					else {cmd = cmdstk.last_mut().unwrap().pop().unwrap();}
@@ -803,8 +801,8 @@ unsafe fn exec(commands: String) {
 			'p' => {
 				if !MSTK.is_empty() {
 					match MSTK.last().unwrap() {
-						Obj::N(n) => {println!("{}", flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
-						Obj::S(s) => {println!("[{}]", s);},
+						Obj::N(n) => {println!("{}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+						Obj::S(s) => {println!("[{s}]");},
 					}
 				}
 			},
@@ -814,8 +812,8 @@ unsafe fn exec(commands: String) {
 				if !MSTK.is_empty() {
 					for i in (0..MSTK.len()).rev() {
 						match &MSTK[i] {
-							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
-							Obj::S(s) => {println!("[{}]", s);},
+							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+							Obj::S(s) => {println!("[{s}]");},
 						}
 					}
 				}
@@ -825,11 +823,11 @@ unsafe fn exec(commands: String) {
 			'n' => {
 				match a {
 					Obj::N(na) => {
-						print!("{}", flt_to_str(na, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));
+						print!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));
 						stdout().flush().unwrap();
 					},
 					Obj::S(sa) => {
-						print!("{}", sa);
+						print!("{sa}");
 						stdout().flush().unwrap();
 					},
 				}
@@ -838,8 +836,8 @@ unsafe fn exec(commands: String) {
 			//pop and print with newline
 			'P' => {
 				match a {
-					Obj::N(na) => {println!("{}", flt_to_str(na, ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
-					Obj::S(sa) => {println!("{}", sa);},
+					Obj::N(na) => {println!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));},
+					Obj::S(sa) => {println!("{sa}");},
 				}
 			},
 
@@ -848,15 +846,15 @@ unsafe fn exec(commands: String) {
 				if !REGS[ri].is_empty(){
 					for i in (0..REGS[ri].len()).rev() {
 						match &REGS[ri][i].o {
-							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
-							Obj::S(s) => {println!("[{}]", s);},
+							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+							Obj::S(s) => {println!("[{s}]");},
 						}
 						if !REGS[ri][i].a.is_empty() {
 							let maxwidth = (REGS[ri][i].a.len()-1).to_string().len();	//length of longest index number
 							for ai in 0..REGS[ri][i].a.len() {
 								match &REGS[ri][i].a[ai] {
-									Obj::N(n) => {println!("\t{:>maxwidth$}: {}", ai, flt_to_str(n.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone()));},
-									Obj::S(s) => {println!("\t{:>maxwidth$}: [{}]", ai, s);},
+									Obj::N(n) => {println!("\t{ai:>maxwidth$}: {}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+									Obj::S(s) => {println!("\t{ai:>maxwidth$}: [{s}]");},
 								}
 							}
 						}
@@ -881,7 +879,7 @@ unsafe fn exec(commands: String) {
 					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na - nb)));},
 					(Obj::S(sa), Obj::N(nb)) => {
 						let mut newstr = sa.chars().collect::<Vec<char>>();
-						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
+						let int = int(nb);	//extract b, keep for checking if negative
 						if let Some(mut num) = &int.abs_ref().complete().to_usize() {
 							if num>newstr.len() { num = newstr.len(); }	//account for too large b
 							if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
@@ -890,7 +888,7 @@ unsafe fn exec(commands: String) {
 							MSTK.push(Obj::S(newstr.iter().collect::<String>()));
 						}
 						else {
-							eprintln!("! Cannot possibly remove {} characters from a string", int);
+							eprintln!("! Cannot possibly remove {int} characters from a string");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -905,14 +903,14 @@ unsafe fn exec(commands: String) {
 					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na * nb)));},
 					(Obj::S(sa), Obj::N(nb)) => {
 						let mut newstr = sa.clone();
-						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
+						let int = int(nb);	//extract b, keep for checking if negative
 						if let Some(num) = &int.abs_ref().complete().to_usize() {
 							newstr = newstr.repeat(*num);
 							if int<0 { newstr = newstr.chars().rev().collect(); }	//if b is negative, invert string
 							MSTK.push(Obj::S(newstr));
 						}
 						else {
-							eprintln!("! Cannot possibly repeat a string {} times", int);
+							eprintln!("! Cannot possibly repeat a string {int} times");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -936,7 +934,7 @@ unsafe fn exec(commands: String) {
 					},
 					(Obj::S(sa), Obj::N(nb)) => {
 						let mut newstr = sa.chars().collect::<Vec<char>>();
-						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;	//extract b, keep for checking if negative
+						let int = int(nb);	//extract b, keep for checking if negative
 						if let Some(num) = &int.abs_ref().complete().to_usize() {
 							if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
 							newstr.truncate(*num);
@@ -944,7 +942,7 @@ unsafe fn exec(commands: String) {
 							MSTK.push(Obj::S(newstr.iter().collect::<String>()));
 						}
 						else {
-							eprintln!("! Cannot possibly shorten a string to {} characters", int);
+							eprintln!("! Cannot possibly shorten a string to {int} characters");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -957,8 +955,8 @@ unsafe fn exec(commands: String) {
 			'%' => {
 				match (&a, &b) {
 					(Obj::N(na), Obj::N(nb)) => {
-						let ia = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ib = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ia = int(na);
+						let ib = int(nb);
 						if ib==0 {
 							eprintln!("! Arithmetic error: Attempted reduction mod 0");
 							MSTK.push(a);
@@ -969,19 +967,19 @@ unsafe fn exec(commands: String) {
 						}
 					},
 					(Obj::S(sa), Obj::N(nb)) => {
-						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let int = int(nb);
 						if let Some(idx) = int.to_usize() {
 							if let Some(chr) = sa.chars().nth(idx) {
 								MSTK.push(Obj::S(chr.to_string()));
 							}
 							else {
-								eprintln!("! String is too short for index {}", idx);
+								eprintln!("! String is too short for index {idx}");
 								MSTK.push(a);
 								MSTK.push(b);
 							}
 						}
 						else {
-							eprintln!("! Cannot possibly isolate character at index {}", int);
+							eprintln!("! Cannot possibly isolate character at index {int}");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -994,8 +992,8 @@ unsafe fn exec(commands: String) {
 			'~' => {
 				match (&a, &b) {
 					(Obj::N(na), Obj::N(nb)) => {
-						let ia = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ib = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ia = int(na);
+						let ib = int(nb);
 						if ib==0 {
 							eprintln!("! Arithmetic error: Attempted reduction mod 0");
 							MSTK.push(a);
@@ -1008,7 +1006,7 @@ unsafe fn exec(commands: String) {
 						}
 					},
 					(Obj::S(sa), Obj::N(nb)) => {
-						let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let int = int(nb);
 						if let Some(mut idx) = &int.to_usize() {
 							let cvec = sa.chars().collect::<Vec<char>>();
 							if idx>cvec.len() { idx=cvec.len(); }	//if too large, split at max index to preserve signature
@@ -1016,7 +1014,7 @@ unsafe fn exec(commands: String) {
 							MSTK.push(Obj::S(cvec[idx..].iter().collect::<String>()));
 						}
 						else {
-							eprintln!("! Cannot possibly split a string at character {}", int);
+							eprintln!("! Cannot possibly split a string at character {int}");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -1055,25 +1053,23 @@ unsafe fn exec(commands: String) {
 			'|' => {
 				match (&a, &b, &c) {
 					(Obj::N(na), Obj::N(nb), Obj::N(nc)) => {
-						let ia = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ib = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
-						let ic = nc.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+						let ia = int(na);
+						let ib = int(nb);
+						let ic = int(nc);
 						if ic==0 {
 							eprintln!("! Arithmetic error: Attempted reduction mod 0");
 							MSTK.push(a);
 							MSTK.push(b);
 							MSTK.push(c);
 						}
+						else if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
+							MSTK.push(Obj::N(Float::with_val(WPREC, res)));
+						}
 						else {
-							if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
-								MSTK.push(Obj::N(Float::with_val(WPREC, res)));
-							}
-							else {
-								eprintln!("! Arithmetic error: {} doesn't have an inverse mod {}", ia, ic);
-								MSTK.push(a);
-								MSTK.push(b);
-								MSTK.push(c);
-							}
+							eprintln!("! Arithmetic error: {ia} doesn't have an inverse mod {ic}");
+							MSTK.push(a);
+							MSTK.push(b);
+							MSTK.push(c);
 						}
 					},
 					(Obj::S(sa), Obj::S(sb), Obj::S(sc)) => {
@@ -1204,7 +1200,7 @@ unsafe fn exec(commands: String) {
 			//random integer [0;a)
 			'N' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if int<=0 {
 						eprintln!("! Upper bound for random value must be above 0");
 						MSTK.push(a);
@@ -1219,13 +1215,13 @@ unsafe fn exec(commands: String) {
 			'"' => {
 				match &a {
 					Obj::N(na) => {
-						MSTK.push(Obj::S(flt_to_str(na.clone(), ENVSTK.last().unwrap().2.clone(), ENVSTK.last().unwrap().0.clone())));
+						MSTK.push(Obj::S(flt_to_str(na.clone(), PARAMS.o(), PARAMS.k())));
 					},
 					Obj::S(sa) => {
 						match sa.matches(' ').count() {
 							0 => {	//normal lookup
-								if let Some(res) = const_affixes(WPREC, &sa) {
-									MSTK.push(Obj::N(res))
+								if let Some(res) = const_affixes(WPREC, sa) {
+									MSTK.push(Obj::N(res));
 								}
 								else {
 									eprintln!("! Constant/conversion factor not found");
@@ -1235,7 +1231,7 @@ unsafe fn exec(commands: String) {
 							1 => {	//conversion shorthand, left divided by right
 								let (sl, sr) = sa.split_once(' ').unwrap();
 								if let (Some(nl), Some(nr)) = (const_affixes(WPREC, sl), const_affixes(WPREC, sr)) {
-									MSTK.push(Obj::N(nl/nr))
+									MSTK.push(Obj::N(nl/nr));
 								}
 								else {
 									eprintln!("! Constant/conversion factor not found");
@@ -1254,7 +1250,7 @@ unsafe fn exec(commands: String) {
 			//deg -> rad shorthand
 			'°' => {
 				if let Obj::N(na) = a {
-					MSTK.push(Obj::N(na * Float::with_val(WPREC, Constant::Pi) / 180))
+					MSTK.push(Obj::N(na * Float::with_val(WPREC, Constant::Pi) / 180));
 				}
 			},
 			/*------------------------
@@ -1268,13 +1264,13 @@ unsafe fn exec(commands: String) {
 			//remove top a objects from stack
 			'C' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if let Some(mut num) = int.to_usize() {
 						if num>MSTK.len() { num = MSTK.len(); }	//limit clear count
 						MSTK.truncate(MSTK.len()-num);
 					}
 					else {
-						eprintln!("! Cannot possibly remove {} objects from the main stack", int);
+						eprintln!("! Cannot possibly remove {int} objects from the main stack");
 						MSTK.push(a);
 					}
 				}
@@ -1293,7 +1289,7 @@ unsafe fn exec(commands: String) {
 			//duplicate top a objects
 			'D' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if let Some(num) = int.to_usize() {
 						if num<=MSTK.len() {
 							MSTK.extend_from_within(MSTK.len()-num..);
@@ -1304,7 +1300,7 @@ unsafe fn exec(commands: String) {
 						}
 					}
 					else {
-						eprintln!("! Cannot possibly duplicate {} objects", int);
+						eprintln!("! Cannot possibly duplicate {int} objects");
 						MSTK.push(a);
 					}
 				}
@@ -1316,14 +1312,14 @@ unsafe fn exec(commands: String) {
 					MSTK.swap(MSTK.len()-2, MSTK.len()-1);
 				}
 				else {
-					eprintln!("! Not enough objects to rotate")
+					eprintln!("! Not enough objects to rotate");
 				}
 			},
 
 			//rotate top a objects
 			'R' => {
 				if let Obj::N(na) = &a {
-					let mut int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let mut int = int(na);
 					if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
 					if let Some(num) = int.clone().abs().to_usize() {
 						if num<=MSTK.len() {
@@ -1358,9 +1354,9 @@ unsafe fn exec(commands: String) {
 			//set output precision
 			'k' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if int>=-1 {
-						ENVSTK.last_mut().unwrap().0 = int;
+						PARAMS.set_k(int);
 					}
 					else {
 						eprintln!("! Output precision must be at least -1");
@@ -1372,9 +1368,9 @@ unsafe fn exec(commands: String) {
 			//set input base
 			'i' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if int>=2 {
-						ENVSTK.last_mut().unwrap().1 = int;
+						PARAMS.set_i(int);
 					}
 					else {
 						eprintln!("! Input base must be at least 2");
@@ -1386,9 +1382,9 @@ unsafe fn exec(commands: String) {
 			//set output base
 			'o' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if int>=2 {
-						ENVSTK.last_mut().unwrap().2 = int;
+						PARAMS.set_o(int);
 					}
 					else {
 						eprintln!("! Output base must be at least 2");
@@ -1400,12 +1396,12 @@ unsafe fn exec(commands: String) {
 			//set working precision
 			'w' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if (1..=u32::MAX).contains(&int) {
 						WPREC = int.to_u32().unwrap();
 					}
 					else {
-						eprintln!("! Working precision must be between {} and {} (inclusive)", 1, u32::MAX);
+						eprintln!("! Working precision must be between 1 and {} (inclusive)", u32::MAX);
 						MSTK.push(a);
 					}
 				}
@@ -1413,17 +1409,17 @@ unsafe fn exec(commands: String) {
 
 			//push output precision
 			'K' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, ENVSTK.last().unwrap().0.clone())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, PARAMS.k())));
 			},
 
 			//push input base
 			'I' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, ENVSTK.last().unwrap().1.clone())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, PARAMS.i())));
 			},
 
 			//push output base
 			'O' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, ENVSTK.last().unwrap().2.clone())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, PARAMS.o())));
 			},
 
 			//push working precision
@@ -1433,15 +1429,12 @@ unsafe fn exec(commands: String) {
 
 			//create new k,i,o context
 			'{' => {
-				ENVSTK.push((kdef(), idef(), odef()));
+				PARAMS.create();
 			},
 
 			//revert to previous context
 			'}' => {
-				ENVSTK.pop();
-				if ENVSTK.is_empty() {
-					ENVSTK.push((kdef(), idef(), odef()));	//ensure 1 entry always remains
-				}
+				PARAMS.destroy();
 			},
 			/*--------------------------
 				REGISTERS AND MACROS
@@ -1461,13 +1454,13 @@ unsafe fn exec(commands: String) {
 
 			//push to top of register
 			'S' => {
-				REGS[ri].push(RegObj::o(a));
+				REGS[ri].push(RegObj{o: a, a: Vec::new()});
 			},
 
 			//load from top of register
 			'l' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {} is empty", ri);
+					eprintln!("! Register {ri} is empty");
 				}
 				else {
 					MSTK.push(REGS[ri].last().unwrap().o.clone());
@@ -1477,7 +1470,7 @@ unsafe fn exec(commands: String) {
 			//pop from top of register
 			'L' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {} is empty", ri);
+					eprintln!("! Register {ri} is empty");
 				}
 				else {
 					MSTK.push(REGS[ri].pop().unwrap().o);
@@ -1493,7 +1486,7 @@ unsafe fn exec(commands: String) {
 							a: Vec::new()
 						});
 					}
-					let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(nb);
 					if let Some(rai) = int.to_usize() {
 						if rai>=REGS[ri].last().unwrap().a.len() {
 							REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
@@ -1501,7 +1494,7 @@ unsafe fn exec(commands: String) {
 						REGS[ri].last_mut().unwrap().a[rai] = a;
 					}
 					else {
-						eprintln!("! Cannot possibly save to array index {}", int);
+						eprintln!("! Cannot possibly save to array index {int}");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1517,7 +1510,7 @@ unsafe fn exec(commands: String) {
 							a: Vec::new()
 						});
 					}
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if let Some(rai) = int.to_usize() {
 						if rai>=REGS[ri].last().unwrap().a.len() {
 							REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
@@ -1525,7 +1518,7 @@ unsafe fn exec(commands: String) {
 						MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
 					}
 					else {
-						eprintln!("! Cannot possibly load from array index {}", int);
+						eprintln!("! Cannot possibly load from array index {int}");
 						MSTK.push(a);
 					}
 				}
@@ -1534,7 +1527,7 @@ unsafe fn exec(commands: String) {
 			//load top-of-reg into buffer
 			'j' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {} is empty", ri);
+					eprintln!("! Register {ri} is empty");
 				}
 				else {
 					RO_BUF[0] = REGS[ri].last().unwrap().clone();
@@ -1544,7 +1537,7 @@ unsafe fn exec(commands: String) {
 			//pop top-of-reg into buffer
 			'J' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {} is empty", ri);
+					eprintln!("! Register {ri} is empty");
 				}
 				else {
 					RO_BUF[0] = REGS[ri].pop().unwrap();
@@ -1570,18 +1563,18 @@ unsafe fn exec(commands: String) {
 			//specify manual register index
 			',' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if let Some(new_ri) = int.to_usize() {
 						if REGS.len()>new_ri {
 							DRS = Some(new_ri);
 						}
 						else {
-							eprintln!("! Register {} is not available", new_ri);
+							eprintln!("! Register {new_ri} is not available");
 							MSTK.push(a);
 						}
 					}
 					else {
-						eprintln!("! Register {} cannot possibly exist", int);
+						eprintln!("! Register {int} cannot possibly exist");
 						MSTK.push(a);
 					}
 				}
@@ -1593,17 +1586,17 @@ unsafe fn exec(commands: String) {
 			'a' => {
 				match &a {
 					Obj::N(na) => {
-						if let Some(ia) = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_u32() {
+						if let Some(ia) = int(na).to_u32() {
 							if let Some(res) = char::from_u32(ia) {
 								MSTK.push(Obj::S(res.to_string()));
 							}
 							else {
-								eprintln!("! Unable to convert number {} to character: not a valid Unicode value", ia);
+								eprintln!("! Unable to convert number {ia} to character: not a valid Unicode value");
 								MSTK.push(a);
 							}
 						}
 						else {
-							eprintln!("! Unable to convert number {} to character: valid range is 0 to {}", na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0, u32::MAX);
+							eprintln!("! Unable to convert number {} to character: valid range is 0 to {}", int(na), u32::MAX);
 							MSTK.push(a);
 						}
 					},
@@ -1613,7 +1606,7 @@ unsafe fn exec(commands: String) {
 							MSTK.push(a);
 						}
 						else {
-							MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().nth(0).unwrap() as u32)));
+							MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().next().unwrap() as u32)));
 						}
 					},
 				}
@@ -1623,11 +1616,11 @@ unsafe fn exec(commands: String) {
 			'A' => {
 				match &a {
 					Obj::N(na) => {
-						if let Ok(res) = String::from_utf8(na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0.to_digits::<u8>(Order::Msf)) {
+						if let Ok(res) = String::from_utf8(int(na).to_digits::<u8>(Order::Msf)) {
 							MSTK.push(Obj::S(res));
 						}
 						else {
-							eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0);
+							eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", int(na));
 							MSTK.push(a);
 						}
 					},
@@ -1658,25 +1651,23 @@ unsafe fn exec(commands: String) {
 			'<'|'='|'>' => {
 				if let (Obj::N(na), Obj::N(nb)) = (&a, &b) {
 					if REGS[ri].is_empty() {
-						eprintln!("! Register {} is empty", ri);
+						eprintln!("! Register {ri} is empty");
+					}
+					else if let Obj::S(mac) = &REGS[ri].last().unwrap().o {
+						if inv != match cmd {
+						'<' => { nb < na },	//reverse order, GNU dc convention
+						'=' => { nb == na },
+						'>' => { nb > na },
+						_ => {false},}
+						{
+							if cmdstk.last().unwrap().is_empty() {
+								cmdstk.pop();	//optimize tail call
+							}
+							cmdstk.push(mac.chars().rev().collect());
+						}
 					}
 					else {
-						if let Obj::S(mac) = &REGS[ri].last().unwrap().o {
-							if inv != match cmd {
-							'<' => { nb < na },	//reverse order, GNU dc convention
-							'=' => { nb == na },
-							'>' => { nb > na },
-							_ => {false},}
-							{
-								if cmdstk.last().unwrap().is_empty() {
-									cmdstk.pop();	//optimize tail call
-								}
-								cmdstk.push(mac.chars().rev().collect());
-							}
-						}
-						else {
-							eprintln!("! Top of register {} is not a string", ri);
-						}
+						eprintln!("! Top of register {ri} is not a string");
 					}
 				}
 				inv = false;	//always reset inversion
@@ -1685,7 +1676,7 @@ unsafe fn exec(commands: String) {
 			//auto-macro
 			'X' => {
 				if let (Obj::S(sa), Obj::N(nb)) = (&a, &b) {
-					let int = nb.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(nb);
 					if let Some(reps) = int.to_usize() {
 						if cmdstk.last().unwrap().is_empty() {
 							cmdstk.pop();	//optimize tail call
@@ -1693,7 +1684,7 @@ unsafe fn exec(commands: String) {
 						cmdstk.resize(cmdstk.len()+reps, sa.chars().rev().collect());
 					}
 					else {
-						eprintln!("! Invalid macro repeat count: {}", int);
+						eprintln!("! Cannot possibly repeat a macro {int} times");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1708,7 +1699,7 @@ unsafe fn exec(commands: String) {
 			//quit a macro calls
 			'Q' => {
 				if let Obj::N(na) = &a {
-					let int = na.to_integer_round(Round::Zero).unwrap_or(INT_ORD_DEF).0;
+					let int = int(na);
 					if let Some(mut num) = int.to_usize() {
 						if num>cmdstk.len() {num=cmdstk.len();}
 						cmdstk.truncate(cmdstk.len()-num);
@@ -1717,7 +1708,7 @@ unsafe fn exec(commands: String) {
 						}
 					}
 					else {
-						eprintln!("! Cannot possibly quit {} levels", int);
+						eprintln!("! Cannot possibly quit {int} levels");
 						MSTK.push(a);
 					}
 				}
@@ -1744,8 +1735,8 @@ unsafe fn exec(commands: String) {
 							}
 							cmdstk.push(script_nc.chars().rev().collect());
 						},
-						Err(error) => {
-							eprintln!("! Unable to read file \"{}\": {}", sa, error);
+						Err(err) => {
+							eprintln!("! Unable to read file \"{sa}\": {err}");
 							MSTK.push(a);
 						},
 					}
@@ -1760,7 +1751,7 @@ unsafe fn exec(commands: String) {
 							MSTK.push(Obj::S(val));
 						},
 						Err(err) => {
-							eprintln!("! Unable to get value of \"{}\": {}", sa, err);
+							eprintln!("! Unable to get value of ${sa}: {err}");
 							MSTK.push(a);
 						},
 					}
@@ -1780,12 +1771,12 @@ unsafe fn exec(commands: String) {
 								Ok(mut child) => {
 									if let Ok(stat) = child.wait() {
 										if let Some(code) = stat.code() {
-											if code!=0 {eprintln!("! OS command \"{}\" exited with code {}", oscmd, code);}
+											if code!=0 {eprintln!("! OS command \"{oscmd}\" exited with code {code}");}
 										}
 									}
 								},
-								Err(error) => {
-									eprintln!("! Unable to execute OS command \"{}\": {}", oscmd, error);
+								Err(err) => {
+									eprintln!("! Unable to execute OS command \"{oscmd}\": {err}");
 								},
 							}
 						}
@@ -1800,7 +1791,7 @@ unsafe fn exec(commands: String) {
 
 			//notify on invalid command, keep going
 			_ => {
-				if !cmd.is_whitespace()&&cmd!='\0' { eprintln!("! Invalid command: {} (U+{:04X})", cmd, cmd as u32); }
+				if !cmd.is_whitespace()&&cmd!='\0' { eprintln!("! Invalid command: {cmd} (U+{:04X})", cmd as u32); }
 			},
 		}}
 		while let Some(ptr) = cmdstk.last() {	//clean up empty command strings
