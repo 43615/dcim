@@ -12,7 +12,7 @@ const HELPMSG: &str = "
 │ ╰─┘  ╰─╴  •  ╶┴╴  ╵   ╵ │
 ╰─────────────────────────╯
 
-dc improved - Feature-added rewrite of an RPN calculator/stack machine language from 1970-72
+dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language
 Most basic GNU dc features are unaltered, full documentation at https://github.com/43615/dcim
 
 Options and syntax:

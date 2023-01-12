@@ -7,7 +7,7 @@
 │ ╰─┘  ╰─╴  •  ╶┴╴  ╵   ╵ │
 ╰─────────────────────────╯
 ```
-### *dc improved: Feature-added rewrite of a 50+ year old RPN calculator/stack machine/programming language*
+### *dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language*
 
 This readme only lists changes compared to GNU dc. If you're unfamiliar with it, read the [Wikipedia article about dc](https://en.wikipedia.org/wiki/dc_(computer_program)) or see the [***full reference manual***](../../wiki).
 ## Building
