@@ -9,7 +9,9 @@
 ```
 ### *dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language*
 
-This readme only lists changes compared to GNU dc. If you're unfamiliar with it, read the [Wikipedia article about dc](https://en.wikipedia.org/wiki/dc_(computer_program)) or see the [***full reference manual***](../../wiki).
+This readme only lists changes compared to GNU dc. If you're unfamiliar with it, read its man page or [the Wikipedia article](https://en.wikipedia.org/wiki/dc_(computer_program)).
+
+[***Complete documentation in the wiki***](../../wiki)
 ## Building
 (Assuming complete and up-to-date environment)
 ### In general
@@ -79,11 +81,10 @@ cargo install --git https://github.com/43615/dcim
 - `F`\<reg\> now prints an entire register including array contents with indices.
 - `R` rotates the top abs(a) objects: upward if a is positive, downward if negative.
   - Example: `1 2 3 4 3R` results in 1 4 2 3.
-- To enable copying of register arrays, a buffer for one complete register object has been added. Refer to the [memory model diagram](../../wiki#memory-model-diagram).
-  - `j`\<reg\> and `J`\<reg\> are like `l` and `L`, but copy and pop to the buffer instead of the main stack.
-  - `h`\<reg\> and `H`\<reg\> are like `s` and `S`, but overwrite and push reading from the buffer.
-  - Example: `jaHa` duplicates the top RegObj of reg 97, `JaHb` moves the top RegObj of reg 97 to reg 98.
-  - Mnemonics: J looks like a flipped L, H is next to it on QWERTY.
+- To enable moving/copying of register arrays, a buffer for one entire register object has been added. Refer to the [memory model diagram](../../wiki#memory-model-diagram).
+  - `b` pops the top RegObj (like `L`) and saves it to the buffer (overwriting it).
+  - `B` pushes the buffer to a register (like `S`).
+  - Example: `baBaBa` duplicates the top RegObj of reg 97, `baBb` moves the top RegObj of reg 97 to reg 98.
 ## New/overloaded string manipulation commands
 - `+` concatenates two strings.
 - `-` removes abs(b) characters from string a: from the back if b is positive, from the front if negative.

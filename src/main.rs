@@ -221,7 +221,7 @@ fn get_adicity(cmd: char) -> Adicity {
 
 //defines whether a command needs a register number
 fn uses_reg(cmd: char) -> bool {
-	matches!(cmd, 'F'|'s'|'S'|'l'|'L'|':'|';'|'j'|'J'|'h'|'H'|'Z'|'<'|'='|'>')
+	matches!(cmd, 'F'|'s'|'S'|'l'|'L'|':'|';'|'b'|'B'|'Z'|'<'|'='|'>')
 }
 
 //defines correct argument types for all commands
@@ -1524,18 +1524,8 @@ unsafe fn exec(commands: String) {
 				}
 			},
 
-			//load top-of-reg into buffer
-			'j' => {
-				if REGS[ri].is_empty() {
-					eprintln!("! Register {ri} is empty");
-				}
-				else {
-					RO_BUF[0] = REGS[ri].last().unwrap().clone();
-				}
-			},
-
 			//pop top-of-reg into buffer
-			'J' => {
+			'b' => {
 				if REGS[ri].is_empty() {
 					eprintln!("! Register {ri} is empty");
 				}
@@ -1544,14 +1534,8 @@ unsafe fn exec(commands: String) {
 				}
 			},
 
-			//save buffer to top-of-reg
-			'h' => {
-				REGS[ri].pop();
-				REGS[ri].push(RO_BUF[0].clone());
-			},
-
 			//push buffer to register
-			'H' => {
+			'B' => {
 				REGS[ri].push(RO_BUF[0].clone());
 			},
 
