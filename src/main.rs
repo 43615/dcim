@@ -2,6 +2,9 @@ use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Spe
 use std::io::{stdout, Write};
 use read_input::prelude::*;
 use std::time::{SystemTime, Duration};
+#[macro_use]
+extern crate lazy_static;
+use std::collections::{HashSet, HashMap};
 
 const HELPMSG: &str = "
 ╭─────────────────────────╮
@@ -206,44 +209,34 @@ fn file_mode(mut files: Vec<String>) {
 	}
 }
 
-//defines argument count of all commands
-fn get_adicity(cmd: char) -> Adicity {
-	match cmd {
-		'|' => Adicity::Triadic,
-
-		'+'|'-'|'*'|'/'|'^'|'V'|'G'|'%'|'~'|'@'|':'|'='|'<'|'>'|'X' => Adicity::Dyadic,
-
-		'n'|'P'|'v'|'g'|'°'|'u'|'y'|'t'|'U'|'Y'|'T'|'N'|'"'|'C'|'D'|'R'|'k'|'i'|'o'|'w'|','|'s'|'S'|';'|'x'|'Q'|'a'|'A'|'&'|'$'|'\\' => Adicity::Monadic,
-
-		_ => Adicity::Niladic
-	}
+#[derive(Clone)]
+struct TypeChecker(&'static dyn Fn([bool; 3]) -> bool);
+unsafe impl Sync for TypeChecker {}
+impl Default for TypeChecker {
+	fn default() -> Self {Self(&|[a, b, c]| !a&&!b&&!c)}
 }
 
-//defines whether a command needs a register number
-fn uses_reg(cmd: char) -> bool {
-	matches!(cmd, 'F'|'s'|'S'|'l'|'L'|':'|';'|'b'|'B'|'Z'|'<'|'='|'>')
-}
-
-//defines correct argument types for all commands
-//dummy Objs are numbers => default is false
-fn types_match(cmd: char, a: &Obj, b: &Obj, c: &Obj) -> bool {
-	let t: [bool; 3] = [a, b, c].map(|o| matches!(o, Obj::S(_)));	//map types to bool, easier to work with
-	match cmd {
-		'+'|'^' => t[0]==t[1],
-
-		'|' => t[0]==t[1] && t[1]==t[2],
-
-		'-'|'*'|'/'|'%'|'~'|':' => !t[1],
-
-		'&'|'$'|'\\' => t[0],
-
-		'n'|'P'|'a'|'A'|'"'|'x'|'g'|'s'|'S' => true,
-
-		'X' => t[0]&&!t[1],
-
-		//default: only numbers
-		_ => !t[0]&&!t[1]&&!t[2],
-	}
+lazy_static! {
+	static ref ADICITIES: HashMap<char, Adicity> = {
+		let mut m = HashMap::new();
+		m.insert('|', Adicity::Triadic);
+		for c in ['+','-','*','/','^','V','G','%','~',':','=','<','>','X'] {m.insert(c, Adicity::Dyadic);}
+		for c in ['n','P','v','g','°','u','y','t','U','Y','T','N','"','C','D','R','k','i','o','w',',','s','S',';','x','Q','a','A','&','$','\\'] {m.insert(c, Adicity::Monadic);}
+		m
+	};
+	static ref USES_REG: HashSet<char> = {
+		HashSet::from(['F','s','S','l','L',':',';','b','B','Z','<','=','>'])
+	};
+	static ref TYPE_CONDS: HashMap<char, TypeChecker> = {
+		let mut m = HashMap::new();
+		for c in ['+','^'] {m.insert(c, TypeChecker(&|[ta, tb, _]| ta==tb));}
+		m.insert('|', TypeChecker(&|[ta, tb, tc]| ta==tb && tb==tc));
+		for c in ['-','*','/','%','~',':'] {m.insert(c, TypeChecker(&|[_, tb, _]| !tb));}
+		for c in ['&','$', '\\'] {m.insert(c, TypeChecker(&|[ta, _, _]| ta));}
+		for c in ['n','P','a','A','"','x','g','s','S'] {m.insert(c, TypeChecker(&|[_, _, _]| true));}
+		m.insert('X', TypeChecker(&|[ta, tb, _]| ta&&!tb));
+		m
+	};
 }
 
 //wrapper for brevity
@@ -520,11 +513,11 @@ unsafe fn exec(commands: String) {
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
 		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap();	//isolate first character as command
-		let adicity = get_adicity(cmd);	//adicity of command
+		let adicity = ADICITIES.get(&cmd).cloned().unwrap_or(Adicity::Niladic);	//adicity of command
 
 		let mut proceed = true;	//no errors, allow command to run
 
-		let ri = if uses_reg(cmd) {	//get register number for commands that need it
+		let ri = if USES_REG.contains(&cmd) {	//get register number for commands that need it
 			if cmdstk.last().unwrap().is_empty() && DRS.is_none() {
 				eprintln!("! Command '{cmd}' needs a register number");
 				proceed = false;
@@ -557,7 +550,7 @@ unsafe fn exec(commands: String) {
 			(Obj::dummy(), Obj::dummy(), Obj::dummy())
 		};
 
-		if !types_match(cmd, &a, &b, &c) {
+		if !TYPE_CONDS.get(&cmd).cloned().unwrap_or_default().0([&a, &b, &c].map(|o| matches!(o, Obj::S(_)))) {
 			eprintln!("! Invalid argument type(s) for command '{cmd}'");
 			proceed = false;
 		}
