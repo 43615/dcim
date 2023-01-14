@@ -11,7 +11,7 @@
 
 This readme only lists changes compared to GNU dc. If you're unfamiliar with it, read its man page or [the Wikipedia article](https://en.wikipedia.org/wiki/dc_(computer_program)).
 
-[***Complete documentation in the wiki***](../../wiki)
+[**Complete documentation in the wiki**](../../wiki)
 ## Building
 (Assuming complete and up-to-date environment)
 ### In general
@@ -20,6 +20,8 @@ cargo install --git https://github.com/43615/dcim
 ```
 ### Windows
 `gmp-mpfr-sys` requires some extra setup. Follow the instructions [here](https://crates.io/crates/gmp-mpfr-sys), under "Building on Windows". After building it in MinGW once, new dc:im versions can be built normally until I update it to a new version of `gmp-mpfr-sys`.
+
+Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane reason I can't control. If you want to calculate something to a billion digits, use WSL.
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - The file and expression modes now accept and execute any number of arguments. If the last expression or filename is `?`, it will enter interactive mode after finishing.
@@ -46,12 +48,12 @@ cargo install --git https://github.com/43615/dcim
 - Output precision now applies correctly regardless of output base.
 - If output precision is -1 (new default), numbers are printed with enough precision to be exact (reproducible by inputting what's printed).
 - If it's ≥0, up to that many digits are printed after the point. Sufficiently small or large numbers are displayed in scientific notation like `_1.23456@_789`. Like with SCI input, the exponent is always in decimal.
-- Working precision (default: 256 bits) determines the mantissa size of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 54-bit mantissa.
+- Working precision (default: 256 bits) determines the mantissa length of all newly created numbers. 256 bits can store about 75 decimal digits accurately. For comparison: an IEEE 754 `double` has a 54-bit mantissa.
   - Tip: The amount of bits you need for a certain level of precision can be estimated using `<prec> <base> 2G*`. Always add a little more.
 - Scale is limited to 2^±2³⁰ or ≈10^±323'228'496.
 - Floating-point rounding artifacts (wrong digits at the end of a number) are guaranteed unless the number is a binary fraction or the input base is a power of 2. This is an unavoidable problem with conversion between incompatible bases.
 - Attention: W applies to the whole number, so large integers may be represented incorrectly. For example, with W=4, 17 is stored as 16.
-- W is limited to an unsigned 32-bit integer (4'294'967'295 bits). Actually going that high is definitely not recommended, but I'm not stopping you.
+- W is limited to an unsigned 32-bit integer (4'294'967'295 bits). This limit is imposed by the math library I'm using.
 - `X` and `Z` don't make sense for binary floats. They are used for different commands.
 ## Any-base input and output
 - The input and output bases are now unlimited. If they are over 36, an "any-base" format is used.
@@ -120,7 +122,7 @@ cargo install --git https://github.com/43615/dcim
 - `$` pops a string and pushes the environment variable with that name if it exists.
 - `\` pops a string and executes it as one or more OS commands (separated by `;`). Very basic syntax support (worst shell ever): `cmd arg1 arg2...` for normal commands, `var=val` for setting environment variables.
 ## Library of constants and conversion factors
-[List of all available constants](../../wiki/List-of-constants-and-unit-conversion-factors)
+[**List of all available constants**](../../wiki/List-of-constants-and-unit-conversion-factors)
 - `"` pushes the constant or conversion factor with name a.
   - Exception: Some names cause dc:im to exit in different ways.
 - All constants and units are stored in amounts of their respective international standard units.

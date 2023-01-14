@@ -1,10 +1,10 @@
-use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
 use std::io::{stdout, Write};
-use read_input::prelude::*;
 use std::time::{SystemTime, Duration};
+use std::collections::{HashSet, HashMap};
+use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
+use read_input::prelude::*;
 #[macro_use]
 extern crate lazy_static;
-use std::collections::{HashSet, HashMap};
 
 const HELPMSG: &str = "
 ╭─────────────────────────╮
@@ -63,26 +63,24 @@ enum Adicity {	//possible command adicities
 	Triadic
 }
 
-struct ParamStk {	//wrapper for brevity and safety
-	v: Vec<(Integer, Integer, Integer)>
-}
+struct ParamStk(Vec<(Integer, Integer, Integer)>);	//wrapper for brevity and safety
 impl ParamStk {
 	const fn new() -> Self {
-		Self{v: Vec::new()}
+		Self(Vec::new())
 	}
 	fn create(&mut self) {	//new param context
-		self.v.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
+		self.0.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
 	}
 	fn destroy(&mut self) {	//return to previous context
-		self.v.pop();
-		if self.v.is_empty() {self.create()}
+		self.0.pop();
+		if self.0.is_empty() {self.create()}
 	}
-	fn set_k(&mut self, n: Integer) {self.v.last_mut().unwrap().0 = n;}
-	fn set_i(&mut self, n: Integer) {self.v.last_mut().unwrap().1 = n;}
-	fn set_o(&mut self, n: Integer) {self.v.last_mut().unwrap().2 = n;}
-	fn k(&self) -> Integer {self.v.last().unwrap().0.clone()}
-	fn i(&self) -> Integer {self.v.last().unwrap().1.clone()}
-	fn o(&self) -> Integer {self.v.last().unwrap().2.clone()}
+	fn set_k(&mut self, n: Integer) {self.0.last_mut().unwrap().0 = n;}
+	fn set_i(&mut self, n: Integer) {self.0.last_mut().unwrap().1 = n;}
+	fn set_o(&mut self, n: Integer) {self.0.last_mut().unwrap().2 = n;}
+	fn k(&self) -> Integer {self.0.last().unwrap().0.clone()}
+	fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
+	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
 }
 
 static mut MSTK: Vec<Obj> = Vec::new();	//main stack
