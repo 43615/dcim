@@ -209,168 +209,154 @@ fn file_mode(mut files: Vec<String>) {
 	}
 }
 
-#[derive(Clone)]
-struct TypeChecker(&'static dyn Fn([bool; 3]) -> bool);
+//closure wrapper for Obj type checking
+struct TypeChecker(Box<dyn Fn([bool; 3]) -> bool>);
 unsafe impl Sync for TypeChecker {}
-impl Default for TypeChecker {
-	fn default() -> Self {Self(&|[a, b, c]| !a&&!b&&!c)}
+
+//closure wrapper for generating Floats (precision only known at runtime)
+struct Ass(Box<dyn Fn(u32) -> Float>);
+unsafe impl Sync for Ass {}
+impl Ass {
+	fn new<T: 'static + Copy>(val: T) -> Self
+	where Float: Assign<T> {
+		Self(Box::new(move |p: u32| Float::with_val(p, val)))
+	}
+	fn sci<T: 'static + Copy, U:'static + Copy>(man :T, exp: U) -> Self
+	where Float: Assign<T> + Assign<U> {
+		Self(Box::new(move |p: u32| Float::with_val(p, man)*Float::with_val(p, exp).exp10()))
+	}
 }
 
 lazy_static! {
 	static ref ADICITIES: HashMap<char, Adicity> = {
 		let mut m = HashMap::new();
 		m.insert('|', Adicity::Triadic);
-		for c in ['+','-','*','/','^','V','G','%','~',':','=','<','>','X'] {m.insert(c, Adicity::Dyadic);}
-		for c in ['n','P','v','g','°','u','y','t','U','Y','T','N','"','C','D','R','k','i','o','w',',','s','S',';','x','Q','a','A','&','$','\\'] {m.insert(c, Adicity::Monadic);}
+		for c in "+-*/^VG%~:=<>X".chars() {m.insert(c, Adicity::Dyadic);}
+		for c in "nPvg°uytUYTN\"CDRkiow,sS;xQaA&$\\".chars() {m.insert(c, Adicity::Monadic);}
 		m
 	};
 	static ref USES_REG: HashSet<char> = {
-		HashSet::from(['F','s','S','l','L',':',';','b','B','Z','<','=','>'])
+		let mut s = HashSet::new();
+		for c in "FsSlL:;bBZ<=>".chars() {s.insert(c);}
+		s
 	};
 	static ref TYPE_CONDS: HashMap<char, TypeChecker> = {
 		let mut m = HashMap::new();
-		for c in ['+','^'] {m.insert(c, TypeChecker(&|[ta, tb, _]| ta==tb));}
-		m.insert('|', TypeChecker(&|[ta, tb, tc]| ta==tb && tb==tc));
-		for c in ['-','*','/','%','~',':'] {m.insert(c, TypeChecker(&|[_, tb, _]| !tb));}
-		for c in ['&','$', '\\'] {m.insert(c, TypeChecker(&|[ta, _, _]| ta));}
-		for c in ['n','P','a','A','"','x','g','s','S'] {m.insert(c, TypeChecker(&|[_, _, _]| true));}
-		m.insert('X', TypeChecker(&|[ta, tb, _]| ta&&!tb));
+		for c in ['+','^'] {m.insert(c, TypeChecker(Box::new(|[ta, tb, _]| ta==tb)));}
+		m.insert('|', TypeChecker(Box::new(|[ta, tb, tc]| ta==tb && tb==tc)));
+		for c in "-*/%~:".chars() {m.insert(c, TypeChecker(Box::new(|[_, tb, _]| !tb)));}
+		for c in "&$\\".chars() {m.insert(c, TypeChecker(Box::new(|[ta, _, _]| ta)));}
+		for c in "nPaA\"xgsS".chars() {m.insert(c, TypeChecker(Box::new(|[_, _, _]| true)));}
+		m.insert('X', TypeChecker(Box::new(|[ta, tb, _]| ta&&!tb)));
+		m
+	};
+	static ref CONSTANTS: HashMap<&'static str, Ass> = {
+		let mut m = HashMap::new();
+		/*----------------------------
+			MATHEMATICAL CONSTANTS
+		----------------------------*/
+		m.insert("e", Ass(Box::new(|prec| Float::with_val(prec, 1).exp())));
+		m.insert("pi", Ass::new(Constant::Pi));
+		m.insert("gamma", Ass::new(Constant::Euler));
+		m.insert("phi", Ass(Box::new(|prec| (Float::with_val(prec, 5).sqrt()+1)/2)));
+		for q in ["deg","°"] {m.insert(q, Ass(Box::new(|prec| Float::with_val(prec, Constant::Pi)/180)));}
+		for q in ["gon","grad"] {m.insert(q, Ass(Box::new(|prec| Float::with_val(prec, Constant::Pi)/200)));}
+		/*------------------------
+			PHYSICAL CONSTANTS
+		------------------------*/
+		m.insert("c", Ass::new(299792458));
+		m.insert("hbar", Ass(Box::new(|prec| Float::with_val(prec, 662607015)*Float::with_val(prec, -42).exp10()
+			/(2*Float::with_val(prec, Constant::Pi)))));
+		m.insert("G", Ass::sci(6674, -3));
+		m.insert("qe", Ass::sci(1602176634, -28));
+		m.insert("NA", Ass::sci(602214076, 31));
+		m.insert("kB", Ass::sci(1380649, -29));
+		m.insert("u", Ass::sci(1660539066, -36));
+		m.insert("lp", Ass::sci(16162, -39));
+		m.insert("tp", Ass::sci(5391, -47));
+		m.insert("mp", Ass::sci(21764, -12));
+		m.insert("Tp", Ass::sci(14167, 28));
+		/*------------------
+			LENGTH UNITS
+		------------------*/
+		m.insert("in", Ass::sci(254, -4));
+		m.insert("ft", Ass(Box::new(|prec| CONSTANTS.get("in").unwrap().0(prec)*12)));
+		m.insert("yd", Ass(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*3)));
+		m.insert("m", Ass::new(1));
+		m.insert("fur", Ass(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*660)));
+		m.insert("mi", Ass(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*5280)));
+		m.insert("nmi", Ass::new(1852));
+		m.insert("AU", Ass::new(149597870700i64));
+		m.insert("ly", Ass::new(9460730472580800i64));
+		m.insert("pc", Ass(Box::new(|prec| Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))));
+		/*-------------------------------
+			AREA & VOLUME UNITS
+			with no length equivalent
+		-------------------------------*/
+		for q in ["ac","acre"] {m.insert(q, Ass::sci(40468564224i64, -7));}
+		m.insert("l", Ass::sci(1, -3));
+		m.insert("ifloz", Ass::sci(284130625, -13));
+		m.insert("ipt", Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*20)));
+		m.insert("iqt", Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*40)));
+		m.insert("igal", Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*160)));
+		for q in ["ibu","ibsh"] {m.insert(q, Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*1280)));}
+		m.insert("ufldr", Ass::sci(36966911953125i64, -19));
+		m.insert("tsp", Ass(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)/3*4)));
+		m.insert("tbsp", Ass(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*4)));
+		m.insert("ufloz", Ass(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*8)));
+		m.insert("upt", Ass(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*16)));
+		m.insert("uqt", Ass(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*32)));
+		m.insert("ugal", Ass(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*128)));
+		m.insert("bbl", Ass(Box::new(|prec| CONSTANTS.get("ugal").unwrap().0(prec)*42)));
+		m.insert("udpt", Ass::sci(5506104713575i64, -16));
+		m.insert("udqt", Ass(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*2)));
+		m.insert("udgal", Ass(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*8)));
+		for q in ["ubu","ubsh"] {m.insert(q, Ass(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*64)));}
+		m.insert("dbbl", Ass::sci(115627123584i64, -12));
+		/*----------------
+			MASS UNITS
+		----------------*/
+		m.insert("ct", Ass::sci(2, -4));
+		m.insert("oz", Ass::sci(28349523125i64, -12));
+		m.insert("lb", Ass(Box::new(|prec| CONSTANTS.get("oz").unwrap().0(prec)*16)));
+		m.insert("kg", Ass::new(1));
+		m.insert("st", Ass(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*14)));
+		m.insert("t", Ass(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*2240)));
+		/*----------------
+			TIME UNITS
+		----------------*/
+		m.insert("s", Ass::new(1));
+		m.insert("min", Ass::new(60));
+		m.insert("h", Ass(Box::new(|prec| CONSTANTS.get("min").unwrap().0(prec)*60)));
+		m.insert("d", Ass(Box::new(|prec| CONSTANTS.get("h").unwrap().0(prec)*24)));
+		m.insert("w", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*7)));
+		m.insert("mo", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*30)));
+		m.insert("a", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*365)));
+		m.insert("aj", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*36525/100)));
+		m.insert("ag", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*3652425/10000)));
+		/*-----------------
+			OTHER UNITS
+		-----------------*/
+		m.insert("J", Ass::new(1));
+		m.insert("cal", Ass::sci(4184, -3));
+		m.insert("Pa", Ass::new(1));
+		m.insert("atm", Ass::new(101325));
+		m.insert("psi", Ass::sci(6894757293168i64, -9));
+		m.insert("torr", Ass(Box::new(|prec| CONSTANTS.get("atm").unwrap().0(prec)/760)));
+		/*------------------------------
+			SPECIAL VALUES/FUNCTIONS
+		------------------------------*/
+		m.insert("inf", Ass::new(Special::Infinity));
+		m.insert("ninf", Ass::new(Special::NegInfinity));
+		m.insert("nan", Ass::new(Special::Nan));
+		m.insert("pid", Ass::new(std::process::id()));
+		m.insert("author", Ass::new(43615));
 		m
 	};
 }
 
-//wrapper for brevity
-fn flt<T>(prec: u32, val: T) -> Option<Float> 
-where Float: Assign<T>
-{
-	Some(Float::with_val(prec, val))
-}
-
-//scientific notation wrapper for brevity
-fn sciflt<T, U>(prec: u32, man: T, exp: U) -> Option<Float>
-where Float: Assign<T> + Assign<U>
-{
-	Some(Float::with_val(prec, man)*Float::with_val(prec, exp).exp10())
-}
-
-//library of constants and unit conversion factors
-//unless specified, unit factors are based on the most prevalent international standard units for their respective quantities
-//ex: "in" (inch) returns 0.0254, thus executing 20[in]"* converts 20 inches to meters (0.508)
-fn constants(prec: u32, query: &str) -> Option<Float> {
-	match query {
-		/*----------------------------
-			MATHEMATICAL CONSTANTS
-		----------------------------*/
-		"e" => {Some(Float::with_val(prec, 1).exp())}
-		"pi" => {flt(prec, Constant::Pi)}
-		"gamma" => {flt(prec, Constant::Euler)}
-		"phi" => {Some((Float::with_val(prec, 5).sqrt()+1)/2)}
-		"deg"|"°" => {Some(Float::with_val(prec, Constant::Pi)/180)}
-		"gon"|"grad" => {Some(Float::with_val(prec, Constant::Pi)/200)}
-		/*------------------------
-			PHYSICAL CONSTANTS
-		------------------------*/
-		"c" => {flt(prec, 299792458)}
-		"hbar" => {Some(sciflt(prec, 662607015, -42).unwrap()/(2*constants(prec, "pi").unwrap()))}
-		"G" => {sciflt(prec, 6674, -3)}
-		"qe" => {sciflt(prec, 1602176634, -28)}
-		"NA" => {sciflt(prec, 602214076, 31)}
-		"kB" => {sciflt(prec, 1380649, -29)}
-		"u" => {sciflt(prec, 1660539066, -36)}
-		"lp" => {sciflt(prec, 16162, -39)}
-		"tp" => {sciflt(prec, 5391, -47)}
-		"mp" => {sciflt(prec, 21764, -12)}
-		"Tp" => {sciflt(prec, 14167, 28)}
-		/*------------------
-			LENGTH UNITS
-		------------------*/
-		"in" => {sciflt(prec, 254, -4)}
-		"ft" => {Some(constants(prec, "in").unwrap()*12)}
-		"yd" => {Some(constants(prec, "ft").unwrap()*3)}
-		"m" => {flt(prec, 1)}
-		"fur" => {Some(constants(prec, "ft").unwrap()*660)}
-		"mi" => {Some(constants(prec, "ft").unwrap()*5280)}
-		"nmi" => {flt(prec, 1852)}
-		"AU" => {flt(prec, 149597870700i64)}
-		"ly" => {flt(prec, 9460730472580800i64)}
-		"pc" => {Some(Float::with_val(prec, 96939420213600000i64)/constants(prec, "pi").unwrap())}
-		/*-------------------------------
-			   AREA & VOLUME UNITS
-			with no length equivalent
-		-------------------------------*/
-		"ac"|"acre" => {sciflt(prec, 40468564224i64, -7)}
-		"l" => {sciflt(prec, 1, -3)}
-		"ifloz" => {sciflt(prec, 284130625, -13)}
-		"ipt" => {Some(constants(prec, "ifloz").unwrap()*20)}
-		"iqt" => {Some(constants(prec, "ifloz").unwrap()*40)}
-		"igal" => {Some(constants(prec, "ifloz").unwrap()*160)}
-		"ibu"|"ibsh" => {Some(constants(prec, "ifloz").unwrap()*1280)}
-		"ufldr" => {sciflt(prec, 36966911953125i64, -19)}
-		"tsp" => {Some(constants(prec, "ufldr").unwrap()/3*4)}
-		"tbsp" => {Some(constants(prec, "ufldr").unwrap()*4)}
-		"ufloz" => {Some(constants(prec, "ufldr").unwrap()*8)}
-		"upt" => {Some(constants(prec, "ufloz").unwrap()*16)}
-		"uqt" => {Some(constants(prec, "ufloz").unwrap()*32)}
-		"ugal" => {Some(constants(prec, "ufloz").unwrap()*128)}
-		"bbl" => {Some(constants(prec, "ugal").unwrap()*42)}
-		"udpt" => {sciflt(prec, 5506104713575i64, -16)}
-		"udqt" => {Some(constants(prec, "udpt").unwrap()*2)}
-		"udgal" => {Some(constants(prec, "udpt").unwrap()*8)}
-		"ubu"|"ubsh" => {Some(constants(prec, "udpt").unwrap()*64)}
-		"dbbl" => {sciflt(prec, 115627123584i64, -12)}
-		/*----------------
-			MASS UNITS
-		----------------*/
-		"ct" => {sciflt(prec, 2, -4)}
-		"oz" => {sciflt(prec, 28349523125i64, -12)}
-		"lb" => {Some(constants(prec, "oz").unwrap()*16)}
-		"kg" => {flt(prec, 1)}
-		"st" => {Some(constants(prec, "lb").unwrap()*14)}
-		"t" => {Some(constants(prec, "lb").unwrap()*2240)}
-		/*----------------
-			TIME UNITS
-		----------------*/
-		"s" => {flt(prec, 1)}
-		"min" => {flt(prec, 60)}
-		"h" => {Some(constants(prec, "min").unwrap()*60)}
-		"d" => {Some(constants(prec, "h").unwrap()*24)}
-		"w" => {Some(constants(prec, "d").unwrap()*7)}
-		"mo" => {Some(constants(prec, "d").unwrap()*30)}
-		"a" => {Some(constants(prec, "d").unwrap()*365)}
-		"aj" => {Some(constants(prec, "d").unwrap()*36525/100)}
-		"ag" => {Some(constants(prec, "d").unwrap()*3652425/10000)}
-		/*-----------------
-			OTHER UNITS
-		-----------------*/
-		"J" => {flt(prec, 1)}
-		"cal" => {sciflt(prec, 4184, -3)}
-		"Pa" => {flt(prec, 1)}
-		"atm" => {flt(prec, 101325)}
-		"psi" => {sciflt(prec, 6894757293168i64, -9)}
-		"torr" => {Some(constants(prec, "atm").unwrap()/760)}
-		/*------------------------------
-			SPECIAL VALUES/FUNCTIONS
-		------------------------------*/
-		"inf" => {flt(prec, Special::Infinity)}
-		"ninf" => {flt(prec, Special::NegInfinity)}
-		"nan" => {flt(prec, Special::Nan)}
-		"time" => {flt(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs())}
-		"timens" => {flt(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos())}
-		"pid" => {flt(prec, std::process::id())}
-		"abort" => {std::process::abort();}
-		"crash" => {constants(prec, "crash")}	//stack overflow through recursion
-		"panic" => {std::panic::panic_any(
-			unsafe {
-				if let Some(Obj::S(s)) = MSTK.last() {s} else {"Expected, [panic]\" was executed"}	//if top-of-stack is a string, display it
-			});}
-		"author" => {flt(prec, 43615)}	//why not
-		
-		_ => {None}
-	}
-}
-
-//calculate scale prefix and power suffix
-fn const_affixes(prec: u32, query: &str) -> Option<Float> {
+//calculate value, apply scale prefix and power suffix
+fn get_constant(prec: u32, query: &str) -> Option<Float> {
 	let mut q = query.to_string();
 	let mut scale = String::new();
 	while q.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
@@ -386,7 +372,25 @@ fn const_affixes(prec: u32, query: &str) -> Option<Float> {
 	if power.is_empty() {power.push('1');}
 	let p = Float::with_val(prec, Integer::parse(power).unwrap().complete());
 
-	constants(prec, &q).map(|n| (s*n).pow(p))
+	if let Some(n) = CONSTANTS.get(q.as_str()).map(|c| c.0(prec)) {
+		Some(s*n.pow(p))
+	}
+	else {
+		match q.as_str() {	//non-constants and terminators are here to avoid execution by lazy_static::initialize
+			"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs()))}
+			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()))}
+			"abort" => {std::process::abort();}
+			"crash" => {get_constant(prec, "crash")}
+			"panic" => {
+				std::panic::panic_any(
+					unsafe {
+						if let Some(Obj::S(s)) = MSTK.last() {s} else {"Expected, [panic]\" was executed"}	//if top-of-stack is a string, display it
+					}
+				);
+			}
+			_ => None
+		}
+	}
 }
 
 //custom number printing function
@@ -550,7 +554,8 @@ unsafe fn exec(commands: String) {
 			(Obj::dummy(), Obj::dummy(), Obj::dummy())
 		};
 
-		if !TYPE_CONDS.get(&cmd).cloned().unwrap_or_default().0([&a, &b, &c].map(|o| matches!(o, Obj::S(_)))) {
+		if !TYPE_CONDS.get(&cmd).unwrap_or(&TypeChecker(Box::new(|[a, b, c]| !a&&!b&&!c)))
+		.0([&a, &b, &c].map(|o| matches!(o, Obj::S(_)))) {
 			eprintln!("! Invalid argument type(s) for command '{cmd}'");
 			proceed = false;
 		}
@@ -1213,7 +1218,7 @@ unsafe fn exec(commands: String) {
 					Obj::S(sa) => {
 						match sa.matches(' ').count() {
 							0 => {	//normal lookup
-								if let Some(res) = const_affixes(WPREC, sa) {
+								if let Some(res) = get_constant(WPREC, sa) {
 									MSTK.push(Obj::N(res));
 								}
 								else {
@@ -1223,7 +1228,7 @@ unsafe fn exec(commands: String) {
 							},
 							1 => {	//conversion shorthand, left divided by right
 								let (sl, sr) = sa.split_once(' ').unwrap();
-								if let (Some(nl), Some(nr)) = (const_affixes(WPREC, sl), const_affixes(WPREC, sr)) {
+								if let (Some(nl), Some(nr)) = (get_constant(WPREC, sl), get_constant(WPREC, sr)) {
 									MSTK.push(Obj::N(nl/nr));
 								}
 								else {
