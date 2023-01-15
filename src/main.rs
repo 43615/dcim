@@ -480,7 +480,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		if outstr.starts_with('-') {
 			outstr = outstr.replacen('-', "_", 1);	//replace negative sign
 		}
-		if outstr[if outstr.len()>11 {outstr.len()-11} else {0}..].contains('@') {	//efficiently check if in exponential notation
+		if outstr[outstr.len().saturating_sub(11)..].contains('@') {	//efficiently check if in exponential notation
 			let (mut mpart, epart) = outstr.rsplit_once('@').unwrap();
 			mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
 			let eint = epart.parse::<i32>().unwrap();	//isolate exponential part
@@ -874,17 +874,19 @@ unsafe fn exec(commands: String) {
 				match (&a, &b) {
 					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na - nb)));},
 					(Obj::S(sa), Obj::N(nb)) => {
-						let mut newstr = sa.chars().collect::<Vec<char>>();
-						let int = int(nb);	//extract b, keep for checking if negative
-						if let Some(mut num) = &int.abs_ref().complete().to_usize() {
-							if num>newstr.len() { num = newstr.len(); }	//account for too large b
-							if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
-							newstr.truncate(newstr.len()-num);
-							if int<0 { newstr.reverse(); }	//undo reversal
-							MSTK.push(Obj::S(newstr.iter().collect::<String>()));
+						let ib = int(nb);
+						if let Some(n) = ib.clone().abs().to_usize() {
+							MSTK.push(Obj::S(
+								if ib<0 {	//remove from front
+									sa.chars().skip(n).collect()
+								}
+								else {	//remove from back
+									sa.chars().take(sa.chars().count().saturating_sub(n)).collect()
+								}
+							));
 						}
 						else {
-							eprintln!("! Cannot possibly remove {int} characters from a string");
+							eprintln!("! Cannot possibly remove {ib} characters from a string");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -898,15 +900,19 @@ unsafe fn exec(commands: String) {
 				match (&a, &b) {
 					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na * nb)));},
 					(Obj::S(sa), Obj::N(nb)) => {
-						let mut newstr = sa.clone();
-						let int = int(nb);	//extract b, keep for checking if negative
-						if let Some(num) = &int.abs_ref().complete().to_usize() {
-							newstr = newstr.repeat(*num);
-							if int<0 { newstr = newstr.chars().rev().collect(); }	//if b is negative, invert string
-							MSTK.push(Obj::S(newstr));
+						let ib = int(nb);
+						if let Some(n) = ib.clone().abs().to_usize() {
+							MSTK.push(Obj::S(
+								if ib<0 {	//repeat and reverse
+									sa.chars().rev().collect::<String>().repeat(n)
+								}
+								else {	//repeat
+									sa.repeat(n)
+								}
+							));
 						}
 						else {
-							eprintln!("! Cannot possibly repeat a string {int} times");
+							eprintln!("! Cannot possibly repeat a string {ib} times");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -929,16 +935,19 @@ unsafe fn exec(commands: String) {
 						}
 					},
 					(Obj::S(sa), Obj::N(nb)) => {
-						let mut newstr = sa.chars().collect::<Vec<char>>();
-						let int = int(nb);	//extract b, keep for checking if negative
-						if let Some(num) = &int.abs_ref().complete().to_usize() {
-							if int<0 { newstr.reverse(); }	//if negative, reverse to remove from front
-							newstr.truncate(*num);
-							if int<0 { newstr.reverse(); }	//undo reversal
-							MSTK.push(Obj::S(newstr.iter().collect::<String>()));
+						let ib = int(nb);
+						if let Some(n) = ib.clone().abs().to_usize() {
+							MSTK.push(Obj::S(
+								if ib<0 {	//discard from front
+									sa.chars().skip(sa.chars().count().saturating_sub(n)).collect()
+								}
+								else {	//discard from back
+									sa.chars().take(n).collect()
+								}
+							));
 						}
 						else {
-							eprintln!("! Cannot possibly shorten a string to {int} characters");
+							eprintln!("! Cannot possibly shorten a string to {ib} characters");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -963,19 +972,19 @@ unsafe fn exec(commands: String) {
 						}
 					},
 					(Obj::S(sa), Obj::N(nb)) => {
-						let int = int(nb);
-						if let Some(idx) = int.to_usize() {
-							if let Some(chr) = sa.chars().nth(idx) {
-								MSTK.push(Obj::S(chr.to_string()));
+						let ib = int(nb);
+						if let Some(n) = ib.to_usize() {
+							if let Some(c) = sa.chars().nth(n) {
+								MSTK.push(Obj::S(c.into()))
 							}
 							else {
-								eprintln!("! String is too short for index {idx}");
+								eprintln!("! String is too short for index {n}");
 								MSTK.push(a);
 								MSTK.push(b);
 							}
 						}
 						else {
-							eprintln!("! Cannot possibly isolate character at index {int}");
+							eprintln!("! Cannot possibly isolate character at index {ib}");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
@@ -1002,15 +1011,13 @@ unsafe fn exec(commands: String) {
 						}
 					},
 					(Obj::S(sa), Obj::N(nb)) => {
-						let int = int(nb);
-						if let Some(mut idx) = &int.to_usize() {
-							let cvec = sa.chars().collect::<Vec<char>>();
-							if idx>cvec.len() { idx=cvec.len(); }	//if too large, split at max index to preserve signature
-							MSTK.push(Obj::S(cvec[0..idx].iter().collect::<String>()));
-							MSTK.push(Obj::S(cvec[idx..].iter().collect::<String>()));
+						let ib = int(nb);
+						if let Some(n) = ib.to_usize() {
+							MSTK.push(Obj::S(sa.chars().take(n).collect()));
+							MSTK.push(Obj::S(sa.chars().skip(n).collect()));
 						}
 						else {
-							eprintln!("! Cannot possibly split a string at character {int}");
+							eprintln!("! Cannot possibly split a string at character {ib}");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
