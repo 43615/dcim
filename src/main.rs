@@ -2,12 +2,13 @@ use std::io::{stdout, Write};
 use std::time::{SystemTime, Duration};
 use std::collections::{HashSet, HashMap};
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
+use rand::{RngCore, rngs::OsRng};
 use read_input::prelude::*;
 #[macro_use]
 extern crate lazy_static;
 
-const HELPMSG: &str = "
-╭─────────────────────────╮
+const HELPMSG: &str =
+"╭─────────────────────────╮
 │   ╷           •         │
 │   │                     │
 │ ╭─┤  ╭─╴  •  ╶┤   ┌─┬─╮ │
@@ -16,25 +17,26 @@ const HELPMSG: &str = "
 ╰─────────────────────────╯
 
 dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language
-Most basic GNU dc features are unaltered, full documentation at https://github.com/43615/dcim
+Core principles of GNU dc are preserved, full documentation at https://github.com/43615/dcim/wiki
 
-Options and syntax:
+Command line options:
+(may be in any order)
 
 <nothing>
 	Defaults to \"-i\".
 
 --inter | -i [prompt]
-	Interactive mode, standard prompt loop. A custom prompt may be specified, default is \"> \".
+	Interactive mode, standard prompt-eval loop. A custom prompt may be provided, default is \"> \".
 
---expr | -e expr1 expr2 expr3 ... [?]
-	Expression mode, executes expressions in order. If the last argument is \"?\", enters interactive mode after expressions are done.
+--expr | -e expr1 [expr2] [expr3] [...]
+	Expression mode, executes expressions in order. If combined with -i, enters interactive mode after expressions are finished.
 
-[--file | -f] file1 file2 file3 ... [?]
-	File mode, executes contents of files in order. \"?\" behaves the same as with -e.
+[--file | -f] file1 [file2] [file3] [...]
+	File mode, executes contents of files in order. May also be combined with -i.
+	If options are given but none of them are --flags, file mode is implied.
 
 --help | -h
-	Print this help message.
-";
+	Ignores all other options and prints this help message.";
 
 #[derive(Clone)]
 enum Obj {
@@ -102,9 +104,6 @@ fn int(n: &Float) -> Integer {	//discard fractional part if finite, default to 0
 }
 
 fn main() {
-	let mut args: Vec<String> = std::env::args().collect();
-	args.remove(0);	//remove name of executable
-
 	//init everything that doesn't have a const constructor
 	unsafe {
 		PARAMS.create();	//initialize env params
@@ -112,45 +111,64 @@ fn main() {
 			a: Vec::new(),
 			o: Obj::N(Float::with_val(WPREC, 0))
 		});
-		//initialize RNG with system time (* PID for a bit less predictability)
+		//init RNG, seed with 1024 bits of OS randomness
 		RNG.push(RandState::new());
-		RNG[0].seed(&(Integer::from(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::MAX).as_nanos()) * std::process::id()));
+		let mut seed = [0u8; 128];
+		OsRng.fill_bytes(&mut seed);
+		RNG[0].seed(&Integer::from_digits(&seed, Order::Msf));
 	}
 
-	if args.is_empty() {
-		interactive_mode(None);	//default to interactive
-	}
-	else {
-		let mode = &args[0];	//first arg, usually mode
-		match mode.as_str() {
-			"--inter"|"-i" => {
-				args.remove(0);
-				interactive_mode(args.first().cloned());
-			},
-			"--expr"|"-e" => {
-				args.remove(0);
-				expression_mode(args);
-			},
-			"--file"|"-f" => {
-				args.remove(0);
-				file_mode(args);
-			},
-			"--help"|"-h" => {
-				println!("{HELPMSG}");
-			},
-			_ => {
-				if mode.starts_with('-'){
-					eprintln!("! Invalid option \"{mode}\", use -h for option syntax help");
+	//parse options
+	let (mut i, mut e, mut f, mut h) = (false, false, false, false);
+	let mut names: Vec<String> = Vec::new();
+	let args: Vec<String> = std::env::args().skip(1).collect();	//get args, skip name of binary
+	if args.is_empty() {i=true};	//default to interactive
+	for arg in args {
+		if arg.starts_with("--") {	//long option
+			match arg.as_str() {
+				"--inter" => {i=true;}
+				"--expr" => {e=true;}
+				"--file" => {f=true;}
+				"--help" => {h=true;}
+				_ => {
+					eprintln!("! Unrecognized option: {arg}");
+					std::process::exit(0);
 				}
-				else {	//assume filenames
-					file_mode(args);
-				}
-			},
+			}
+			continue;
 		}
+		if arg.starts_with("-") {	//short option, multiple at once possible
+			for c in arg.chars() {
+				match c {
+					'-' => {}	//allow -f-i or similar
+					'i' => {i=true;}
+					'e' => {e=true;}
+					'f' => {f=true;}
+					'h' => {h=true;}
+					_ => {
+						eprintln!("! Unrecognized option: -{c}");
+						std::process::exit(0);
+					}
+				}
+			}
+			continue;
+		}
+		names.push(arg);	//branchless ftw
+	}
+	
+	if h {	//always exits
+		println!("{HELPMSG}");
+		std::process::exit(0);
+	}
+	match (i, e, f) {
+		(false, false, false) => {file_mode(names, false);}	//no flags: assume filenames
+		(true, false, false) => {interactive_mode(names.first().cloned());}	//normal interactive
+		(_, true, false) => {expression_mode(names, i);}	//expr mode, pass i on
+		(_, false, true) => {file_mode(names, i);}	//file mode, pass i on
+		(_, true, true) => {eprintln!("! Invalid options: both -e and -f present");}	//invalid combination
 	}
 }
 
-//interactive/shell mode, the default
 fn interactive_mode(prompt: Option<String>) {
 	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	loop {
@@ -159,30 +177,25 @@ fn interactive_mode(prompt: Option<String>) {
 	}
 }
 
-fn expression_mode(mut exprs: Vec<String>) {
-	if !exprs.is_empty() {
-		let inter = if exprs.last().unwrap() == "?" {	//enter interactive mode when done?
-			exprs.pop();
-			true
-		} else {false};
+fn expression_mode(exprs: Vec<String>, inter: bool) {
+	if exprs.is_empty() {
+		eprintln!("! No expression provided");
+	}
+	else {
 		for expr in exprs {
 			unsafe{exec(expr);}
 		}
-		if inter {
-			interactive_mode(None);
-		}
+	}
+	if inter {
+		interactive_mode(None);
 	}
 }
 
-fn file_mode(mut files: Vec<String>) {
+fn file_mode(files: Vec<String>, inter: bool) {
 	if files.is_empty() {
 		eprintln!("! No file name provided");
 	}
 	else {
-		let inter = if files.last().unwrap() == "?" {	//enter interactive mode when done?
-			files.pop();
-			true
-		} else {false};
 		for file in files {
 			match std::fs::read_to_string(&file) {
 				Ok(script) => {
@@ -201,9 +214,9 @@ fn file_mode(mut files: Vec<String>) {
 				},
 			}
 		}
-		if inter {
-			interactive_mode(None);
-		}
+	}
+	if inter {
+		interactive_mode(None);
 	}
 }
 
@@ -212,9 +225,9 @@ struct TypeChecker(Box<dyn Fn([bool; 3]) -> bool>);
 unsafe impl Sync for TypeChecker {}
 
 //closure wrapper for generating Floats (precision only known at runtime)
-struct Ass(Box<dyn Fn(u32) -> Float>);
-unsafe impl Sync for Ass {}
-impl Ass {
+struct Flt(Box<dyn Fn(u32) -> Float>);
+unsafe impl Sync for Flt {}
+impl Flt {
 	fn new<T: 'static + Copy>(val: T) -> Self
 	where Float: Assign<T> {
 		Self(Box::new(move |p: u32| Float::with_val(p, val)))
@@ -240,115 +253,126 @@ lazy_static! {
 	};
 	static ref TYPE_CONDS: HashMap<char, TypeChecker> = {
 		let mut m = HashMap::new();
+		//add/concat | pow/find => same type
 		for c in ['+','^'] {m.insert(c, TypeChecker(Box::new(|[ta, tb, _]| ta==tb)));}
+
+		//pow mod/replace => same type
 		m.insert('|', TypeChecker(Box::new(|[ta, tb, tc]| ta==tb && tb==tc)));
+
+		//sub/remove | mul/repeat | div/trunc | mod/index | mod rem/split | save to arr => 2nd: num
 		for c in "-*/%~:".chars() {m.insert(c, TypeChecker(Box::new(|[_, tb, _]| !tb)));}
+
+		//script | envar | os cmd => only strings
 		for c in "&$\\".chars() {m.insert(c, TypeChecker(Box::new(|[ta, _, _]| ta)));}
+
+		//print | println | conv char | conv str | num->str/const | exec | ln/str len | save | push => don't care
 		for c in "nPaA\"xgsS".chars() {m.insert(c, TypeChecker(Box::new(|[_, _, _]| true)));}
+
+		//exec n => 1st: str, 2nd: num
 		m.insert('X', TypeChecker(Box::new(|[ta, tb, _]| ta&&!tb)));
 		m
 	};
-	static ref CONSTANTS: HashMap<&'static str, Ass> = {
+	static ref CONSTANTS: HashMap<&'static str, Flt> = {
 		let mut m = HashMap::new();
 		/*----------------------------
 			MATHEMATICAL CONSTANTS
 		----------------------------*/
-		m.insert("e", Ass(Box::new(|prec| Float::with_val(prec, 1).exp())));
-		m.insert("pi", Ass::new(Constant::Pi));
-		m.insert("gamma", Ass::new(Constant::Euler));
-		m.insert("phi", Ass(Box::new(|prec| (Float::with_val(prec, 5).sqrt()+1)/2)));
-		for q in ["deg","°"] {m.insert(q, Ass(Box::new(|prec| Float::with_val(prec, Constant::Pi)/180)));}
-		for q in ["gon","grad"] {m.insert(q, Ass(Box::new(|prec| Float::with_val(prec, Constant::Pi)/200)));}
+		m.insert("e", Flt(Box::new(|prec| Float::with_val(prec, 1).exp())));
+		m.insert("pi", Flt::new(Constant::Pi));
+		m.insert("gamma", Flt::new(Constant::Euler));
+		m.insert("phi", Flt(Box::new(|prec| (Float::with_val(prec, 5).sqrt()+1)/2)));
+		for q in ["deg","°"] {m.insert(q, Flt(Box::new(|prec| Float::with_val(prec, Constant::Pi)/180)));}
+		for q in ["gon","grad"] {m.insert(q, Flt(Box::new(|prec| Float::with_val(prec, Constant::Pi)/200)));}
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
-		m.insert("c", Ass::new(299792458));
-		m.insert("hbar", Ass(Box::new(|prec| Float::with_val(prec, 662607015)*Float::with_val(prec, -42).exp10()
+		m.insert("c", Flt::new(299792458));
+		m.insert("hbar", Flt(Box::new(|prec| Float::with_val(prec, 662607015)*Float::with_val(prec, -42).exp10()
 			/(2*Float::with_val(prec, Constant::Pi)))));
-		m.insert("G", Ass::sci(6674, -3));
-		m.insert("qe", Ass::sci(1602176634, -28));
-		m.insert("NA", Ass::sci(602214076, 31));
-		m.insert("kB", Ass::sci(1380649, -29));
-		m.insert("u", Ass::sci(1660539066, -36));
-		m.insert("lp", Ass::sci(16162, -39));
-		m.insert("tp", Ass::sci(5391, -47));
-		m.insert("mp", Ass::sci(21764, -12));
-		m.insert("Tp", Ass::sci(14167, 28));
+		m.insert("G", Flt::sci(6674, -3));
+		m.insert("qe", Flt::sci(1602176634, -28));
+		m.insert("NA", Flt::sci(602214076, 31));
+		m.insert("kB", Flt::sci(1380649, -29));
+		m.insert("u", Flt::sci(1660539066, -36));
+		m.insert("lp", Flt::sci(16162, -39));
+		m.insert("tp", Flt::sci(5391, -47));
+		m.insert("mp", Flt::sci(21764, -12));
+		m.insert("Tp", Flt::sci(14167, 28));
 		/*------------------
 			LENGTH UNITS
 		------------------*/
-		m.insert("in", Ass::sci(254, -4));
-		m.insert("ft", Ass(Box::new(|prec| CONSTANTS.get("in").unwrap().0(prec)*12)));
-		m.insert("yd", Ass(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*3)));
-		m.insert("m", Ass::new(1));
-		m.insert("fur", Ass(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*660)));
-		m.insert("mi", Ass(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*5280)));
-		m.insert("nmi", Ass::new(1852));
-		m.insert("AU", Ass::new(149597870700i64));
-		m.insert("ly", Ass::new(9460730472580800i64));
-		m.insert("pc", Ass(Box::new(|prec| Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))));
+		m.insert("in", Flt::sci(254, -4));
+		m.insert("ft", Flt(Box::new(|prec| CONSTANTS.get("in").unwrap().0(prec)*12)));
+		m.insert("yd", Flt(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*3)));
+		m.insert("m", Flt::new(1));
+		m.insert("fur", Flt(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*660)));
+		m.insert("mi", Flt(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*5280)));
+		m.insert("nmi", Flt::new(1852));
+		m.insert("AU", Flt::new(149597870700i64));
+		m.insert("ly", Flt::new(9460730472580800i64));
+		m.insert("pc", Flt(Box::new(|prec| Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))));
 		/*-------------------------------
 			AREA & VOLUME UNITS
 			with no length equivalent
 		-------------------------------*/
-		for q in ["ac","acre"] {m.insert(q, Ass::sci(40468564224i64, -7));}
-		m.insert("l", Ass::sci(1, -3));
-		m.insert("ifloz", Ass::sci(284130625, -13));
-		m.insert("ipt", Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*20)));
-		m.insert("iqt", Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*40)));
-		m.insert("igal", Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*160)));
-		for q in ["ibu","ibsh"] {m.insert(q, Ass(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*1280)));}
-		m.insert("ufldr", Ass::sci(36966911953125i64, -19));
-		m.insert("tsp", Ass(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)/3*4)));
-		m.insert("tbsp", Ass(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*4)));
-		m.insert("ufloz", Ass(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*8)));
-		m.insert("upt", Ass(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*16)));
-		m.insert("uqt", Ass(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*32)));
-		m.insert("ugal", Ass(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*128)));
-		m.insert("bbl", Ass(Box::new(|prec| CONSTANTS.get("ugal").unwrap().0(prec)*42)));
-		m.insert("udpt", Ass::sci(5506104713575i64, -16));
-		m.insert("udqt", Ass(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*2)));
-		m.insert("udgal", Ass(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*8)));
-		for q in ["ubu","ubsh"] {m.insert(q, Ass(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*64)));}
-		m.insert("dbbl", Ass::sci(115627123584i64, -12));
+		for q in ["ac","acre"] {m.insert(q, Flt::sci(40468564224i64, -7));}
+		m.insert("l", Flt::sci(1, -3));
+		m.insert("ifloz", Flt::sci(284130625, -13));
+		m.insert("ipt", Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*20)));
+		m.insert("iqt", Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*40)));
+		m.insert("igal", Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*160)));
+		for q in ["ibu","ibsh"] {m.insert(q, Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*1280)));}
+		m.insert("ufldr", Flt::sci(36966911953125i64, -19));
+		m.insert("tsp", Flt(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)/3*4)));
+		m.insert("tbsp", Flt(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*4)));
+		m.insert("ufloz", Flt(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*8)));
+		m.insert("upt", Flt(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*16)));
+		m.insert("uqt", Flt(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*32)));
+		m.insert("ugal", Flt(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*128)));
+		m.insert("bbl", Flt(Box::new(|prec| CONSTANTS.get("ugal").unwrap().0(prec)*42)));
+		m.insert("udpt", Flt::sci(5506104713575i64, -16));
+		m.insert("udqt", Flt(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*2)));
+		m.insert("udgal", Flt(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*8)));
+		for q in ["ubu","ubsh"] {m.insert(q, Flt(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*64)));}
+		m.insert("dbbl", Flt::sci(115627123584i64, -12));
 		/*----------------
 			MASS UNITS
 		----------------*/
-		m.insert("ct", Ass::sci(2, -4));
-		m.insert("oz", Ass::sci(28349523125i64, -12));
-		m.insert("lb", Ass(Box::new(|prec| CONSTANTS.get("oz").unwrap().0(prec)*16)));
-		m.insert("kg", Ass::new(1));
-		m.insert("st", Ass(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*14)));
-		m.insert("t", Ass(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*2240)));
+		m.insert("ct", Flt::sci(2, -4));
+		m.insert("oz", Flt::sci(28349523125i64, -12));
+		m.insert("lb", Flt(Box::new(|prec| CONSTANTS.get("oz").unwrap().0(prec)*16)));
+		m.insert("kg", Flt::new(1));
+		m.insert("st", Flt(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*14)));
+		m.insert("t", Flt(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*2240)));
 		/*----------------
 			TIME UNITS
 		----------------*/
-		m.insert("s", Ass::new(1));
-		m.insert("min", Ass::new(60));
-		m.insert("h", Ass(Box::new(|prec| CONSTANTS.get("min").unwrap().0(prec)*60)));
-		m.insert("d", Ass(Box::new(|prec| CONSTANTS.get("h").unwrap().0(prec)*24)));
-		m.insert("w", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*7)));
-		m.insert("mo", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*30)));
-		m.insert("a", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*365)));
-		m.insert("aj", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*36525/100)));
-		m.insert("ag", Ass(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*3652425/10000)));
+		m.insert("s", Flt::new(1));
+		m.insert("min", Flt::new(60));
+		m.insert("h", Flt(Box::new(|prec| CONSTANTS.get("min").unwrap().0(prec)*60)));
+		m.insert("d", Flt(Box::new(|prec| CONSTANTS.get("h").unwrap().0(prec)*24)));
+		m.insert("w", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*7)));
+		m.insert("mo", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*30)));
+		m.insert("a", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*365)));
+		m.insert("aj", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*36525/100)));
+		m.insert("ag", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*3652425/10000)));
 		/*-----------------
 			OTHER UNITS
 		-----------------*/
-		m.insert("J", Ass::new(1));
-		m.insert("cal", Ass::sci(4184, -3));
-		m.insert("Pa", Ass::new(1));
-		m.insert("atm", Ass::new(101325));
-		m.insert("psi", Ass::sci(6894757293168i64, -9));
-		m.insert("torr", Ass(Box::new(|prec| CONSTANTS.get("atm").unwrap().0(prec)/760)));
+		m.insert("J", Flt::new(1));
+		m.insert("cal", Flt::sci(4184, -3));
+		m.insert("Pa", Flt::new(1));
+		m.insert("atm", Flt::new(101325));
+		m.insert("psi", Flt::sci(6894757293168i64, -9));
+		m.insert("torr", Flt(Box::new(|prec| CONSTANTS.get("atm").unwrap().0(prec)/760)));
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
 		------------------------------*/
-		m.insert("inf", Ass::new(Special::Infinity));
-		m.insert("ninf", Ass::new(Special::NegInfinity));
-		m.insert("nan", Ass::new(Special::Nan));
-		m.insert("pid", Ass::new(std::process::id()));
-		m.insert("author", Ass::new(43615));
+		m.insert("inf", Flt::new(Special::Infinity));
+		m.insert("ninf", Flt::new(Special::NegInfinity));
+		m.insert("nan", Flt::new(Special::Nan));
+		m.insert("pid", Flt::new(std::process::id()));
+		m.insert("author", Flt::new(43615));	//yay numerical nicknames!
 		m
 	};
 }
@@ -371,14 +395,14 @@ fn get_constant(prec: u32, query: &str) -> Option<Float> {
 	let p = Float::with_val(prec, Integer::parse(power).unwrap().complete());
 
 	if let Some(n) = CONSTANTS.get(q.as_str()).map(|c| c.0(prec)) {
-		Some(s*n.pow(p))
+		Some((s*n).pow(p))
 	}
 	else {
 		match q.as_str() {	//non-constants and terminators are here to avoid execution by lazy_static::initialize
 			"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs()))}
 			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()))}
 			"abort" => {std::process::abort();}
-			"crash" => {get_constant(prec, "crash")}
+			"crash" => {get_constant(prec, "crash")}	//stack go brrrrr
 			"panic" => {
 				std::panic::panic_any(
 					unsafe {
