@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::{stdout, Write};
 use std::time::{SystemTime, Duration};
 use std::collections::{HashSet, HashMap};
@@ -7,8 +8,8 @@ use read_input::prelude::*;
 #[macro_use]
 extern crate lazy_static;
 
-const HELPMSG: &str =
-"╭─────────────────────────╮
+lazy_static! { static ref HELPMSG: &'static str = {
+r##"╭─────────────────────────╮
 │   ╷           •         │
 │   │                     │
 │ ╭─┤  ╭─╴  •  ╶┤   ┌─┬─╮ │
@@ -20,23 +21,24 @@ dc improved - Expanded rewrite of a classic RPN calculator / esoteric programmin
 Core principles of GNU dc are preserved, full documentation at https://github.com/43615/dcim/wiki
 
 Command line options:
-(may be in any order)
+(order/position of --flags doesn't matter)
 
 <nothing>
-	Defaults to \"-i\".
+	Defaults to "-i".
 
---inter | -i [prompt]
-	Interactive mode, standard prompt-eval loop. A custom prompt may be provided, default is \"> \".
+--inter|-i [PROMPT]
+	Interactive mode, standard prompt-eval loop. A custom prompt may be provided, default is "> ".
 
---expr | -e expr1 [expr2] [expr3] [...]
+--expr|-e [--inter|-i] EXPR1 [EXPR2] [EXPR3] ...
 	Expression mode, executes expressions in order. If combined with -i, enters interactive mode after expressions are finished.
 
-[--file | -f] file1 [file2] [file3] [...]
+[--file|-f] [--inter|-i] FILE1 [FILE2] [FILE3] ...
 	File mode, executes contents of files in order. May also be combined with -i.
-	If options are given but none of them are --flags, file mode is implied.
+	For each line in the file(s), comments (following the first #) are removed before execution.
+	-f is optional: If at least one option is provided without any --flags, file mode is implied.
 
---help | -h
-	Ignores all other options and prints this help message.";
+--help|-h
+	Ignores all other options and prints this help message."##};}
 
 #[derive(Clone)]
 enum Obj {
@@ -70,6 +72,7 @@ impl ParamStk {
 	const fn new() -> Self {
 		Self(Vec::new())
 	}
+
 	fn create(&mut self) {	//new param context
 		self.0.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
 	}
@@ -77,12 +80,44 @@ impl ParamStk {
 		self.0.pop();
 		if self.0.is_empty() {self.create()}
 	}
-	fn set_k(&mut self, n: Integer) {self.0.last_mut().unwrap().0 = n;}
-	fn set_i(&mut self, n: Integer) {self.0.last_mut().unwrap().1 = n;}
-	fn set_o(&mut self, n: Integer) {self.0.last_mut().unwrap().2 = n;}
+
+	fn set_k(&mut self, n: Integer) -> Result<(), ParamError> {
+		if n>-1 {
+			self.0.last_mut().unwrap().0 = n;
+			Ok(())
+		}
+		else {Err(ParamError::K)}
+	}
+	fn set_i(&mut self, n: Integer) -> Result<(), ParamError> {
+		if n>2 {
+			self.0.last_mut().unwrap().1 = n;
+			Ok(())
+		}
+		else {Err(ParamError::I)}
+	}
+	fn set_o(&mut self, n: Integer) -> Result<(), ParamError> {
+		if n>2 {
+			self.0.last_mut().unwrap().2 = n;
+			Ok(())
+		}
+		else {Err(ParamError::O)}
+	}
+
 	fn k(&self) -> Integer {self.0.last().unwrap().0.clone()}
 	fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
 	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
+}
+enum ParamError {
+	K, I, O
+}
+impl fmt::Display for ParamError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", match self{
+			Self::K => "! Output precision must be at least -1",
+			Self::I => "! Input base must be at least 2",
+			Self::O => "! Output base must be at least 2",
+		})
+	}
 }
 
 static mut MSTK: Vec<Obj> = Vec::new();	//main stack
@@ -137,7 +172,7 @@ fn main() {
 			}
 			continue;
 		}
-		if arg.starts_with("-") {	//short option, multiple at once possible
+		if arg.starts_with('-') {	//short option, multiple at once possible
 			for c in arg.chars() {
 				match c {
 					'-' => {}	//allow -f-i or similar
@@ -157,7 +192,7 @@ fn main() {
 	}
 	
 	if h {	//always exits
-		println!("{HELPMSG}");
+		println!("{}", *HELPMSG);
 		std::process::exit(0);
 	}
 	match (i, e, f) {
@@ -172,8 +207,7 @@ fn main() {
 fn interactive_mode(prompt: Option<String>) {
 	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	loop {
-		let input = inputter.get();
-		unsafe{exec(input);}
+		unsafe{exec(inputter.get());}
 	}
 }
 
@@ -1266,7 +1300,7 @@ unsafe fn exec(commands: String) {
 								}
 							},
 							_ => {
-								eprintln!("! Too many spaces in constant/conversion string");
+								eprintln!("! Too many spaces in constant/conversion query");
 								MSTK.push(a);
 							},
 						}
@@ -1381,12 +1415,8 @@ unsafe fn exec(commands: String) {
 			//set output precision
 			'k' => {
 				if let Obj::N(na) = &a {
-					let int = int(na);
-					if int>=-1 {
-						PARAMS.set_k(int);
-					}
-					else {
-						eprintln!("! Output precision must be at least -1");
+					if let Err(e) = PARAMS.set_k(int(na)) {
+						eprintln!("{e}");
 						MSTK.push(a);
 					}
 				}
@@ -1395,12 +1425,8 @@ unsafe fn exec(commands: String) {
 			//set input base
 			'i' => {
 				if let Obj::N(na) = &a {
-					let int = int(na);
-					if int>=2 {
-						PARAMS.set_i(int);
-					}
-					else {
-						eprintln!("! Input base must be at least 2");
+					if let Err(e) = PARAMS.set_i(int(na)) {
+						eprintln!("{e}");
 						MSTK.push(a);
 					}
 				}
@@ -1409,12 +1435,8 @@ unsafe fn exec(commands: String) {
 			//set output base
 			'o' => {
 				if let Obj::N(na) = &a {
-					let int = int(na);
-					if int>=2 {
-						PARAMS.set_o(int);
-					}
-					else {
-						eprintln!("! Output base must be at least 2");
+					if let Err(e) = PARAMS.set_o(int(na)) {
+						eprintln!("{e}");
 						MSTK.push(a);
 					}
 				}
@@ -1423,9 +1445,8 @@ unsafe fn exec(commands: String) {
 			//set working precision
 			'w' => {
 				if let Obj::N(na) = &a {
-					let int = int(na);
-					if (1..=u32::MAX).contains(&int) {
-						WPREC = int.to_u32().unwrap();
+					if let Some(u) = int(na).to_u32() {
+						WPREC = u;
 					}
 					else {
 						eprintln!("! Working precision must be between 1 and {} (inclusive)", u32::MAX);
