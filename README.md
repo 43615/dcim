@@ -21,10 +21,10 @@ cargo install --git https://github.com/43615/dcim
 ### Windows
 `gmp-mpfr-sys` requires some extra setup. Follow the instructions [here](https://crates.io/crates/gmp-mpfr-sys), under "Building on Windows". After building it in MinGW once, new dc:im versions can be built normally until I update it to a new version of `gmp-mpfr-sys`.
 
-Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane reason I can't control. If you want to calculate something to a billion digits, use WSL.
+Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane internal reason I can't control. If you want to calculate something to a billion digits, use WSL.
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
-- The file and expression modes now accept and execute any number of arguments. If the last expression or filename is `?`, it will enter interactive mode after finishing.
+- The file and expression modes now accept any number of arguments. They can also be combined with interactive mode (`-i`), which will then be entered after the exprs/files are done.
 - File mode removes all #comments before executing.
 - Error messages are (hopefully) more helpful and always prefixed with `!`.
 - When errors occur, all used objects are returned to the stack.
@@ -105,8 +105,8 @@ Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane rea
 ## Direct register number selection
 - `,` writes a number to a single-use direct register selector and marks it as valid.
 - This selector can only be written to and expires (becomes invalid) at the next call of any register command.
-- When it's valid, register commands access the register specified by the selector and don't process the next character as a register name.
-- Example: `[test] sa 97,l p` (assuming input base is 10).
+- When it's valid, register commands access the register specified by the selector instead of stealing the next character as a register name.
+- Example: `sa` and `97,s` are equivalent (assuming input base is 10).
 - If no register name is provided and the selector is marked as invalid, an error message is displayed.
 - Advantages/use cases:
   - Enables scripts to select registers automatically without having to convert the number to a string first (`123,s` is shorter than `123a[s]r+x`).
@@ -118,7 +118,7 @@ Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane rea
 - `q` now always exits regardless of where it's called from.
   - If the [DRS](#Direct-register-number-selection) is set, its value is used as the exit code.
 - `Q` may behave slightly differently, honestly CBA to even try comparing with GNU dc's source C.
-- `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). This enables easy usage of existing helper scripts while in interactive mode and splitting of scripts into multiple modular files. Because the script is executed in the same instance of dcim, it may overwrite register contents.
+- `&` pops a string and executes the file with that name as a macro script if it's accessible (like file mode). This enables easy usage of existing helper scripts while in interactive mode and splitting of scripts into multiple modular files. The script is executed in the same instance of dcim, make sure it doesn't mess with parameters/register contents.
 - `$` pops a string and pushes the environment variable with that name if it exists.
 - `\` pops a string and executes it as one or more OS commands (separated by `;`). Very basic syntax support (worst shell ever): `cmd arg1 arg2...` for normal commands, `var=val` for setting environment variables.
 ## Library of constants and conversion factors
