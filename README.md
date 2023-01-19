@@ -13,7 +13,7 @@ This readme only lists changes compared to GNU dc. If you're unfamiliar with it,
 
 [**Complete documentation in the wiki**](../../wiki)
 ## Building
-(Assuming complete and up-to-date environment)
+(Assuming complete and up-to-date build environment)
 ### In general
 ```
 cargo install --git https://github.com/43615/dcim
@@ -22,6 +22,9 @@ cargo install --git https://github.com/43615/dcim
 `gmp-mpfr-sys` requires some extra setup. Follow the instructions [here](https://crates.io/crates/gmp-mpfr-sys), under "Building on Windows". After building it in MinGW once, new dc:im versions can be built normally until I update it to a new version of `gmp-mpfr-sys`.
 
 Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane internal reason I can't control. If you want to calculate something to a billion digits, use WSL.
+### Android (Termux)
+Add this environment variable:
+```export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"```
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - The file and expression modes now accept any number of arguments. They can also be combined with interactive mode (`-i`), which will then be entered after the exprs/files are done.

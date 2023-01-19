@@ -160,11 +160,11 @@ fn main() {
 	if args.is_empty() {i=true};	//default to interactive
 	for arg in args {
 		if arg.starts_with("--") {	//long option
-			match arg.as_str() {
-				"--inter" => {i=true;}
-				"--expr" => {e=true;}
-				"--file" => {f=true;}
-				"--help" => {h=true;}
+			match &arg[2..] {
+				"inter" => {i=true;}
+				"expr" => {e=true;}
+				"file" => {f=true;}
+				"help" => {h=true;}
 				_ => {
 					eprintln!("! Unrecognized option: {arg}");
 					std::process::exit(0);
