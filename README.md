@@ -24,7 +24,9 @@ cargo install --git https://github.com/43615/dcim
 Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane internal reason I can't control. If you want to calculate something to a billion digits, use WSL.
 ### Android (Termux)
 Add this environment variable:
-```export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"```
+```
+export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
+```
 ## General changes and notes
 - Default (interactive) mode now has a prompt indicator.
 - The file and expression modes now accept any number of arguments. They can also be combined with interactive mode (`-i`), which will then be entered after the exprs/files are done.
