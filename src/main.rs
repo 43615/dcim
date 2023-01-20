@@ -82,21 +82,21 @@ impl ParamStk {
 	}
 
 	fn set_k(&mut self, n: Integer) -> Result<(), ParamError> {
-		if n>-1 {
+		if n>=-1 {
 			self.0.last_mut().unwrap().0 = n;
 			Ok(())
 		}
 		else {Err(ParamError::K)}
 	}
 	fn set_i(&mut self, n: Integer) -> Result<(), ParamError> {
-		if n>2 {
+		if n>=2 {
 			self.0.last_mut().unwrap().1 = n;
 			Ok(())
 		}
 		else {Err(ParamError::I)}
 	}
 	fn set_o(&mut self, n: Integer) -> Result<(), ParamError> {
-		if n>2 {
+		if n>=2 {
 			self.0.last_mut().unwrap().2 = n;
 			Ok(())
 		}
@@ -107,6 +107,7 @@ impl ParamStk {
 	fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
 	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
 }
+#[repr(u8)]
 enum ParamError {
 	K, I, O
 }
@@ -120,6 +121,10 @@ impl fmt::Display for ParamError {
 	}
 }
 
+/*---------------------------
+		STATE STORAGE
+	oops, all static mut!
+---------------------------*/
 static mut MSTK: Vec<Obj> = Vec::new();	//main stack
 
 const REG_DEF: Vec<RegObj> = Vec::new();
@@ -132,6 +137,7 @@ static mut RNG: Vec<RandState> = Vec::new();	//same problem as with RO_BUF
 
 static mut PARAMS: ParamStk = ParamStk::new();	//environment parameters
 static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
+
 
 
 fn int(n: &Float) -> Integer {	//discard fractional part if finite, default to 0 otherwise
@@ -159,29 +165,29 @@ fn main() {
 	let args: Vec<String> = std::env::args().skip(1).collect();	//get args, skip name of binary
 	if args.is_empty() {i=true};	//default to interactive
 	for arg in args {
-		if arg.starts_with("--") {	//long option
-			match &arg[2..] {
+		if let Some(flag) = arg.strip_prefix("--") {	//long option
+			match flag {
 				"inter" => {i=true;}
 				"expr" => {e=true;}
 				"file" => {f=true;}
 				"help" => {h=true;}
 				_ => {
-					eprintln!("! Unrecognized option: {arg}");
+					eprintln!("! Unrecognized option: --{flag}, use -h for help");
 					std::process::exit(0);
 				}
 			}
 			continue;
 		}
 		if arg.starts_with('-') {	//short option, multiple at once possible
-			for c in arg.chars() {
-				match c {
+			for flag in arg.chars() {
+				match flag {
 					'-' => {}	//allow -f-i or similar
 					'i' => {i=true;}
 					'e' => {e=true;}
 					'f' => {f=true;}
 					'h' => {h=true;}
 					_ => {
-						eprintln!("! Unrecognized option: -{c}");
+						eprintln!("! Unrecognized option: -{flag}, use -h for help");
 						std::process::exit(0);
 					}
 				}
