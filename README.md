@@ -23,7 +23,8 @@ cargo install --git https://github.com/43615/dcim
 
 Note: Numbers with huge mantissae (W≥2³⁰) cause crashes for some arcane internal reason I can't control. If you want to calculate something to a billion digits, use WSL.
 ### Android (Termux)
-Add this environment variable:
+- Pray to a deity of your choosing
+- Sacrifice this envar and 3 lambs at 13:37 on a Sunday while looking north-northeast:
 ```
 export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 ```
