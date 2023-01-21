@@ -1514,7 +1514,7 @@ unsafe fn exec(commands: String) {
 			'w' => {
 				if let Obj::N(na) = &a {
 					let i = int(na);
-					if let (Some(u), true) = (i.to_u32(), i!=0u8) {
+					if let (Some(u), false) = (i.to_u32(), i==0u8) {
 						WPREC = u;
 					}
 					else {
