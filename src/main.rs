@@ -1498,7 +1498,8 @@ unsafe fn exec(commands: String) {
 			//set working precision
 			'w' => {
 				if let Obj::N(na) = &a {
-					if let Some(u) = int(na).to_u32() {
+					let i = int(na);
+					if let (Some(u), true) = (i.to_u32(), i!=0u8) {
 						WPREC = u;
 					}
 					else {
