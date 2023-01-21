@@ -276,7 +276,7 @@ impl Flt {
 	where Float: Assign<T> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, val)))
 	}
-	fn sci<T: 'static + Copy, U:'static + Copy>(man :T, exp: U) -> Self
+	fn sci<T: 'static + Copy, U:'static + Copy>(man :T, exp: U) -> Self	//scientific notation
 	where Float: Assign<T> + Assign<U> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, man)*Float::with_val(prec, exp).exp10()))
 	}
