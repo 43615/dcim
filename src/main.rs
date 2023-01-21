@@ -67,7 +67,12 @@ enum Adicity {	//possible command adicities
 	Triadic
 }
 impl Default for Adicity {
-	fn default() -> Self { Niladic }
+	fn default() -> Self {Niladic}
+}
+impl Adicity {
+	fn plural(&self) -> &str {
+		if matches!(self, Monadic) {""} else {"s"}
+	}
 }
 use Adicity::*;	//fancy names -> no collisions
 
@@ -296,15 +301,16 @@ lazy_static! {
 		s
 	};
 	static ref TYPE_CONDS: HashMap<char, (TypeChecker, &'static str)> = {	//type checkers and error messages
+		use Obj::*;
 		let mut m = HashMap::new();
 
 		//add/concat | pow/find
 		for c in ['+','^'] {m.insert(c,
 			(
 				TypeChecker(Box::new(|[a, b, _]|
-					matches!(a, Obj::S(_)) == matches!(b, Obj::S(_))
+					matches!(a, S(_)) == matches!(b, S(_))
 				)),
-				"must be of the same type"
+				"must be both numbers or both strings"
 			)
 		);}
 
@@ -312,16 +318,18 @@ lazy_static! {
 		m.insert('|',
 			(
 				TypeChecker(Box::new(|[a, b, c]|
-				matches!(a, Obj::S(_)) == matches!(b, Obj::S(_)) && matches!(b, Obj::S(_)) == matches!(c, Obj::S(_))
+					matches!(a, S(_)) == matches!(b, S(_)) && matches!(b, S(_)) == matches!(c, S(_))
 				)),
-				"must be of the same type"
+				"must be all numbers or all strings"
 			)
 		);
 
 		//sub/remove | mul/repeat | div/trunc | mod/index | mod rem/split | save to arr
 		for c in "-*/%~:".chars() {m.insert(c,
 			(
-				TypeChecker(Box::new(|[_, b, _]| matches!(b, Obj::N(_)))),
+				TypeChecker(Box::new(|[_, b, _]|
+					matches!(b, N(_))
+				)),
 				"2nd must be a number"
 			)
 		);}
@@ -329,15 +337,19 @@ lazy_static! {
 		//script | envar | os cmd
 		for c in "&$\\".chars() {m.insert(c,
 			(
-				TypeChecker(Box::new(|[a, _, _]| matches!(a, Obj::S(_)))),
-				"argument must be a string"
+				TypeChecker(Box::new(|[a, _, _]|
+					matches!(a, S(_))
+				)),
+				"must be a string"
 			)
 		);}
 
 		//print | println | conv char | conv str | num->str/const | exec | ln/str len | save | push
 		for c in "nPaA\"xgsS".chars() {m.insert(c,
 			(
-				TypeChecker(Box::new(|[_, _, _]| true)),
+				TypeChecker(Box::new(|_|
+					true
+				)),
 				""	//impossible
 			)
 		);}
@@ -345,18 +357,21 @@ lazy_static! {
 		//exec n
 		m.insert('X',
 			(
-				TypeChecker(Box::new(|[a, b, _]| matches!(a, Obj::S(_)) && matches!(b, Obj::N(_)))),
+				TypeChecker(Box::new(|[a, b, _]|
+					matches!((a, b), (S(_), N(_)))
+				)),
 				"1st must be a string, 2nd must be a number"
 			)
 		);
 		m
 	};
 	static ref TC_DEF: (TypeChecker, &'static str) = {	//default type checker: only numbers
+		use Obj::*;
 		(
-			TypeChecker(Box::new(
-				|[a, b, c]| matches!(a, Obj::N(_)) && matches!(b, Obj::N(_)) && matches!(c, Obj::N(_))
+			TypeChecker(Box::new(|[a, b, c]|
+				matches!((a, b, c), (N(_), N(_), N(_)))
 			)),
-			"strings not allowed"
+			"only numbers allowed"
 		)
 	};
 	static ref CONSTANTS: HashMap<&'static str, Flt> = {	//library of constants/conversion factors
@@ -626,7 +641,7 @@ unsafe fn exec(commands: String) {
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
 		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap();	//isolate first character as command
-		let adicity = ADICITIES.get(&cmd).cloned().unwrap_or_default();	//adicity of command
+		let adi = ADICITIES.get(&cmd).cloned().unwrap_or_default();	//adicity of command
 
 		let mut proceed = true;	//no errors, allow command to run
 
@@ -648,8 +663,8 @@ unsafe fn exec(commands: String) {
 		}
 
 		let mut dummy = false;	//placeholder Objs, don't push back
-		let (c, b, a) = if MSTK.len() >= adicity as usize {	//if enough args on stack
-			match adicity {	//pop required amount
+		let (c, b, a) = if MSTK.len() >= adi as usize {	//if enough args on stack
+			match adi {	//pop required amount
 				Niladic => (Obj::dummy(), Obj::dummy(), Obj::dummy()),
 				Monadic => (Obj::dummy(), Obj::dummy(), MSTK.pop().unwrap()),
 				Dyadic => (Obj::dummy(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
@@ -657,7 +672,7 @@ unsafe fn exec(commands: String) {
 			}
 		}
 		else {
-			eprintln!("! Insufficient arguments for command '{cmd}': needs {}", adicity as usize);
+			eprintln!("! Command '{cmd}' needs {} argument{}", adi as u8, adi.plural());
 			proceed = false;
 			dummy = true;
 			(Obj::dummy(), Obj::dummy(), Obj::dummy())
@@ -665,13 +680,13 @@ unsafe fn exec(commands: String) {
 
 		let tc = TYPE_CONDS.get(&cmd).unwrap_or(&TC_DEF);
 		if !tc.0.0([&a, &b, &c]) {
-			eprintln!("! Invalid argument(s) for command '{cmd}': {}", tc.1);
+			eprintln!("! Invalid argument type{} for command '{cmd}': {}", adi.plural(), tc.1);
 			proceed = false;
 		}
 
 		if !proceed {	//staggered ifs to avoid moving a,b,c
 			if !dummy {	//if real a,b,c were popped
-				match adicity {	//push them back
+				match adi {	//push them back
 					Niladic => {},
 					Monadic => {MSTK.push(a);},
 					Dyadic => {MSTK.push(a); MSTK.push(b);},
