@@ -47,7 +47,7 @@ enum Obj {
 }
 impl Obj {
 	fn dummy() -> Self {
-		Self::N(Float::new(1))
+		Self::N(Float::new(1))	//allowed by TC_DEF
 	}
 }
 
@@ -66,6 +66,10 @@ enum Adicity {	//possible command adicities
 	Dyadic,
 	Triadic
 }
+impl Default for Adicity {
+	fn default() -> Self { Niladic }
+}
+use Adicity::*;	//fancy names -> no collisions
 
 struct ParamStk(Vec<(Integer, Integer, Integer)>);	//wrapper for brevity and safety
 impl ParamStk {
@@ -260,59 +264,102 @@ fn file_mode(files: Vec<String>, inter: bool) {
 	}
 }
 
-//closure wrapper for Obj type checking
-struct TypeChecker(Box<dyn Fn([bool; 3]) -> bool>);
+//closure for Obj type matching
+struct TypeChecker(Box<dyn Fn([&Obj; 3]) -> bool>);
 unsafe impl Sync for TypeChecker {}
 
-//closure wrapper for generating Floats (precision only known at runtime)
+//Float generator (desired precision set by user)
 struct Flt(Box<dyn Fn(u32) -> Float>);
 unsafe impl Sync for Flt {}
 impl Flt {
-	fn new<T: 'static + Copy>(val: T) -> Self
+	fn new<T: 'static + Copy>(val: T) -> Self	//simple variant
 	where Float: Assign<T> {
-		Self(Box::new(move |p: u32| Float::with_val(p, val)))
+		Self(Box::new(move |prec: u32| Float::with_val(prec, val)))
 	}
 	fn sci<T: 'static + Copy, U:'static + Copy>(man :T, exp: U) -> Self
 	where Float: Assign<T> + Assign<U> {
-		Self(Box::new(move |p: u32| Float::with_val(p, man)*Float::with_val(p, exp).exp10()))
+		Self(Box::new(move |prec: u32| Float::with_val(prec, man)*Float::with_val(prec, exp).exp10()))
 	}
 }
 
 lazy_static! {
-	static ref ADICITIES: HashMap<char, Adicity> = {
+	static ref ADICITIES: HashMap<char, Adicity> = {	//command argument counts
 		let mut m = HashMap::new();
-		m.insert('|', Adicity::Triadic);
-		for c in "+-*/^VG%~:=<>X".chars() {m.insert(c, Adicity::Dyadic);}
-		for c in "nPvg°uytUYTN\"CDRkiow,sS;xQaA&$\\".chars() {m.insert(c, Adicity::Monadic);}
+		m.insert('|', Triadic);
+		for c in "+-*/^VG%~:=<>X".chars() {m.insert(c, Dyadic);}
+		for c in "nPvg°uytUYTN\"CDRkiow,sS;xQaA&$\\".chars() {m.insert(c, Monadic);}
 		m
 	};
-	static ref USES_REG: HashSet<char> = {
+	static ref USES_REG: HashSet<char> = {	//all commands that use a register
 		let mut s = HashSet::new();
 		for c in "FsSlL:;bBZ<=>".chars() {s.insert(c);}
 		s
 	};
-	static ref TYPE_CONDS: HashMap<char, TypeChecker> = {
+	static ref TYPE_CONDS: HashMap<char, (TypeChecker, &'static str)> = {	//type checkers and error messages
 		let mut m = HashMap::new();
-		//add/concat | pow/find => same type
-		for c in ['+','^'] {m.insert(c, TypeChecker(Box::new(|[ta, tb, _]| ta==tb)));}
 
-		//pow mod/replace => same type
-		m.insert('|', TypeChecker(Box::new(|[ta, tb, tc]| ta==tb && tb==tc)));
+		//add/concat | pow/find
+		for c in ['+','^'] {m.insert(c,
+			(
+				TypeChecker(Box::new(|[a, b, _]|
+					matches!(a, Obj::S(_)) == matches!(b, Obj::S(_))
+				)),
+				"must be of the same type"
+			)
+		);}
 
-		//sub/remove | mul/repeat | div/trunc | mod/index | mod rem/split | save to arr => 2nd: num
-		for c in "-*/%~:".chars() {m.insert(c, TypeChecker(Box::new(|[_, tb, _]| !tb)));}
+		//pow mod/replace
+		m.insert('|',
+			(
+				TypeChecker(Box::new(|[a, b, c]|
+				matches!(a, Obj::S(_)) == matches!(b, Obj::S(_)) && matches!(b, Obj::S(_)) == matches!(c, Obj::S(_))
+				)),
+				"must be of the same type"
+			)
+		);
 
-		//script | envar | os cmd => only strings
-		for c in "&$\\".chars() {m.insert(c, TypeChecker(Box::new(|[ta, _, _]| ta)));}
+		//sub/remove | mul/repeat | div/trunc | mod/index | mod rem/split | save to arr
+		for c in "-*/%~:".chars() {m.insert(c,
+			(
+				TypeChecker(Box::new(|[_, b, _]| matches!(b, Obj::N(_)))),
+				"2nd must be a number"
+			)
+		);}
 
-		//print | println | conv char | conv str | num->str/const | exec | ln/str len | save | push => don't care
-		for c in "nPaA\"xgsS".chars() {m.insert(c, TypeChecker(Box::new(|[_, _, _]| true)));}
+		//script | envar | os cmd
+		for c in "&$\\".chars() {m.insert(c,
+			(
+				TypeChecker(Box::new(|[a, _, _]| matches!(a, Obj::S(_)))),
+				"argument must be a string"
+			)
+		);}
 
-		//exec n => 1st: str, 2nd: num
-		m.insert('X', TypeChecker(Box::new(|[ta, tb, _]| ta&&!tb)));
+		//print | println | conv char | conv str | num->str/const | exec | ln/str len | save | push
+		for c in "nPaA\"xgsS".chars() {m.insert(c,
+			(
+				TypeChecker(Box::new(|[_, _, _]| true)),
+				""	//impossible
+			)
+		);}
+
+		//exec n
+		m.insert('X',
+			(
+				TypeChecker(Box::new(|[a, b, _]| matches!(a, Obj::S(_)) && matches!(b, Obj::N(_)))),
+				"1st must be a string, 2nd must be a number"
+			)
+		);
 		m
 	};
-	static ref CONSTANTS: HashMap<&'static str, Flt> = {
+	static ref TC_DEF: (TypeChecker, &'static str) = {	//default type checker: only numbers
+		(
+			TypeChecker(Box::new(
+				|[a, b, c]| matches!(a, Obj::N(_)) && matches!(b, Obj::N(_)) && matches!(c, Obj::N(_))
+			)),
+			"strings not allowed"
+		)
+	};
+	static ref CONSTANTS: HashMap<&'static str, Flt> = {	//library of constants/conversion factors
 		let mut m = HashMap::new();
 		/*----------------------------
 			MATHEMATICAL CONSTANTS
@@ -579,7 +626,7 @@ unsafe fn exec(commands: String) {
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
 		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap();	//isolate first character as command
-		let adicity = ADICITIES.get(&cmd).cloned().unwrap_or(Adicity::Niladic);	//adicity of command
+		let adicity = ADICITIES.get(&cmd).cloned().unwrap_or_default();	//adicity of command
 
 		let mut proceed = true;	//no errors, allow command to run
 
@@ -603,32 +650,32 @@ unsafe fn exec(commands: String) {
 		let mut dummy = false;	//placeholder Objs, don't push back
 		let (c, b, a) = if MSTK.len() >= adicity as usize {	//if enough args on stack
 			match adicity {	//pop required amount
-				Adicity::Niladic => (Obj::dummy(), Obj::dummy(), Obj::dummy()),
-				Adicity::Monadic => (Obj::dummy(), Obj::dummy(), MSTK.pop().unwrap()),
-				Adicity::Dyadic => (Obj::dummy(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
-				Adicity::Triadic => (MSTK.pop().unwrap(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
+				Niladic => (Obj::dummy(), Obj::dummy(), Obj::dummy()),
+				Monadic => (Obj::dummy(), Obj::dummy(), MSTK.pop().unwrap()),
+				Dyadic => (Obj::dummy(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
+				Triadic => (MSTK.pop().unwrap(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
 			}
 		}
 		else {
-			eprintln!("! Insufficient arguments for command '{cmd}'");
+			eprintln!("! Insufficient arguments for command '{cmd}': needs at least {}", adicity as usize);
 			proceed = false;
 			dummy = true;
 			(Obj::dummy(), Obj::dummy(), Obj::dummy())
 		};
 
-		if !TYPE_CONDS.get(&cmd).unwrap_or(&TypeChecker(Box::new(|[a, b, c]| !a&&!b&&!c)))
-		.0([&a, &b, &c].map(|o| matches!(o, Obj::S(_)))) {
-			eprintln!("! Invalid argument type(s) for command '{cmd}'");
+		let tc = TYPE_CONDS.get(&cmd).unwrap_or(&TC_DEF);
+		if !tc.0.0([&a, &b, &c]) {
+			eprintln!("! Invalid argument(s) for command '{cmd}': {}", tc.1);
 			proceed = false;
 		}
 
 		if !proceed {	//staggered ifs to avoid moving a,b,c
 			if !dummy {	//if real a,b,c were popped
 				match adicity {	//push them back
-					Adicity::Niladic => {},
-					Adicity::Monadic => {MSTK.push(a);},
-					Adicity::Dyadic => {MSTK.push(a); MSTK.push(b);},
-					Adicity::Triadic => {MSTK.push(a); MSTK.push(b); MSTK.push(c);},
+					Niladic => {},
+					Monadic => {MSTK.push(a);},
+					Dyadic => {MSTK.push(a); MSTK.push(b);},
+					Triadic => {MSTK.push(a); MSTK.push(b); MSTK.push(c);},
 				}
 			}
 		}
