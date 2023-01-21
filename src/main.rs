@@ -657,7 +657,7 @@ unsafe fn exec(commands: String) {
 			}
 		}
 		else {
-			eprintln!("! Insufficient arguments for command '{cmd}': needs at least {}", adicity as usize);
+			eprintln!("! Insufficient arguments for command '{cmd}': needs {}", adicity as usize);
 			proceed = false;
 			dummy = true;
 			(Obj::dummy(), Obj::dummy(), Obj::dummy())
