@@ -83,6 +83,18 @@ impl CmdSig {
 	fn plural(&self) -> &str {	//english plural ending
 		if self.adicity()==1 {""} else {"s"}
 	}
+	fn correct(&self) -> &str {	//correction messages
+		match self {
+			Self::Nil|Self::Ax => "",
+			Self::An => "must be a number",
+			Self::As => "must be a string",
+			Self::AxBx => "must be two numbers or two strings",
+			Self::AxBn => "2nd must be a number",
+			Self::AnBn => "must be two numbers",
+			Self::AsBn => "1st must be a string, 2nd must be a number",
+			Self::AxBxCx => "must be three numbers or three strings",
+		}
+	}
 }
 
 struct ParamStk(Vec<(Integer, Integer, Integer)>);	//wrapper for brevity and safety
@@ -298,25 +310,25 @@ lazy_static! {
 		for c in "FsSlL:;bBZ<=>".chars() {s.insert(c);}
 		s
 	};
-	static ref CMD_SIGS: HashMap<char, (CmdSig, &'static str)> = {	//command signatures and type error messages
+	static ref CMD_SIGS: HashMap<char, CmdSig> = {	//command signatures and type error messages
 		let mut m = HashMap::new();
 		use CmdSig::*;
 
-		for c in ['+','^'] {m.insert(c, (AxBx, "must be two numbers or two strings"));}
+		for c in ['+','^'] {m.insert(c, AxBx);}
 
-		m.insert('|', (AxBxCx, "must be three numbers or three strings"));
+		m.insert('|', AxBxCx);
 
-		for c in "-*/%~:".chars() {m.insert(c, (AxBn, "2nd must be a number"));}
+		for c in "-*/%~:".chars() {m.insert(c, AxBn);}
 
-		for c in "&$\\".chars() {m.insert(c, (As, "must be a string"));}
+		for c in "&$\\".chars() {m.insert(c, As);}
 
-		for c in "nPaA\"xgsS".chars() {m.insert(c, (Ax, ""));}
+		for c in "nPaA\"xgsS".chars() {m.insert(c, Ax);}
 
-		m.insert('X', (AsBn, "1st must be a string, 2nd must be a number"));
+		m.insert('X', AsBn);
 
-		for c in "v°uytUYTNCDRkiow,;Q".chars() {m.insert(c, (An, "must be a number"));}
+		for c in "v°uytUYTNCDRkiow,;Q".chars() {m.insert(c, An);}
 
-		for c in "VG<=>".chars() {m.insert(c, (AnBn, "must be two numbers"));}
+		for c in "VG<=>".chars() {m.insert(c, AnBn);}
 
 		m
 	};
@@ -599,7 +611,7 @@ unsafe fn exec(commands: String) {
 		}
 		else {0};	//not needed
 
-		let (sig, correction) = CMD_SIGS.get(&cmd).unwrap_or(&(CmdSig::Nil, ""));
+		let sig = CMD_SIGS.get(&cmd).unwrap_or(&CmdSig::Nil);
 		let adi = sig.adicity();
 
 		if MSTK.len() < adi as usize {	//check stack depth
@@ -709,7 +721,7 @@ unsafe fn exec(commands: String) {
 			}
 		)
 		{
-			eprintln!("! Invalid argument type{} for command '{cmd}': {}", sig.plural(), correction);
+			eprintln!("! Invalid argument type{} for command '{cmd}': {}", sig.plural(), sig.correct());
 			match adi {	//push Objs back
 				1 => {MSTK.push(a);},
 				2 => {MSTK.push(a); MSTK.push(b);},
