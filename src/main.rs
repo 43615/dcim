@@ -270,7 +270,7 @@ fn file_mode(files: Vec<String>, inter: bool) {
 }
 
 //closure for Obj type matching
-struct TypeChecker(Box<dyn Fn([&Obj; 3]) -> bool>);
+struct TypeChecker(Box<dyn Fn(&Obj, &Obj, &Obj) -> bool>);
 unsafe impl Sync for TypeChecker {}
 
 //Float generator (desired precision set by user)
@@ -307,7 +307,7 @@ lazy_static! {
 		//add/concat | pow/find
 		for c in ['+','^'] {m.insert(c,
 			(
-				TypeChecker(Box::new(|[a, b, _]|
+				TypeChecker(Box::new(|a, b, _|
 					matches!(a, S(_)) == matches!(b, S(_))
 				)),
 				"must be both numbers or both strings"
@@ -317,7 +317,7 @@ lazy_static! {
 		//pow mod/replace
 		m.insert('|',
 			(
-				TypeChecker(Box::new(|[a, b, c]|
+				TypeChecker(Box::new(|a, b, c|
 					matches!(a, S(_)) == matches!(b, S(_)) && matches!(b, S(_)) == matches!(c, S(_))
 				)),
 				"must be all numbers or all strings"
@@ -327,7 +327,7 @@ lazy_static! {
 		//sub/remove | mul/repeat | div/trunc | mod/index | mod rem/split | save to arr
 		for c in "-*/%~:".chars() {m.insert(c,
 			(
-				TypeChecker(Box::new(|[_, b, _]|
+				TypeChecker(Box::new(|_, b, _|
 					matches!(b, N(_))
 				)),
 				"2nd must be a number"
@@ -337,7 +337,7 @@ lazy_static! {
 		//script | envar | os cmd
 		for c in "&$\\".chars() {m.insert(c,
 			(
-				TypeChecker(Box::new(|[a, _, _]|
+				TypeChecker(Box::new(|a, _, _|
 					matches!(a, S(_))
 				)),
 				"must be a string"
@@ -347,7 +347,7 @@ lazy_static! {
 		//print | println | conv char | conv str | num->str/const | exec | ln/str len | save | push
 		for c in "nPaA\"xgsS".chars() {m.insert(c,
 			(
-				TypeChecker(Box::new(|_|
+				TypeChecker(Box::new(|_, _, _|
 					true
 				)),
 				""	//impossible
@@ -357,7 +357,7 @@ lazy_static! {
 		//exec n
 		m.insert('X',
 			(
-				TypeChecker(Box::new(|[a, b, _]|
+				TypeChecker(Box::new(|a, b, _|
 					matches!((a, b), (S(_), N(_)))
 				)),
 				"1st must be a string, 2nd must be a number"
@@ -368,7 +368,7 @@ lazy_static! {
 	static ref TC_DEF: (TypeChecker, &'static str) = {	//default type checker: only numbers
 		use Obj::*;
 		(
-			TypeChecker(Box::new(|[a, b, c]|
+			TypeChecker(Box::new(|a, b, c|
 				matches!((a, b, c), (N(_), N(_), N(_)))
 			)),
 			"only numbers allowed"
@@ -679,7 +679,7 @@ unsafe fn exec(commands: String) {
 		};
 
 		let tc = TYPE_CONDS.get(&cmd).unwrap_or(&TC_DEF);
-		if !tc.0.0([&a, &b, &c]) {
+		if !tc.0.0(&a, &b, &c) {
 			eprintln!("! Invalid argument type{} for command '{cmd}': {}", adi.plural(), tc.1);
 			proceed = false;
 		}
