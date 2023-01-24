@@ -47,7 +47,7 @@ enum Obj {
 }
 impl Obj {
 	fn dummy() -> Self {
-		Self::N(Float::new(1))	//allowed by TC_DEF
+		Self::N(Float::new(1))
 	}
 }
 
@@ -60,21 +60,30 @@ struct RegObj {
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
-enum Adicity {	//possible command adicities
-	Niladic,
-	Monadic,
-	Dyadic,
-	Triadic
+enum CmdSig {	//argument type signatures
+	Nil,
+	Ax,
+	An,
+	As,
+	AxBx,
+	AxBn,
+	AnBn,
+	AsBn,
+	AxBxCx
 }
-impl Default for Adicity {
-	fn default() -> Self {Niladic}
-}
-impl Adicity {
-	fn plural(&self) -> &str {
-		if matches!(self, Monadic) {""} else {"s"}
+impl CmdSig {
+	fn adicity(&self) -> u8 {	//aka argument count
+		match self {
+			Self::Nil => 0,
+			Self::Ax|Self::An|Self::As => 1,
+			Self::AxBx|Self::AxBn|Self::AnBn|Self::AsBn => 2,
+			Self::AxBxCx => 3
+		}
+	}
+	fn plural(&self) -> &str {	//english plural ending
+		if self.adicity()==1 {""} else {"s"}
 	}
 }
-use Adicity::*;	//fancy names -> no collisions
 
 struct ParamStk(Vec<(Integer, Integer, Integer)>);	//wrapper for brevity and safety
 impl ParamStk {
@@ -149,7 +158,7 @@ static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
 
 
 
-fn int(n: &Float) -> Integer {	//discard fractional part if finite, default to 0 otherwise
+fn int(n: Float) -> Integer {	//discard fractional part if finite, default to 0 otherwise
 	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
 }
 
@@ -269,10 +278,6 @@ fn file_mode(files: Vec<String>, inter: bool) {
 	}
 }
 
-//closure for Obj type matching
-struct TypeChecker(Box<dyn Fn(&Obj, &Obj, &Obj) -> bool>);
-unsafe impl Sync for TypeChecker {}
-
 //Float generator (desired precision set by user)
 struct Flt(Box<dyn Fn(u32) -> Float>);
 unsafe impl Sync for Flt {}
@@ -288,91 +293,32 @@ impl Flt {
 }
 
 lazy_static! {
-	static ref ADICITIES: HashMap<char, Adicity> = {	//command argument counts
-		let mut m = HashMap::new();
-		m.insert('|', Triadic);
-		for c in "+-*/^VG%~:=<>X".chars() {m.insert(c, Dyadic);}
-		for c in "nPvg°uytUYTN\"CDRkiow,sS;xQaA&$\\".chars() {m.insert(c, Monadic);}
-		m
-	};
 	static ref USES_REG: HashSet<char> = {	//all commands that use a register
 		let mut s = HashSet::new();
 		for c in "FsSlL:;bBZ<=>".chars() {s.insert(c);}
 		s
 	};
-	static ref TYPE_CONDS: HashMap<char, (TypeChecker, &'static str)> = {	//type checkers and error messages
-		use Obj::*;
+	static ref CMD_SIGS: HashMap<char, (CmdSig, &'static str)> = {	//command signatures and type error messages
 		let mut m = HashMap::new();
+		use CmdSig::*;
 
-		//add/concat | pow/find
-		for c in ['+','^'] {m.insert(c,
-			(
-				TypeChecker(Box::new(|a, b, _|
-					matches!(a, S(_)) == matches!(b, S(_))
-				)),
-				"must be both numbers or both strings"
-			)
-		);}
+		for c in ['+','^'] {m.insert(c, (AxBx, "must be two numbers or two strings"));}
 
-		//pow mod/replace
-		m.insert('|',
-			(
-				TypeChecker(Box::new(|a, b, c|
-					matches!(a, S(_)) == matches!(b, S(_)) && matches!(b, S(_)) == matches!(c, S(_))
-				)),
-				"must be all numbers or all strings"
-			)
-		);
+		m.insert('|', (AxBxCx, "must be three numbers or three strings"));
 
-		//sub/remove | mul/repeat | div/trunc | mod/index | mod rem/split | save to arr
-		for c in "-*/%~:".chars() {m.insert(c,
-			(
-				TypeChecker(Box::new(|_, b, _|
-					matches!(b, N(_))
-				)),
-				"2nd must be a number"
-			)
-		);}
+		for c in "-*/%~:".chars() {m.insert(c, (AxBn, "2nd must be a number"));}
 
-		//script | envar | os cmd
-		for c in "&$\\".chars() {m.insert(c,
-			(
-				TypeChecker(Box::new(|a, _, _|
-					matches!(a, S(_))
-				)),
-				"must be a string"
-			)
-		);}
+		for c in "&$\\".chars() {m.insert(c, (As, "must be a string"));}
 
-		//print | println | conv char | conv str | num->str/const | exec | ln/str len | save | push
-		for c in "nPaA\"xgsS".chars() {m.insert(c,
-			(
-				TypeChecker(Box::new(|_, _, _|
-					true
-				)),
-				""	//impossible
-			)
-		);}
+		for c in "nPaA\"xgsS".chars() {m.insert(c, (Ax, ""));}
 
-		//exec n
-		m.insert('X',
-			(
-				TypeChecker(Box::new(|a, b, _|
-					matches!((a, b), (S(_), N(_)))
-				)),
-				"1st must be a string, 2nd must be a number"
-			)
-		);
+		m.insert('X', (AsBn, "1st must be a string, 2nd must be a number"));
+
+		for c in "v°uytUYTNCDRkiow,;Q".chars() {m.insert(c, (An, "must be a number"));}
+
+		for c in "VG<=>".chars() {m.insert(c, (AnBn, "must be two numbers"));}
+
 		m
-	};
-	static ref TC_DEF: (TypeChecker, &'static str) = {	//default type checker: only numbers
-		use Obj::*;
-		(
-			TypeChecker(Box::new(|a, b, c|
-				matches!((a, b, c), (N(_), N(_), N(_)))
-			)),
-			"only numbers allowed"
-		)
 	};
 	static ref CONSTANTS: HashMap<&'static str, Flt> = {	//library of constants/conversion factors
 		let mut m = HashMap::new();
@@ -640,63 +586,140 @@ unsafe fn exec(commands: String) {
 	}
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
-		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap();	//isolate first character as command
-		let adi = ADICITIES.get(&cmd).cloned().unwrap_or_default();	//adicity of command
+		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');	//get next command
 
-		let mut proceed = true;	//no errors, allow command to run
-
-		let ri = if USES_REG.contains(&cmd) {	//get register number for commands that need it
-			if cmdstk.last().unwrap().is_empty() && DRS.is_none() {
+		let ri: usize = if USES_REG.contains(&cmd) {	//get register index first since it's syntactically significant ("sq" etc)
+			if cmdstk.last().unwrap().is_empty() && DRS.is_none() {	//nothing provided
 				eprintln!("! Command '{cmd}' needs a register number");
-				proceed = false;
-				0
+				continue;
 			}
 			else {
 				DRS.take().unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize)	//get DRS or next command char, set DRS to None
 			}
 		}
-		else {0};
+		else {0};	//not needed
 
-		if ri>=REGS.len() {
-			eprintln!("! Register {ri} is not available");
-			proceed = false;
+		let (sig, correction) = CMD_SIGS.get(&cmd).unwrap_or(&(CmdSig::Nil, ""));
+		let adi = sig.adicity();
+
+		if MSTK.len() < adi as usize {	//check stack depth
+			eprintln!("! Command '{cmd}' needs {} argument{}", adi, sig.plural());
+			continue;
 		}
 
-		let mut dummy = false;	//placeholder Objs, don't push back
-		let (c, b, a) = if MSTK.len() >= adi as usize {	//if enough args on stack
-			match adi {	//pop required amount
-				Niladic => (Obj::dummy(), Obj::dummy(), Obj::dummy()),
-				Monadic => (Obj::dummy(), Obj::dummy(), MSTK.pop().unwrap()),
-				Dyadic => (Obj::dummy(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
-				Triadic => (MSTK.pop().unwrap(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
-			}
-		}
-		else {
-			eprintln!("! Command '{cmd}' needs {} argument{}", adi as u8, adi.plural());
-			proceed = false;
-			dummy = true;
-			(Obj::dummy(), Obj::dummy(), Obj::dummy())
+		let (c, b, a) = match adi {	//pop required amount from stack
+			1 => (Obj::dummy(), Obj::dummy(), MSTK.pop().unwrap()),
+			2 => (Obj::dummy(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
+			3 => (MSTK.pop().unwrap(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
+			_ => (Obj::dummy(), Obj::dummy(), Obj::dummy())
 		};
 
-		let tc = TYPE_CONDS.get(&cmd).unwrap_or(&TC_DEF);
-		if !tc.0.0(&a, &b, &c) {
-			eprintln!("! Invalid argument type{} for command '{cmd}': {}", adi.plural(), tc.1);
-			proceed = false;
+		let (mut na, mut nb, mut nc) = (Float::new(1), Float::new(1), Float::new(1));	//number slots
+		let (mut sa, mut sb, mut sc) = (String::new(), String::new(), String::new());	//string slots
+		let mut svari = false;	//string variant of overloaded command is used
+
+		if !(	//check and destructure Objs
+			match sig {
+				CmdSig::Nil => true,
+				CmdSig::Ax => match &a {
+					Obj::N(x) => {
+						na = x.clone();
+						true
+					},
+					Obj::S(x) => {
+						sa = x.clone();
+						svari = true;
+						true
+					}
+				},
+				CmdSig::An => match &a {
+					Obj::N(x) => {
+						na = x.clone();
+						true
+					},
+					_ => false
+				},
+				CmdSig::As => match &a {
+					Obj::S(x) => {
+						sa = x.clone();
+						true
+					},
+					_ => false
+				},
+				CmdSig::AxBx => match (&a, &b) {
+					(Obj::N(x), Obj::N(y)) => {
+						na = x.clone();
+						nb = y.clone();
+						true
+					},
+					(Obj::S(x), Obj::S(y)) => {
+						sa = x.clone();
+						sb = y.clone();
+						svari = true;
+						true
+					},
+					_ => false
+				},
+				CmdSig::AxBn => match (&a, &b) {
+					(Obj::N(x), Obj::N(y)) => {
+						na = x.clone();
+						nb = y.clone();
+						true
+					},
+					(Obj::S(x), Obj::N(y)) => {
+						sa = x.clone();
+						nb = y.clone();
+						svari = true;
+						true
+					},
+					_ => false
+				},
+				CmdSig::AnBn => match (&a, &b) {
+					(Obj::N(x), Obj::N(y)) => {
+						na = x.clone();
+						nb = y.clone();
+						true
+					},
+					_ => false
+				},
+				CmdSig::AsBn => match (&a, &b) {
+					(Obj::S(x), Obj::N(y)) => {
+						sa = x.clone();
+						nb = y.clone();
+						true
+					},
+					_ => false
+				},
+				CmdSig::AxBxCx => match (&a, &b, &c) {
+					(Obj::N(x), Obj::N(y), Obj::N(z)) => {
+						na = x.clone();
+						nb = y.clone();
+						nc = z.clone();
+						true
+					},
+					(Obj::S(x), Obj::S(y), Obj::S(z)) => {
+						sa = x.clone();
+						sb = y.clone();
+						sc = z.clone();
+						svari = true;
+						true
+					},
+					_ => false
+				},
+			}
+		)
+		{
+			eprintln!("! Invalid argument type{} for command '{cmd}': {}", sig.plural(), correction);
+			match adi {	//push Objs back
+				1 => {MSTK.push(a);},
+				2 => {MSTK.push(a); MSTK.push(b);},
+				3 => {MSTK.push(a); MSTK.push(b); MSTK.push(c);},
+				_ => {}
+			}
+			continue;
 		}
 
-		if !proceed {	//staggered ifs to avoid moving a,b,c
-			if !dummy {	//if real a,b,c were popped
-				match adi {	//push them back
-					Niladic => {},
-					Monadic => {MSTK.push(a);},
-					Dyadic => {MSTK.push(a); MSTK.push(b);},
-					Triadic => {MSTK.push(a); MSTK.push(b); MSTK.push(c);},
-				}
-			}
-		}
-		//one match to rule them all
-		//and in the branches run them
-		else { match cmd {
+		match cmd {
 			/*------------------
 				OBJECT INPUT
 			------------------*/
@@ -943,24 +966,20 @@ unsafe fn exec(commands: String) {
 
 			//pop and print without newline
 			'n' => {
-				match a {
-					Obj::N(na) => {
-						print!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));
-						stdout().flush().unwrap();
-					},
-					Obj::S(sa) => {
-						print!("{sa}");
-						stdout().flush().unwrap();
-					},
+				if !svari {
+					print!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));
+					stdout().flush().unwrap();
+				}
+				else {
+					print!("{sa}");
+					stdout().flush().unwrap();
 				}
 			},
 
 			//pop and print with newline
 			'P' => {
-				match a {
-					Obj::N(na) => {println!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));},
-					Obj::S(sa) => {println!("{sa}");},
-				}
+					if !svari {println!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));}
+					else {println!("{sa}");}
 			},
 
 			//print register
@@ -988,399 +1007,347 @@ unsafe fn exec(commands: String) {
 			----------------*/
 			//add or concatenate strings
 			'+' => {
-				match (a, b) {
-					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na + nb)));},
-					(Obj::S(sa), Obj::S(sb)) => {MSTK.push(Obj::S(sa + &sb));},
-					_ => {}
-				}
+				if !svari {MSTK.push(Obj::N(Float::with_val(WPREC, na + nb)));}
+				else {MSTK.push(Obj::S(sa + &sb));}
 			},
 
 			//subtract or remove chars from string
 			'-' => {
-				match (&a, &b) {
-					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na - nb)));},
-					(Obj::S(sa), Obj::N(nb)) => {
-						let ib = int(nb);
-						if let Some(n) = ib.clone().abs().to_usize() {
-							MSTK.push(Obj::S(
-								if ib<0 {	//remove from front
-									sa.chars().skip(n).collect()
-								}
-								else {	//remove from back
-									sa.chars().take(sa.chars().count().saturating_sub(n)).collect()
-								}
-							));
-						}
-						else {
-							eprintln!("! Cannot possibly remove {ib} characters from a string");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-					},
-					_ => {}
+				if !svari {MSTK.push(Obj::N(Float::with_val(WPREC, na - nb)));}
+				else {
+					let ib = int(nb);
+					if let Some(n) = ib.clone().abs().to_usize() {
+						MSTK.push(Obj::S(
+							if ib<0 {	//remove from front
+								sa.chars().skip(n).collect()
+							}
+							else {	//remove from back
+								sa.chars().take(sa.chars().count().saturating_sub(n)).collect()
+							}
+						));
+					}
+					else {
+						eprintln!("! Cannot possibly remove {ib} characters from a string");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
 				}
 			},
 
 			//multiply or repeat/invert string
 			'*' => {
-				match (&a, &b) {
-					(Obj::N(na), Obj::N(nb)) => {MSTK.push(Obj::N(Float::with_val(WPREC, na * nb)));},
-					(Obj::S(sa), Obj::N(nb)) => {
-						let ib = int(nb);
-						if let Some(n) = ib.clone().abs().to_usize() {
-							MSTK.push(Obj::S(
-								if ib<0 {	//repeat and reverse
-									sa.chars().rev().collect::<String>().repeat(n)
-								}
-								else {	//repeat
-									sa.repeat(n)
-								}
-							));
-						}
-						else {
-							eprintln!("! Cannot possibly repeat a string {ib} times");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-					},
-					_ => {}
+				if !svari {MSTK.push(Obj::N(Float::with_val(WPREC, na * nb)));}
+				else {
+					let ib = int(nb);
+					if let Some(n) = ib.clone().abs().to_usize() {
+						MSTK.push(Obj::S(
+							if ib<0 {	//repeat and reverse
+								sa.chars().rev().collect::<String>().repeat(n)
+							}
+							else {	//repeat
+								sa.repeat(n)
+							}
+						));
+					}
+					else {
+						eprintln!("! Cannot possibly repeat a string {ib} times");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
 				}
 			},
 			
 			//divide or shorten string to length
 			'/' => {
-				match (&a, &b) {
-					(Obj::N(na), Obj::N(nb)) => {
-						if nb.is_zero() {
-							eprintln!("! Arithmetic error: Attempted division by zero");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-						else {
-							MSTK.push(Obj::N(Float::with_val(WPREC, na / nb)));
-						}
-					},
-					(Obj::S(sa), Obj::N(nb)) => {
-						let ib = int(nb);
-						if let Some(n) = ib.clone().abs().to_usize() {
-							MSTK.push(Obj::S(
-								if ib<0 {	//discard from front
-									sa.chars().skip(sa.chars().count().saturating_sub(n)).collect()
-								}
-								else {	//discard from back
-									sa.chars().take(n).collect()
-								}
-							));
-						}
-						else {
-							eprintln!("! Cannot possibly shorten a string to {ib} characters");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-					},
-					_ => {}
+				if !svari {
+					if nb.is_zero() {
+						eprintln!("! Arithmetic error: Attempted division by zero");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na / nb)));
+					}
+				}
+				else {
+					let ib = int(nb);
+					if let Some(n) = ib.clone().abs().to_usize() {
+						MSTK.push(Obj::S(
+							if ib<0 {	//discard from front
+								sa.chars().skip(sa.chars().count().saturating_sub(n)).collect()
+							}
+							else {	//discard from back
+								sa.chars().take(n).collect()
+							}
+						));
+					}
+					else {
+						eprintln!("! Cannot possibly shorten a string to {ib} characters");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
 				}
 			},
 
 			//modulo or isolate char
 			'%' => {
-				match (&a, &b) {
-					(Obj::N(na), Obj::N(nb)) => {
-						let ia = int(na);
-						let ib = int(nb);
-						if ib==0 {
-							eprintln!("! Arithmetic error: Attempted reduction mod 0");
+				if !svari {
+					let ia = int(na);
+					let ib = int(nb);
+					if ib==0 {
+						eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, ia % ib)));
+					}
+				}
+				else {
+					let ib = int(nb);
+					if let Some(n) = ib.to_usize() {
+						if let Some(c) = sa.chars().nth(n) {
+							MSTK.push(Obj::S(c.into()))
+						}
+						else {
+							eprintln!("! String is too short for index {n}");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
-						else {
-							MSTK.push(Obj::N(Float::with_val(WPREC, ia % ib)));
-						}
-					},
-					(Obj::S(sa), Obj::N(nb)) => {
-						let ib = int(nb);
-						if let Some(n) = ib.to_usize() {
-							if let Some(c) = sa.chars().nth(n) {
-								MSTK.push(Obj::S(c.into()))
-							}
-							else {
-								eprintln!("! String is too short for index {n}");
-								MSTK.push(a);
-								MSTK.push(b);
-							}
-						}
-						else {
-							eprintln!("! Cannot possibly isolate character at index {ib}");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-					},
-					_ => {}
+					}
+					else {
+						eprintln!("! Cannot possibly isolate character at index {ib}");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
 				}
 			},
 
 			//euclidean division or split string
 			'~' => {
-				match (&a, &b) {
-					(Obj::N(na), Obj::N(nb)) => {
-						let ia = int(na);
-						let ib = int(nb);
-						if ib==0 {
-							eprintln!("! Arithmetic error: Attempted reduction mod 0");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-						else {
-							let (quot, rem)=ia.div_rem_euc(ib);
-							MSTK.push(Obj::N(Float::with_val(WPREC, quot)));
-							MSTK.push(Obj::N(Float::with_val(WPREC, rem)));
-						}
-					},
-					(Obj::S(sa), Obj::N(nb)) => {
-						let ib = int(nb);
-						if let Some(n) = ib.to_usize() {
-							MSTK.push(Obj::S(sa.chars().take(n).collect()));
-							MSTK.push(Obj::S(sa.chars().skip(n).collect()));
-						}
-						else {
-							eprintln!("! Cannot possibly split a string at character {ib}");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-					},
-					_ => {}
+				if !svari {
+					let ia = int(na);
+					let ib = int(nb);
+					if ib==0 {
+						eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
+					else {
+						let (quot, rem)=ia.div_rem_euc(ib);
+						MSTK.push(Obj::N(Float::with_val(WPREC, quot)));
+						MSTK.push(Obj::N(Float::with_val(WPREC, rem)));
+					}
+				}
+				else {
+					let ib = int(nb);
+					if let Some(n) = ib.to_usize() {
+						MSTK.push(Obj::S(sa.chars().take(n).collect()));
+						MSTK.push(Obj::S(sa.chars().skip(n).collect()));
+					}
+					else {
+						eprintln!("! Cannot possibly split a string at character {ib}");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
 				}
 			},
 
 			//exponentiation or find in string
 			'^' => {
-				match (&a, &b) {
-					(Obj::N(na), Obj::N(nb)) => {
-						if na<&0 && nb.clone().abs()<1{
-							eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
-							MSTK.push(a);
-							MSTK.push(b);
-						}
-						else {
-							MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb))));
-						}
-					},
-					(Obj::S(sa), Obj::S(sb)) => {
-						if let Some(bidx) = sa.find(sb) {	//find byte index
-							let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
-							MSTK.push(Obj::N(Float::with_val(WPREC, cidx)));
-						}
-						else {
-							MSTK.push(Obj::N(Float::with_val(WPREC, -1)));	//not found, silent error
-						}
-					},
-					_ => {}
+				if !svari {
+					if na<0 && nb.clone().abs()<1{
+						eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+						MSTK.push(a);
+						MSTK.push(b);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb))));
+					}
+				}
+				else if let Some(bidx) = sa.find(&sb) {	//find byte index
+					let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
+					MSTK.push(Obj::N(Float::with_val(WPREC, cidx)));
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, -1)));	//not found, silent error
 				}
 			},
 
 			//modular exponentiation or find/replace in string
 			'|' => {
-				match (&a, &b, &c) {
-					(Obj::N(na), Obj::N(nb), Obj::N(nc)) => {
-						let ia = int(na);
-						let ib = int(nb);
-						let ic = int(nc);
-						if ic==0 {
-							eprintln!("! Arithmetic error: Attempted reduction mod 0");
-							MSTK.push(a);
-							MSTK.push(b);
-							MSTK.push(c);
-						}
-						else if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
-							MSTK.push(Obj::N(Float::with_val(WPREC, res)));
-						}
-						else {
-							eprintln!("! Arithmetic error: {ia} doesn't have an inverse mod {ic}");
-							MSTK.push(a);
-							MSTK.push(b);
-							MSTK.push(c);
-						}
-					},
-					(Obj::S(sa), Obj::S(sb), Obj::S(sc)) => {
-						MSTK.push(Obj::S(sa.replace(sb, sc)));
-					},
-					_ => {}
+				if !svari {
+					let ia = int(na);
+					let ib = int(nb);
+					let ic = int(nc);
+					if ic==0 {
+						eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						MSTK.push(a);
+						MSTK.push(b);
+						MSTK.push(c);
+					}
+					else if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
+						MSTK.push(Obj::N(Float::with_val(WPREC, res)));
+					}
+					else {
+						eprintln!("! Arithmetic error: {ia} doesn't have an inverse mod {ic}");
+						MSTK.push(a);
+						MSTK.push(b);
+						MSTK.push(c);
+					}
+				}
+				else {
+					MSTK.push(Obj::S(sa.replace(&sb, &sc)));
 				}
 			},
 
 			//square root
 			'v' => {
-				if let Obj::N(na) = &a {
-					if na<&0 {
-						eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
-						MSTK.push(a);
-					}
-					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na.sqrt_ref())));
-					}
+				if na<0 {
+					eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+					MSTK.push(a);
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.sqrt())));
 				}
 			},
 
 			//bth root
 			'V' => {
-				if let (Obj::N(na), Obj::N(nb)) = (&a, &b) {
-					if na<&0 && nb.clone().abs()>1{
-						eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb.clone().recip()))));
-					}
+				if na<0 && nb.clone().abs()>1{
+					eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+					MSTK.push(a);
+					MSTK.push(b);
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb.recip()))));
 				}
 			},
 
 			//length of string or natural logarithm
 			'g' => {
-				match &a {
-					Obj::N(na) => {
-						if na<=&0 {
-							eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
-							MSTK.push(a);
-						}
-						else {
-							MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().ln())));
-						}
-					},
-					Obj::S(sa) => {
-						MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().count())));
-					},
+				if !svari {
+					if na<=0 {
+						eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
+						MSTK.push(a);
+					}
+					else {
+						MSTK.push(Obj::N(Float::with_val(WPREC, na.ln())));
+					}
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().count())));
 				}
 			},
 
 			//base b logarithm
 			'G' => {
-				if let (Obj::N(na), Obj::N(nb)) = (&a, &b) {
-					if na<=&0 {
-						eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-					else if nb==&1||nb<=&0{
-						eprintln!("! Arithmetic error: Logarithm base must be positive and not equal to 1");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
-					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().ln()/nb.clone().ln())));
-					}
+				if na<=0 {
+					eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
+					MSTK.push(a);
+					MSTK.push(b);
+				}
+				else if nb==1||nb<=0{
+					eprintln!("! Arithmetic error: Logarithm base must be positive and not equal to 1");
+					MSTK.push(a);
+					MSTK.push(b);
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.ln()/nb.ln())));
 				}
 			},
 
 			//sine
 			'u' => {
-				if let Obj::N(na) = a {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.sin())));
-				}
+				MSTK.push(Obj::N(Float::with_val(WPREC, na.sin())));
 			},
 
 			//cosine
 			'y' => {
-				if let Obj::N(na) = a {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.cos())));
-				}
+				MSTK.push(Obj::N(Float::with_val(WPREC, na.cos())));
 			},
 
 			//tangent
 			't' => {
-				if let Obj::N(na) = a {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.tan())));
-				}
+				MSTK.push(Obj::N(Float::with_val(WPREC, na.tan())));
 			},
 
 			//arc-sine
 			'U' => {
-				if let Obj::N(na) = &a {
-					if na.clone().abs()>1 {
-						eprintln!("! Arithmetic error: Arc-sine of value outside [-1,1]");
-						MSTK.push(a);
-					}
-					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().asin())));
-					}
+				if na.clone().abs()>1 {
+					eprintln!("! Arithmetic error: Arc-sine of value outside [-1,1]");
+					MSTK.push(a);
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.asin())));
 				}
 			},
 
 			//arc-cosine
 			'Y' => {
-				if let Obj::N(na) = &a {
-					if na.clone().abs()>1 {
-						eprintln!("! Arithmetic error: Arc-cosine of value outside [-1,1]");
-						MSTK.push(a);
-					}
-					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na.clone().acos())));
-					}
+				if na.clone().abs()>1 {
+					eprintln!("! Arithmetic error: Arc-cosine of value outside [-1,1]");
+					MSTK.push(a);
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, na.acos())));
 				}
 			},
 
 			//arc-tangent
 			'T' => {
-				if let Obj::N(na) = a {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.atan())));
-				}
+				MSTK.push(Obj::N(Float::with_val(WPREC, na.atan())));
 			},
 
 			//random integer [0;a)
 			'N' => {
-				if let Obj::N(na) = &a {
-					let int = int(na);
-					if int<=0 {
-						eprintln!("! Upper bound for random value must be above 0");
-						MSTK.push(a);
-					}
-					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, int.random_below(&mut RNG[0]))));
-					}
+				let int = int(na);
+				if int<=0 {
+					eprintln!("! Upper bound for random value must be above 0");
+					MSTK.push(a);
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, int.random_below(&mut RNG[0]))));
 				}
 			},
 
 			//constant/conversion factor lookup or convert number to string
 			'"' => {
-				match &a {
-					Obj::N(na) => {
-						MSTK.push(Obj::S(flt_to_str(na.clone(), PARAMS.o(), PARAMS.k())));
-					},
-					Obj::S(sa) => {
-						match sa.matches(' ').count() {
-							0 => {	//normal lookup
-								if let Some(res) = get_constant(WPREC, sa) {
-									MSTK.push(Obj::N(res));
-								}
-								else {
-									eprintln!("! Constant/conversion factor not found");
-									MSTK.push(a);
-								}
-							},
-							1 => {	//conversion shorthand, left divided by right
-								let (sl, sr) = sa.split_once(' ').unwrap();
-								if let (Some(nl), Some(nr)) = (get_constant(WPREC, sl), get_constant(WPREC, sr)) {
-									MSTK.push(Obj::N(nl/nr));
-								}
-								else {
-									eprintln!("! Constant/conversion factor not found");
-									MSTK.push(a);
-								}
-							},
-							_ => {
-								eprintln!("! Too many spaces in constant/conversion query");
+				if !svari {
+					MSTK.push(Obj::S(flt_to_str(na.clone(), PARAMS.o(), PARAMS.k())));
+				}
+				else {
+					match sa.matches(' ').count() {
+						0 => {	//normal lookup
+							if let Some(res) = get_constant(WPREC, &sa) {
+								MSTK.push(Obj::N(res));
+							}
+							else {
+								eprintln!("! Constant/conversion factor not found");
 								MSTK.push(a);
-							},
-						}
-					},
+							}
+						},
+						1 => {	//conversion shorthand, left divided by right
+							let (sl, sr) = sa.split_once(' ').unwrap();
+							if let (Some(nl), Some(nr)) = (get_constant(WPREC, sl), get_constant(WPREC, sr)) {
+								MSTK.push(Obj::N(nl/nr));
+							}
+							else {
+								eprintln!("! Constant/conversion factor not found");
+								MSTK.push(a);
+							}
+						},
+						_ => {
+							eprintln!("! Too many spaces in constant/conversion query");
+							MSTK.push(a);
+						},
+					}
 				}
 			},
 
 			//deg -> rad shorthand
 			'°' => {
-				if let Obj::N(na) = a {
-					MSTK.push(Obj::N(na * Float::with_val(WPREC, Constant::Pi) / 180));
-				}
+				MSTK.push(Obj::N(na * Float::with_val(WPREC, Constant::Pi) / 180));
 			},
 			/*------------------------
 				STACK MANIPULATION
@@ -1392,16 +1359,14 @@ unsafe fn exec(commands: String) {
 
 			//remove top a objects from stack
 			'C' => {
-				if let Obj::N(na) = &a {
-					let int = int(na);
-					if let Some(mut num) = int.to_usize() {
-						if num>MSTK.len() { num = MSTK.len(); }	//limit clear count
-						MSTK.truncate(MSTK.len()-num);
-					}
-					else {
-						eprintln!("! Cannot possibly remove {int} objects from the main stack");
-						MSTK.push(a);
-					}
+				let int = int(na);
+				if let Some(mut num) = int.to_usize() {
+					if num>MSTK.len() { num = MSTK.len(); }	//limit clear count
+					MSTK.truncate(MSTK.len()-num);
+				}
+				else {
+					eprintln!("! Cannot possibly remove {int} objects from the main stack");
+					MSTK.push(a);
 				}
 			},
 
@@ -1417,21 +1382,19 @@ unsafe fn exec(commands: String) {
 
 			//duplicate top a objects
 			'D' => {
-				if let Obj::N(na) = &a {
-					let int = int(na);
-					if let Some(num) = int.to_usize() {
-						if num<=MSTK.len() {
-							MSTK.extend_from_within(MSTK.len()-num..);
-						}
-						else {
-							eprintln!("! Not enough objects to duplicate");
-							MSTK.push(a);
-						}
+				let int = int(na);
+				if let Some(num) = int.to_usize() {
+					if num<=MSTK.len() {
+						MSTK.extend_from_within(MSTK.len()-num..);
 					}
 					else {
-						eprintln!("! Cannot possibly duplicate {int} objects");
+						eprintln!("! Not enough objects to duplicate");
 						MSTK.push(a);
 					}
+				}
+				else {
+					eprintln!("! Cannot possibly duplicate {int} objects");
+					MSTK.push(a);
 				}
 			},
 
@@ -1447,29 +1410,27 @@ unsafe fn exec(commands: String) {
 
 			//rotate top a objects
 			'R' => {
-				if let Obj::N(na) = &a {
-					let mut int = int(na);
-					if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
-					if let Some(num) = int.clone().abs().to_usize() {
-						if num<=MSTK.len() {
-							let sl = MSTK.as_mut_slice();
-							if int<0 {
-								sl[MSTK.len()-num..].rotate_left(1);	//if negative, rotate left/down
-							}
-							else {
-								sl[MSTK.len()-num..].rotate_right(1);	//right/up otherwise
-							}
-							MSTK = sl.to_vec();
+				let mut int = int(na);
+				if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
+				if let Some(num) = int.clone().abs().to_usize() {
+					if num<=MSTK.len() {
+						let sl = MSTK.as_mut_slice();
+						if int<0 {
+							sl[MSTK.len()-num..].rotate_left(1);	//if negative, rotate left/down
 						}
 						else {
-							eprintln!("! Not enough objects to rotate");
-							MSTK.push(a);
+							sl[MSTK.len()-num..].rotate_right(1);	//right/up otherwise
 						}
+						MSTK = sl.to_vec();
 					}
 					else {
-						eprintln!("! Cannot possibly rotate {} objects", int.abs());
+						eprintln!("! Not enough objects to rotate");
 						MSTK.push(a);
 					}
+				}
+				else {
+					eprintln!("! Cannot possibly rotate {} objects", int.abs());
+					MSTK.push(a);
 				}
 			},
 
@@ -1482,45 +1443,37 @@ unsafe fn exec(commands: String) {
 			----------------------------*/
 			//set output precision
 			'k' => {
-				if let Obj::N(na) = &a {
-					if let Err(e) = PARAMS.set_k(int(na)) {
-						eprintln!("{e}");
-						MSTK.push(a);
-					}
+				if let Err(e) = PARAMS.set_k(int(na)) {
+					eprintln!("{e}");
+					MSTK.push(a);
 				}
 			},
 
 			//set input base
 			'i' => {
-				if let Obj::N(na) = &a {
-					if let Err(e) = PARAMS.set_i(int(na)) {
-						eprintln!("{e}");
-						MSTK.push(a);
-					}
+				if let Err(e) = PARAMS.set_i(int(na)) {
+					eprintln!("{e}");
+					MSTK.push(a);
 				}
 			},
 
 			//set output base
 			'o' => {
-				if let Obj::N(na) = &a {
-					if let Err(e) = PARAMS.set_o(int(na)) {
-						eprintln!("{e}");
-						MSTK.push(a);
-					}
+				if let Err(e) = PARAMS.set_o(int(na)) {
+					eprintln!("{e}");
+					MSTK.push(a);
 				}
 			},
 
 			//set working precision
 			'w' => {
-				if let Obj::N(na) = &a {
-					let i = int(na);
-					if let (Some(u), false) = (i.to_u32(), i==0u8) {
-						WPREC = u;
-					}
-					else {
-						eprintln!("! Working precision must be between 1 and {} (inclusive)", u32::MAX);
-						MSTK.push(a);
-					}
+				let i = int(na);
+				if let (Some(u), false) = (i.to_u32(), i==0u8) {
+					WPREC = u;
+				}
+				else {
+					eprintln!("! Working precision must be between 1 and {} (inclusive)", u32::MAX);
+					MSTK.push(a);
 				}
 			},
 
@@ -1596,48 +1549,44 @@ unsafe fn exec(commands: String) {
 
 			//save to top-of-register's array
 			':' => {
-				if let Obj::N(nb) = &b {
-					if REGS[ri].is_empty() {
-						REGS[ri].push(RegObj {
-							o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
-							a: Vec::new()
-						});
+				if REGS[ri].is_empty() {
+					REGS[ri].push(RegObj {
+						o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
+						a: Vec::new()
+					});
+				}
+				let int = int(nb);
+				if let Some(rai) = int.to_usize() {
+					if rai>=REGS[ri].last().unwrap().a.len() {
+						REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
 					}
-					let int = int(nb);
-					if let Some(rai) = int.to_usize() {
-						if rai>=REGS[ri].last().unwrap().a.len() {
-							REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
-						}
-						REGS[ri].last_mut().unwrap().a[rai] = a;
-					}
-					else {
-						eprintln!("! Cannot possibly save to array index {int}");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
+					REGS[ri].last_mut().unwrap().a[rai] = a;
+				}
+				else {
+					eprintln!("! Cannot possibly save to array index {int}");
+					MSTK.push(a);
+					MSTK.push(b);
 				}
 			},
 
 			//load from top-of-register's array
 			';' => {
-				if let Obj::N(na) = &a {
-					if REGS[ri].is_empty() {
-						REGS[ri].push(RegObj {
-							o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
-							a: Vec::new()
-						});
+				if REGS[ri].is_empty() {
+					REGS[ri].push(RegObj {
+						o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
+						a: Vec::new()
+					});
+				}
+				let int = int(na);
+				if let Some(rai) = int.to_usize() {
+					if rai>=REGS[ri].last().unwrap().a.len() {
+						REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
 					}
-					let int = int(na);
-					if let Some(rai) = int.to_usize() {
-						if rai>=REGS[ri].last().unwrap().a.len() {
-							REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
-						}
-						MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
-					}
-					else {
-						eprintln!("! Cannot possibly load from array index {int}");
-						MSTK.push(a);
-					}
+					MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
+				}
+				else {
+					eprintln!("! Cannot possibly load from array index {int}");
+					MSTK.push(a);
 				}
 			},
 
@@ -1663,21 +1612,19 @@ unsafe fn exec(commands: String) {
 
 			//specify manual register index
 			',' => {
-				if let Obj::N(na) = &a {
-					let int = int(na);
-					if let Some(new_ri) = int.to_usize() {
-						if REGS.len()>new_ri {
-							DRS = Some(new_ri);
-						}
-						else {
-							eprintln!("! Register {new_ri} is not available");
-							MSTK.push(a);
-						}
+				let int = int(na);
+				if let Some(new_ri) = int.to_usize() {
+					if REGS.len()>new_ri {
+						DRS = Some(new_ri);
 					}
 					else {
-						eprintln!("! Register {int} cannot possibly exist");
+						eprintln!("! Register {new_ri} is not available");
 						MSTK.push(a);
 					}
+				}
+				else {
+					eprintln!("! Register {int} cannot possibly exist");
+					MSTK.push(a);
 				}
 			},
 			/*------------
@@ -1685,55 +1632,49 @@ unsafe fn exec(commands: String) {
 			------------*/
 			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
-				match &a {
-					Obj::N(na) => {
-						if let Some(ia) = int(na).to_u32() {
-							if let Some(res) = char::from_u32(ia) {
-								MSTK.push(Obj::S(res.to_string()));
-							}
-							else {
-								eprintln!("! Unable to convert number {ia} to character: not a valid Unicode value");
-								MSTK.push(a);
-							}
+				if !svari {
+					if let Some(ia) = int(na.clone()).to_u32() {
+						if let Some(res) = char::from_u32(ia) {
+							MSTK.push(Obj::S(res.to_string()));
 						}
 						else {
-							eprintln!("! Unable to convert number {} to character: valid range is 0 to {}", int(na), u32::MAX);
+							eprintln!("! Unable to convert number {ia} to character: not a valid Unicode value");
 							MSTK.push(a);
 						}
-					},
-					Obj::S(sa) => {
-						if sa.is_empty() {
-							eprintln!("! Cannot convert empty string to number");
-							MSTK.push(a);
-						}
-						else {
-							MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().next().unwrap() as u32)));
-						}
-					},
+					}
+					else {
+						eprintln!("! Unable to convert number {} to character: valid range is 0 to {}", int(na), u32::MAX);
+						MSTK.push(a);
+					}
+				}
+				else if sa.is_empty() {
+					eprintln!("! Cannot convert empty string to number");
+					MSTK.push(a);
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().next().unwrap() as u32)));
 				}
 			},
 
 			//convert number to UTF-8 string or back
 			'A' => {
-				match &a {
-					Obj::N(na) => {
-						if let Ok(res) = String::from_utf8(int(na).to_digits::<u8>(Order::Msf)) {
-							MSTK.push(Obj::S(res));
-						}
-						else {
-							eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", int(na));
-							MSTK.push(a);
-						}
-					},
-					Obj::S(sa) => {
-						MSTK.push(Obj::N(Float::with_val(WPREC, Integer::from_digits(sa.as_bytes(), Order::Msf))));
-					},
+				if !svari {
+					if let Ok(res) = String::from_utf8(int(na.clone()).to_digits::<u8>(Order::Msf)) {
+						MSTK.push(Obj::S(res));
+					}
+					else {
+						eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", int(na));
+						MSTK.push(a);
+					}
+				}
+				else {
+					MSTK.push(Obj::N(Float::with_val(WPREC, Integer::from_digits(sa.as_bytes(), Order::Msf))));
 				}
 			},
 
 			//execute string as macro
 			'x' => {
-				if let Obj::S(sa) = a {
+				if svari {
 						if cmdstk.last().unwrap().is_empty() {
 							cmdstk.pop();	//optimize tail call
 						}
@@ -1750,45 +1691,41 @@ unsafe fn exec(commands: String) {
 
 			//conditionally execute macro
 			'<'|'='|'>' => {
-				if let (Obj::N(na), Obj::N(nb)) = (&a, &b) {
-					if REGS[ri].is_empty() {
-						eprintln!("! Register {ri} is empty");
-					}
-					else if let Obj::S(mac) = &REGS[ri].last().unwrap().o {
-						if inv != match cmd {
-						'<' => { nb < na },	//reverse order, GNU dc convention
-						'=' => { nb == na },
-						'>' => { nb > na },
-						_ => {false},}
-						{
-							if cmdstk.last().unwrap().is_empty() {
-								cmdstk.pop();	//optimize tail call
-							}
-							cmdstk.push(mac.chars().rev().collect());
+				if REGS[ri].is_empty() {
+					eprintln!("! Register {ri} is empty");
+				}
+				else if let Obj::S(mac) = &REGS[ri].last().unwrap().o {
+					if inv != match cmd {
+					'<' => { nb < na },	//reverse order, GNU dc convention
+					'=' => { nb == na },
+					'>' => { nb > na },
+					_ => {false},}
+					{
+						if cmdstk.last().unwrap().is_empty() {
+							cmdstk.pop();	//optimize tail call
 						}
+						cmdstk.push(mac.chars().rev().collect());
 					}
-					else {
-						eprintln!("! Top of register {ri} is not a string");
-					}
+				}
+				else {
+					eprintln!("! Top of register {ri} is not a string");
 				}
 				inv = false;	//always reset inversion
 			},
 
 			//auto-macro
 			'X' => {
-				if let (Obj::S(sa), Obj::N(nb)) = (&a, &b) {
-					let int = int(nb);
-					if let Some(reps) = int.to_usize() {
-						if cmdstk.last().unwrap().is_empty() {
-							cmdstk.pop();	//optimize tail call
-						}
-						cmdstk.resize(cmdstk.len()+reps, sa.chars().rev().collect());
+				let int = int(nb);
+				if let Some(reps) = int.to_usize() {
+					if cmdstk.last().unwrap().is_empty() {
+						cmdstk.pop();	//optimize tail call
 					}
-					else {
-						eprintln!("! Cannot possibly repeat a macro {int} times");
-						MSTK.push(a);
-						MSTK.push(b);
-					}
+					cmdstk.resize(cmdstk.len()+reps, sa.chars().rev().collect());
+				}
+				else {
+					eprintln!("! Cannot possibly repeat a macro {int} times");
+					MSTK.push(a);
+					MSTK.push(b);
 				}
 			},
 
@@ -1799,19 +1736,17 @@ unsafe fn exec(commands: String) {
 
 			//quit a macro calls
 			'Q' => {
-				if let Obj::N(na) = &a {
-					let int = int(na);
-					if let Some(mut num) = int.to_usize() {
-						if num>cmdstk.len() {num=cmdstk.len();}
-						cmdstk.truncate(cmdstk.len()-num);
-						if cmdstk.is_empty() {
-							cmdstk.push(String::new());	//guarantee at least one object
-						}
+				let int = int(na);
+				if let Some(mut num) = int.to_usize() {
+					if num>cmdstk.len() {num=cmdstk.len();}
+					cmdstk.truncate(cmdstk.len()-num);
+					if cmdstk.is_empty() {
+						cmdstk.push(String::new());	//guarantee at least one object
 					}
-					else {
-						eprintln!("! Cannot possibly quit {int} levels");
-						MSTK.push(a);
-					}
+				}
+				else {
+					eprintln!("! Cannot possibly quit {int} levels");
+					MSTK.push(a);
 				}
 			},
 
@@ -1826,60 +1761,54 @@ unsafe fn exec(commands: String) {
 
 			//execute file as script
 			'&' => {
-				if let Obj::S(sa) = &a {
-					match std::fs::read_to_string(sa) {
-						Ok(script) => {
-							let mut script_nc = String::new();	//script with comments removed
-							for line in script.split('\n') {
-								script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
-								script_nc.push('\n');
-							}
-							cmdstk.push(script_nc.chars().rev().collect());
-						},
-						Err(err) => {
-							eprintln!("! Unable to read file \"{sa}\": {err}");
-							MSTK.push(a);
-						},
-					}
+				match std::fs::read_to_string(sa.clone()) {
+					Ok(script) => {
+						let mut script_nc = String::new();	//script with comments removed
+						for line in script.split('\n') {
+							script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
+							script_nc.push('\n');
+						}
+						cmdstk.push(script_nc.chars().rev().collect());
+					},
+					Err(err) => {
+						eprintln!("! Unable to read file \"{sa}\": {err}");
+						MSTK.push(a);
+					},
 				}
 			},
 
 			//get environment variable
 			'$' => {
-				if let Obj::S(sa) = &a {
-					match std::env::var(sa) {
-						Ok(val) => {
-							MSTK.push(Obj::S(val));
-						},
-						Err(err) => {
-							eprintln!("! Unable to get value of ${sa}: {err}");
-							MSTK.push(a);
-						},
-					}
+				match std::env::var(sa.clone()) {
+					Ok(val) => {
+						MSTK.push(Obj::S(val));
+					},
+					Err(err) => {
+						eprintln!("! Unable to get value of ${sa}: {err}");
+						MSTK.push(a);
+					},
 				}
 			},
 
 			//execute os command(s)
 			'\\' => {
-				if let Obj::S(sa) = a {
-					for oscmd in sa.clone().split(';') {
-						if let Some((var, val)) = oscmd.split_once('=') {	//set variable
-							std::env::set_var(var, val);
-						}
-						else {	//normal command
-							let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
-							match std::process::Command::new(args.remove(0)).args(args).spawn() {
-								Ok(mut child) => {
-									if let Ok(stat) = child.wait() {
-										if let Some(code) = stat.code() {
-											if code!=0 {eprintln!("! OS command \"{oscmd}\" exited with code {code}");}
-										}
+				for oscmd in sa.clone().split(';') {
+					if let Some((var, val)) = oscmd.split_once('=') {	//set variable
+						std::env::set_var(var, val);
+					}
+					else {	//normal command
+						let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
+						match std::process::Command::new(args.remove(0)).args(args).spawn() {
+							Ok(mut child) => {
+								if let Ok(stat) = child.wait() {
+									if let Some(code) = stat.code() {
+										if code!=0 {eprintln!("! OS command \"{oscmd}\" exited with code {code}");}
 									}
-								},
-								Err(err) => {
-									eprintln!("! Unable to execute OS command \"{oscmd}\": {err}");
-								},
-							}
+								}
+							},
+							Err(err) => {
+								eprintln!("! Unable to execute OS command \"{oscmd}\": {err}");
+							},
 						}
 					}
 				}
@@ -1894,7 +1823,7 @@ unsafe fn exec(commands: String) {
 			_ => {
 				if !cmd.is_whitespace()&&cmd!='\0' { eprintln!("! Invalid command: {cmd} (U+{:04X})", cmd as u32); }
 			},
-		}}
+		}
 		while let Some(ptr) = cmdstk.last() {	//clean up empty command strings
 			if ptr.is_empty() {
 				cmdstk.pop();
