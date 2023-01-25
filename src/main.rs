@@ -717,7 +717,7 @@ unsafe fn exec(commands: String) {
 			}
 		)
 		{
-			eprintln!("! Invalid argument type{} for command '{cmd}': {}", sig.plural(), sig.correct());
+			eprintln!("! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct());
 			match adi {	//push Objs back
 				1 => {MSTK.push(a);},
 				2 => {MSTK.push(a); MSTK.push(b);},
@@ -1035,7 +1035,7 @@ unsafe fn exec(commands: String) {
 						));
 					}
 					else {
-						eprintln!("! Cannot possibly remove {ib} characters from a string");
+						eprintln!("! -: Cannot possibly remove {ib} characters from a string");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1058,7 +1058,7 @@ unsafe fn exec(commands: String) {
 						));
 					}
 					else {
-						eprintln!("! Cannot possibly repeat a string {ib} times");
+						eprintln!("! *: Cannot possibly repeat a string {ib} times");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1069,7 +1069,7 @@ unsafe fn exec(commands: String) {
 			'/' => {
 				if !svari {
 					if nb.is_zero() {
-						eprintln!("! Arithmetic error: Attempted division by zero");
+						eprintln!("! /: Division by zero");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1090,7 +1090,7 @@ unsafe fn exec(commands: String) {
 						));
 					}
 					else {
-						eprintln!("! Cannot possibly shorten a string to {ib} characters");
+						eprintln!("! /: Cannot possibly shorten a string to {ib} characters");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1103,7 +1103,7 @@ unsafe fn exec(commands: String) {
 					let ia = int(na);
 					let ib = int(nb);
 					if ib==0 {
-						eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						eprintln!("! %: Reduction mod 0");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1118,13 +1118,13 @@ unsafe fn exec(commands: String) {
 							MSTK.push(Obj::S(c.into()))
 						}
 						else {
-							eprintln!("! String is too short for index {n}");
+							eprintln!("! %: String is too short for index {n}");
 							MSTK.push(a);
 							MSTK.push(b);
 						}
 					}
 					else {
-						eprintln!("! Cannot possibly isolate character at index {ib}");
+						eprintln!("! %: Cannot possibly extract character at index {ib}");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1137,7 +1137,7 @@ unsafe fn exec(commands: String) {
 					let ia = int(na);
 					let ib = int(nb);
 					if ib==0 {
-						eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						eprintln!("! ~: Reduction mod 0");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1154,7 +1154,7 @@ unsafe fn exec(commands: String) {
 						MSTK.push(Obj::S(sa.chars().skip(n).collect()));
 					}
 					else {
-						eprintln!("! Cannot possibly split a string at character {ib}");
+						eprintln!("! ~: Cannot possibly split a string at character {ib}");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1165,7 +1165,7 @@ unsafe fn exec(commands: String) {
 			'^' => {
 				if !svari {
 					if na<0 && nb.clone().abs()<1{
-						eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+						eprintln!("! ^: Root of negative number");
 						MSTK.push(a);
 						MSTK.push(b);
 					}
@@ -1189,7 +1189,7 @@ unsafe fn exec(commands: String) {
 					let ib = int(nb);
 					let ic = int(nc);
 					if ic==0 {
-						eprintln!("! Arithmetic error: Attempted reduction mod 0");
+						eprintln!("! |: Reduction mod 0");
 						MSTK.push(a);
 						MSTK.push(b);
 						MSTK.push(c);
@@ -1198,7 +1198,7 @@ unsafe fn exec(commands: String) {
 						MSTK.push(Obj::N(Float::with_val(WPREC, res)));
 					}
 					else {
-						eprintln!("! Arithmetic error: {ia} doesn't have an inverse mod {ic}");
+						eprintln!("! |: {ia} doesn't have an inverse mod {ic}");
 						MSTK.push(a);
 						MSTK.push(b);
 						MSTK.push(c);
@@ -1212,7 +1212,7 @@ unsafe fn exec(commands: String) {
 			//square root
 			'v' => {
 				if na<0 {
-					eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+					eprintln!("! v: Root of negative number");
 					MSTK.push(a);
 				}
 				else {
@@ -1223,7 +1223,7 @@ unsafe fn exec(commands: String) {
 			//bth root
 			'V' => {
 				if na<0 && nb.clone().abs()>1{
-					eprintln!("! Arithmetic error: Roots of negative numbers are not allowed");
+					eprintln!("! V: Root of negative number");
 					MSTK.push(a);
 					MSTK.push(b);
 				}
@@ -1236,7 +1236,7 @@ unsafe fn exec(commands: String) {
 			'g' => {
 				if !svari {
 					if na<=0 {
-						eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
+						eprintln!("! g: Logarithm of non-positive number");
 						MSTK.push(a);
 					}
 					else {
@@ -1251,12 +1251,12 @@ unsafe fn exec(commands: String) {
 			//base b logarithm
 			'G' => {
 				if na<=0 {
-					eprintln!("! Arithmetic error: Logarithms of zero and negative numbers are not allowed");
+					eprintln!("! G: Logarithm of non-positive number");
 					MSTK.push(a);
 					MSTK.push(b);
 				}
 				else if nb==1||nb<=0{
-					eprintln!("! Arithmetic error: Logarithm base must be positive and not equal to 1");
+					eprintln!("! G: Logarithm with base ≤0 or =1");
 					MSTK.push(a);
 					MSTK.push(b);
 				}
@@ -1283,7 +1283,7 @@ unsafe fn exec(commands: String) {
 			//arc-sine
 			'U' => {
 				if na.clone().abs()>1 {
-					eprintln!("! Arithmetic error: Arc-sine of value outside [-1,1]");
+					eprintln!("! U: Arc-sine of value outside [-1,1]");
 					MSTK.push(a);
 				}
 				else {
@@ -1294,7 +1294,7 @@ unsafe fn exec(commands: String) {
 			//arc-cosine
 			'Y' => {
 				if na.clone().abs()>1 {
-					eprintln!("! Arithmetic error: Arc-cosine of value outside [-1,1]");
+					eprintln!("! Y: Arc-cosine of value outside [-1,1]");
 					MSTK.push(a);
 				}
 				else {
@@ -1311,7 +1311,7 @@ unsafe fn exec(commands: String) {
 			'N' => {
 				let int = int(na);
 				if int<=0 {
-					eprintln!("! Upper bound for random value must be above 0");
+					eprintln!("! N: Upper bound for random value must be above 0");
 					MSTK.push(a);
 				}
 				else {
@@ -1331,7 +1331,7 @@ unsafe fn exec(commands: String) {
 								MSTK.push(Obj::N(res));
 							}
 							else {
-								eprintln!("! Constant/conversion factor not found");
+								eprintln!("! \": Constant/conversion factor not found");
 								MSTK.push(a);
 							}
 						},
@@ -1341,12 +1341,12 @@ unsafe fn exec(commands: String) {
 								MSTK.push(Obj::N(nl/nr));
 							}
 							else {
-								eprintln!("! Constant/conversion factor not found");
+								eprintln!("! \": Constant/conversion factor not found");
 								MSTK.push(a);
 							}
 						},
 						_ => {
-							eprintln!("! Too many spaces in constant/conversion query");
+							eprintln!("! \": Too many spaces in constant/conversion query");
 							MSTK.push(a);
 						},
 					}
@@ -1373,7 +1373,7 @@ unsafe fn exec(commands: String) {
 					MSTK.truncate(MSTK.len()-num);
 				}
 				else {
-					eprintln!("! Cannot possibly remove {int} objects from the main stack");
+					eprintln!("! C: Cannot possibly remove {int} objects from the main stack");
 					MSTK.push(a);
 				}
 			},
@@ -1381,7 +1381,7 @@ unsafe fn exec(commands: String) {
 			//duplicate top of stack
 			'd' => {
 				if MSTK.is_empty() {
-					eprintln!("! Nothing to duplicate");
+					eprintln!("! d: Nothing to duplicate");
 				}
 				else {
 					MSTK.extend_from_within(MSTK.len()-1..);
@@ -1396,12 +1396,12 @@ unsafe fn exec(commands: String) {
 						MSTK.extend_from_within(MSTK.len()-num..);
 					}
 					else {
-						eprintln!("! Not enough objects to duplicate");
+						eprintln!("! D: Not enough objects to duplicate");
 						MSTK.push(a);
 					}
 				}
 				else {
-					eprintln!("! Cannot possibly duplicate {int} objects");
+					eprintln!("! D: Cannot possibly duplicate {int} objects");
 					MSTK.push(a);
 				}
 			},
@@ -1412,7 +1412,7 @@ unsafe fn exec(commands: String) {
 					MSTK.swap(MSTK.len()-2, MSTK.len()-1);
 				}
 				else {
-					eprintln!("! Not enough objects to rotate");
+					eprintln!("! r: Not enough objects to swap");
 				}
 			},
 
@@ -1432,12 +1432,12 @@ unsafe fn exec(commands: String) {
 						MSTK = sl.to_vec();
 					}
 					else {
-						eprintln!("! Not enough objects to rotate");
+						eprintln!("! R: Not enough objects to rotate");
 						MSTK.push(a);
 					}
 				}
 				else {
-					eprintln!("! Cannot possibly rotate {} objects", int.abs());
+					eprintln!("! R: Cannot possibly rotate {} objects", int.abs());
 					MSTK.push(a);
 				}
 			},
@@ -1480,7 +1480,7 @@ unsafe fn exec(commands: String) {
 					WPREC = u;
 				}
 				else {
-					eprintln!("! Working precision must be between 1 and {} (inclusive)", u32::MAX);
+					eprintln!("! w: Working precision must be between 1 and {} (inclusive)", u32::MAX);
 					MSTK.push(a);
 				}
 			},
@@ -1538,7 +1538,7 @@ unsafe fn exec(commands: String) {
 			//load from top of register
 			'l' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {ri} is empty");
+					eprintln!("! l: Register {ri} is empty");
 				}
 				else {
 					MSTK.push(REGS[ri].last().unwrap().o.clone());
@@ -1548,7 +1548,7 @@ unsafe fn exec(commands: String) {
 			//pop from top of register
 			'L' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {ri} is empty");
+					eprintln!("! L: Register {ri} is empty");
 				}
 				else {
 					MSTK.push(REGS[ri].pop().unwrap().o);
@@ -1571,7 +1571,7 @@ unsafe fn exec(commands: String) {
 					REGS[ri].last_mut().unwrap().a[rai] = a;
 				}
 				else {
-					eprintln!("! Cannot possibly save to array index {int}");
+					eprintln!("! :: Cannot possibly save to array index {int}");
 					MSTK.push(a);
 					MSTK.push(b);
 				}
@@ -1593,7 +1593,7 @@ unsafe fn exec(commands: String) {
 					MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
 				}
 				else {
-					eprintln!("! Cannot possibly load from array index {int}");
+					eprintln!("! ;: Cannot possibly load from array index {int}");
 					MSTK.push(a);
 				}
 			},
@@ -1601,7 +1601,7 @@ unsafe fn exec(commands: String) {
 			//pop top-of-reg into buffer
 			'b' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {ri} is empty");
+					eprintln!("! b: Register {ri} is empty");
 				}
 				else {
 					RO_BUF[0] = REGS[ri].pop().unwrap();
@@ -1626,12 +1626,12 @@ unsafe fn exec(commands: String) {
 						DRS = Some(new_ri);
 					}
 					else {
-						eprintln!("! Register {new_ri} is not available");
+						eprintln!("! ,: Register {new_ri} is not available");
 						MSTK.push(a);
 					}
 				}
 				else {
-					eprintln!("! Register {int} cannot possibly exist");
+					eprintln!("! ,: Register {int} cannot possibly exist");
 					MSTK.push(a);
 				}
 			},
@@ -1646,17 +1646,17 @@ unsafe fn exec(commands: String) {
 							MSTK.push(Obj::S(res.to_string()));
 						}
 						else {
-							eprintln!("! Unable to convert number {ia} to character: not a valid Unicode value");
+							eprintln!("! a: Unable to convert number {ia} to character: not a valid Unicode value");
 							MSTK.push(a);
 						}
 					}
 					else {
-						eprintln!("! Unable to convert number {} to character: valid range is 0 to {}", int(na), u32::MAX);
+						eprintln!("! a: Unable to convert number {} to character: valid range is 0 to {}", int(na), u32::MAX);
 						MSTK.push(a);
 					}
 				}
 				else if sa.is_empty() {
-					eprintln!("! Cannot convert empty string to number");
+					eprintln!("! a: Cannot convert empty string to number");
 					MSTK.push(a);
 				}
 				else {
@@ -1671,7 +1671,7 @@ unsafe fn exec(commands: String) {
 						MSTK.push(Obj::S(res));
 					}
 					else {
-						eprintln!("! Unable to convert number {} to string: not a valid UTF-8 sequence", int(na));
+						eprintln!("! A: Unable to convert number {} to string: not a valid UTF-8 sequence", int(na));
 						MSTK.push(a);
 					}
 				}
@@ -1700,7 +1700,7 @@ unsafe fn exec(commands: String) {
 			//conditionally execute macro
 			'<'|'='|'>' => {
 				if REGS[ri].is_empty() {
-					eprintln!("! Register {ri} is empty");
+					eprintln!("! <=>: Register {ri} is empty");
 				}
 				else if let Obj::S(mac) = &REGS[ri].last().unwrap().o {
 					if inv != match cmd {
@@ -1716,7 +1716,7 @@ unsafe fn exec(commands: String) {
 					}
 				}
 				else {
-					eprintln!("! Top of register {ri} is not a string");
+					eprintln!("! <=>: Top of register {ri} is not a string");
 				}
 				inv = false;	//always reset inversion
 			},
@@ -1731,7 +1731,7 @@ unsafe fn exec(commands: String) {
 					cmdstk.resize(cmdstk.len()+reps, sa.chars().rev().collect());
 				}
 				else {
-					eprintln!("! Cannot possibly repeat a macro {int} times");
+					eprintln!("! X: Cannot possibly repeat a macro {int} times");
 					MSTK.push(a);
 					MSTK.push(b);
 				}
@@ -1753,7 +1753,7 @@ unsafe fn exec(commands: String) {
 					}
 				}
 				else {
-					eprintln!("! Cannot possibly quit {int} levels");
+					eprintln!("! Q: Cannot possibly quit {int} levels");
 					MSTK.push(a);
 				}
 			},
@@ -1779,7 +1779,7 @@ unsafe fn exec(commands: String) {
 						cmdstk.push(script_nc.chars().rev().collect());
 					},
 					Err(err) => {
-						eprintln!("! Unable to read file \"{sa}\": {err}");
+						eprintln!("! &: Unable to read file \"{sa}\": {err}");
 						MSTK.push(a);
 					},
 				}
@@ -1792,7 +1792,7 @@ unsafe fn exec(commands: String) {
 						MSTK.push(Obj::S(val));
 					},
 					Err(err) => {
-						eprintln!("! Unable to get value of ${sa}: {err}");
+						eprintln!("! $: Unable to get value of ${sa}: {err}");
 						MSTK.push(a);
 					},
 				}
@@ -1810,12 +1810,13 @@ unsafe fn exec(commands: String) {
 							Ok(mut child) => {
 								if let Ok(stat) = child.wait() {
 									if let Some(code) = stat.code() {
-										if code!=0 {eprintln!("! OS command \"{oscmd}\" exited with code {code}");}
+										if code!=0 {eprintln!("! \\: OS command \"{oscmd}\" exited with code {code}");}
 									}
 								}
 							},
 							Err(err) => {
-								eprintln!("! Unable to execute OS command \"{oscmd}\": {err}");
+								eprintln!("! \\: Unable to execute OS command \"{oscmd}\": {err}");
+								MSTK.push(a.clone());
 							},
 						}
 					}
