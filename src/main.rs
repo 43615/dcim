@@ -45,11 +45,7 @@ enum Obj {
 	N(Float),
 	S(String)
 }
-impl Obj {
-	fn dummy() -> Self {
-		Self::N(Float::new(1))
-	}
-}
+const DUMMY: Obj = Obj::S(String::new());
 
 //register object, may have a dynamic array
 #[derive(Clone)]
@@ -620,10 +616,10 @@ unsafe fn exec(commands: String) {
 		}
 
 		let (c, b, a) = match adi {	//pop required amount from stack
-			1 => (Obj::dummy(), Obj::dummy(), MSTK.pop().unwrap()),
-			2 => (Obj::dummy(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
+			1 => (DUMMY, DUMMY, MSTK.pop().unwrap()),
+			2 => (DUMMY, MSTK.pop().unwrap(), MSTK.pop().unwrap()),
 			3 => (MSTK.pop().unwrap(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
-			_ => (Obj::dummy(), Obj::dummy(), Obj::dummy())
+			_ => (DUMMY, DUMMY, DUMMY)
 		};
 
 		let (mut na, mut nb, mut nc) = (Float::new(1), Float::new(1), Float::new(1));	//number slots
