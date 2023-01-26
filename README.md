@@ -38,7 +38,7 @@ export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 - "Diagnostic" printing commands (all except `n` and `P`) now print brackets around strings for clarity.
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
 - The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane (0000-FFFF) can be used as a register name. This is the only arbitrary limit imposed on the user.
-- When saving or loading uninitialized array objects, all previously nonexistent objects are initialized with the number 0. This fixes undefined behaviour like with `123d:ala`.
+- When saving or loading uninitialized array objects, all previously nonexistent objects are initialized with an empty string. This fixes undefined behaviour like with `123d:ala`.
 - Strings have full Unicode support (stored as UTF-8). The new string manipulation features index strings by characters.
 - The `!` pseudocommand for executing OS commands is replaced with `\`, which pops and runs a string.
 ## Number input changes

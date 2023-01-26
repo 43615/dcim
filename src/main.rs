@@ -46,7 +46,7 @@ enum Obj {
 	N(Float),
 	S(String)
 }
-///for unused Obj slots when popping from stack
+///unused Obj
 const DUMMY: Obj = Obj::S(String::new());
 
 ///register object, may have a dynamic array
@@ -202,7 +202,7 @@ fn main() {
 		PARAMS.create();	//initialize env params
 		RO_BUF.push(RegObj{	//and RegObj buffer
 			a: Vec::new(),
-			o: Obj::N(Float::with_val(WPREC, 0))
+			o: DUMMY
 		});
 		//init RNG, seed with 1024 bits of OS randomness
 		RNG.push(RandState::new());
@@ -1596,14 +1596,14 @@ unsafe fn exec(commands: String) {
 			':' => {
 				if REGS[ri].is_empty() {
 					REGS[ri].push(RegObj {
-						o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
+						o: DUMMY,	//create default register object if empty
 						a: Vec::new()
 					});
 				}
 				let int = int(nb);
 				if let Some(rai) = int.to_usize() {
 					if rai>=REGS[ri].last().unwrap().a.len() {
-						REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
+						REGS[ri].last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
 					}
 					REGS[ri].last_mut().unwrap().a[rai] = a;
 				}
@@ -1618,14 +1618,14 @@ unsafe fn exec(commands: String) {
 			';' => {
 				if REGS[ri].is_empty() {
 					REGS[ri].push(RegObj {
-						o: Obj::N(Float::with_val(WPREC, 0)),	//create default register object if empty
+						o: DUMMY,	//create default register object if empty
 						a: Vec::new()
 					});
 				}
 				let int = int(na);
 				if let Some(rai) = int.to_usize() {
 					if rai>=REGS[ri].last().unwrap().a.len() {
-						REGS[ri].last_mut().unwrap().a.resize(rai+1, Obj::N(Float::with_val(WPREC, 0)));	//extend if required, initialize with default objects
+						REGS[ri].last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
 					}
 					MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
 				}
