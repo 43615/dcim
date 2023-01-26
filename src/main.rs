@@ -286,7 +286,7 @@ fn file_mode(files: Vec<String>, inter: bool) {
 	}
 }
 
-//Float generator (desired precision set by user)
+//Float generator for library of constants (desired precision set by user)
 struct Flt(Box<dyn Fn(u32) -> Float>);
 unsafe impl Sync for Flt {}
 impl Flt {
@@ -294,9 +294,14 @@ impl Flt {
 	where Float: Assign<T> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, val)))
 	}
+
 	fn sci<T: 'static + Copy, U:'static + Copy>(man :T, exp: U) -> Self	//scientific notation
 	where Float: Assign<T> + Assign<U> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, man)*Float::with_val(prec, exp).exp10()))
+	}
+
+	fn rec(que: &'static str, fun: &'static dyn Fn(Float) -> Float) -> Self {	//recursive (based on other unit)
+		Self(Box::new(move |prec: u32| fun(CONSTANTS.get(que).unwrap().0(prec))))
 	}
 }
 
@@ -343,8 +348,7 @@ lazy_static! {
 			PHYSICAL CONSTANTS
 		------------------------*/
 		m.insert("c", Flt::new(299792458));
-		m.insert("hbar", Flt(Box::new(|prec| Float::with_val(prec, 662607015)*Float::with_val(prec, -42).exp10()
-			/(2*Float::with_val(prec, Constant::Pi)))));
+		m.insert("hbar", Flt(Box::new(|prec| Flt::sci(662607015, -42).0(prec) / Flt::rec("pi", &|n| n*2).0(prec))));
 		m.insert("G", Flt::sci(6674, -3));
 		m.insert("qe", Flt::sci(1602176634, -28));
 		m.insert("NA", Flt::sci(602214076, 31));
@@ -358,11 +362,11 @@ lazy_static! {
 			LENGTH UNITS
 		------------------*/
 		m.insert("in", Flt::sci(254, -4));
-		m.insert("ft", Flt(Box::new(|prec| CONSTANTS.get("in").unwrap().0(prec)*12)));
-		m.insert("yd", Flt(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*3)));
+		m.insert("ft", Flt::rec("in", &|n| n*12));
+		m.insert("yd", Flt::rec("ft", &|n| n*3));
 		m.insert("m", Flt::new(1));
-		m.insert("fur", Flt(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*660)));
-		m.insert("mi", Flt(Box::new(|prec| CONSTANTS.get("ft").unwrap().0(prec)*5280)));
+		m.insert("fur", Flt::rec("ft", &|n| n*660));
+		m.insert("mi", Flt::rec("ft", &|n| n*5280));
 		m.insert("nmi", Flt::new(1852));
 		m.insert("AU", Flt::new(149597870700i64));
 		m.insert("ly", Flt::new(9460730472580800i64));
@@ -374,44 +378,44 @@ lazy_static! {
 		for q in ["ac","acre"] {m.insert(q, Flt::sci(40468564224i64, -7));}
 		m.insert("l", Flt::sci(1, -3));
 		m.insert("ifloz", Flt::sci(284130625, -13));
-		m.insert("ipt", Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*20)));
-		m.insert("iqt", Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*40)));
-		m.insert("igal", Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*160)));
-		for q in ["ibu","ibsh"] {m.insert(q, Flt(Box::new(|prec| CONSTANTS.get("ifloz").unwrap().0(prec)*1280)));}
+		m.insert("ipt", Flt::rec("ifloz", &|n| n*20));
+		m.insert("iqt", Flt::rec("ifloz", &|n| n*40));
+		m.insert("igal", Flt::rec("ifloz", &|n| n*160));
+		for q in ["ibu","ibsh"] {m.insert(q, Flt::rec("ifloz", &|n| n*1280));}
 		m.insert("ufldr", Flt::sci(36966911953125i64, -19));
-		m.insert("tsp", Flt(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)/3*4)));
-		m.insert("tbsp", Flt(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*4)));
-		m.insert("ufloz", Flt(Box::new(|prec| CONSTANTS.get("ufldr").unwrap().0(prec)*8)));
-		m.insert("upt", Flt(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*16)));
-		m.insert("uqt", Flt(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*32)));
-		m.insert("ugal", Flt(Box::new(|prec| CONSTANTS.get("ufloz").unwrap().0(prec)*128)));
-		m.insert("bbl", Flt(Box::new(|prec| CONSTANTS.get("ugal").unwrap().0(prec)*42)));
+		m.insert("tsp", Flt::rec("ufldr", &|n| n/3*4));
+		m.insert("tbsp", Flt::rec("ufldr", &|n| n*4));
+		m.insert("ufloz", Flt::rec("ufldr", &|n| n*8));
+		m.insert("upt", Flt::rec("ufloz", &|n| n*16));
+		m.insert("uqt", Flt::rec("ufloz", &|n| n*32));
+		m.insert("ugal", Flt::rec("ufloz", &|n| n*128));
+		m.insert("bbl", Flt::rec("ugal", &|n| n*42));
 		m.insert("udpt", Flt::sci(5506104713575i64, -16));
-		m.insert("udqt", Flt(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*2)));
-		m.insert("udgal", Flt(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*8)));
-		for q in ["ubu","ubsh"] {m.insert(q, Flt(Box::new(|prec| CONSTANTS.get("udpt").unwrap().0(prec)*64)));}
+		m.insert("udqt", Flt::rec("udpt", &|n| n*2));
+		m.insert("udgal", Flt::rec("udpt", &|n| n*8));
+		for q in ["ubu","ubsh"] {m.insert(q, Flt::rec("udpt", &|n| n*64));}
 		m.insert("dbbl", Flt::sci(115627123584i64, -12));
 		/*----------------
 			MASS UNITS
 		----------------*/
 		m.insert("ct", Flt::sci(2, -4));
 		m.insert("oz", Flt::sci(28349523125i64, -12));
-		m.insert("lb", Flt(Box::new(|prec| CONSTANTS.get("oz").unwrap().0(prec)*16)));
+		m.insert("lb", Flt::rec("oz", &|n| n*16));
 		m.insert("kg", Flt::new(1));
-		m.insert("st", Flt(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*14)));
-		m.insert("t", Flt(Box::new(|prec| CONSTANTS.get("lb").unwrap().0(prec)*2240)));
+		m.insert("st", Flt::rec("lb", &|n| n*14));
+		m.insert("t", Flt::rec("lb", &|n| n*2240));
 		/*----------------
 			TIME UNITS
 		----------------*/
 		m.insert("s", Flt::new(1));
 		m.insert("min", Flt::new(60));
-		m.insert("h", Flt(Box::new(|prec| CONSTANTS.get("min").unwrap().0(prec)*60)));
-		m.insert("d", Flt(Box::new(|prec| CONSTANTS.get("h").unwrap().0(prec)*24)));
-		m.insert("w", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*7)));
-		m.insert("mo", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*30)));
-		m.insert("a", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*365)));
-		m.insert("aj", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*36525/100)));
-		m.insert("ag", Flt(Box::new(|prec| CONSTANTS.get("d").unwrap().0(prec)*3652425/10000)));
+		m.insert("h", Flt::rec("min", &|n| n*60));
+		m.insert("d", Flt::rec("h", &|n| n*24));
+		m.insert("w", Flt::rec("d", &|n| n*7));
+		m.insert("mo", Flt::rec("d", &|n| n*30));
+		m.insert("a", Flt::rec("d", &|n| n*365));
+		m.insert("aj", Flt::rec("d", &|n| n*36525/100));
+		m.insert("ag", Flt::rec("d", &|n| n*3652425/10000));
 		/*-----------------
 			OTHER UNITS
 		-----------------*/
@@ -420,7 +424,7 @@ lazy_static! {
 		m.insert("Pa", Flt::new(1));
 		m.insert("atm", Flt::new(101325));
 		m.insert("psi", Flt::sci(6894757293168i64, -9));
-		m.insert("torr", Flt(Box::new(|prec| CONSTANTS.get("atm").unwrap().0(prec)/760)));
+		m.insert("torr", Flt::rec("atm", &|n| n/760));
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
 		------------------------------*/
