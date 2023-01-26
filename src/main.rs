@@ -40,23 +40,26 @@ Command line options:
 --help|-h
 	Ignores all other options and prints this help message."##};}
 
+///basic object: either number or string
 #[derive(Clone)]
 enum Obj {
 	N(Float),
 	S(String)
 }
+///for unused Obj slots when popping from stack
 const DUMMY: Obj = Obj::S(String::new());
 
-//register object, may have a dynamic array
+///register object, may have a dynamic array
 #[derive(Clone)]
 struct RegObj {
 	o: Obj,			//principal object
 	a: Vec<Obj>,	//associated array
 }
 
+///all existing command argument signatures
 #[derive(Clone, Copy)]
 #[repr(u8)]
-enum CmdSig {	//argument type signatures
+enum CmdSig {
 	Nil,
 	Ax,
 	An,
@@ -68,7 +71,8 @@ enum CmdSig {	//argument type signatures
 	AxBxCx
 }
 impl CmdSig {
-	fn adicity(&self) -> u8 {	//aka argument count
+	///aka argument count
+	fn adicity(&self) -> u8 {
 		match self {
 			Self::Nil => 0,
 			Self::Ax|Self::An|Self::As => 1,
@@ -76,10 +80,14 @@ impl CmdSig {
 			Self::AxBxCx => 3
 		}
 	}
-	fn plural(&self) -> &str {	//english plural ending
+
+	///english plural ending
+	fn plural(&self) -> &str {
 		if self.adicity()==1 {""} else {"s"}
 	}
-	fn correct(&self) -> &str {	//correction messages
+
+	///correction messages
+	fn correct(&self) -> &str {
 		match self {
 			Self::Nil|Self::Ax => "",
 			Self::An => "must be a number",
@@ -93,20 +101,25 @@ impl CmdSig {
 	}
 }
 
-struct ParamStk(Vec<(Integer, Integer, Integer)>);	//wrapper for brevity and safety
+///stack for (K,I,O) tuples, with methods for checked editing
+struct ParamStk(Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
-	const fn new() -> Self {
+	///blank stack, must call `.create()` asap
+	const fn empty() -> Self {
 		Self(Vec::new())
 	}
 
-	fn create(&mut self) {	//new param context
+	///switch to new param context with defaults (-1,10,10)
+	fn create(&mut self) {
 		self.0.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
 	}
-	fn destroy(&mut self) {	//return to previous context
+	///revert to previous context, reset to defaults if nonexistent
+	fn destroy(&mut self) {
 		self.0.pop();
 		if self.0.is_empty() {self.create()}
 	}
 
+	///checked edit of current output precision
 	fn set_k(&mut self, n: Integer) -> Result<(), ParamError> {
 		if n>=-1 {
 			self.0.last_mut().unwrap().0 = n;
@@ -114,6 +127,7 @@ impl ParamStk {
 		}
 		else {Err(ParamError::K)}
 	}
+	///checked edit of current input base
 	fn set_i(&mut self, n: Integer) -> Result<(), ParamError> {
 		if n>=2 {
 			self.0.last_mut().unwrap().1 = n;
@@ -121,6 +135,7 @@ impl ParamStk {
 		}
 		else {Err(ParamError::I)}
 	}
+	///checked edit of current output base
 	fn set_o(&mut self, n: Integer) -> Result<(), ParamError> {
 		if n>=2 {
 			self.0.last_mut().unwrap().2 = n;
@@ -128,21 +143,25 @@ impl ParamStk {
 		}
 		else {Err(ParamError::O)}
 	}
-
+	
+	///current output precision
 	fn k(&self) -> Integer {self.0.last().unwrap().0.clone()}
+	///current input base
 	fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
+	///current output base
 	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
 }
+///printable errors of ParamStk setters
 #[repr(u8)]
 enum ParamError {
 	K, I, O
 }
 impl fmt::Display for ParamError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", match self{
-			Self::K => "! Output precision must be at least -1",
-			Self::I => "! Input base must be at least 2",
-			Self::O => "! Output base must be at least 2",
+		write!(f, "{}", match self {
+			Self::K => "! k: Output precision must be at least -1",
+			Self::I => "! i: Input base must be at least 2",
+			Self::O => "! o: Output base must be at least 2",
 		})
 	}
 }
@@ -151,22 +170,29 @@ impl fmt::Display for ParamError {
 		STATE STORAGE
 	oops, all static mut!
 ---------------------------*/
-static mut MSTK: Vec<Obj> = Vec::new();	//main stack
+///main stack
+static mut MSTK: Vec<Obj> = Vec::new();
 
-const REG_DEF: Vec<RegObj> = Vec::new();
-static mut REGS: [Vec<RegObj>; 65536] = [REG_DEF; 65536];	//array of registers
-static mut RO_BUF: Vec<RegObj> = Vec::new();	//vec because constant constructors are impossible, initialized in main
+const REG_DEF: Vec<RegObj> = Vec::new();	//required for init of REGS
+///array of registers
+static mut REGS: [Vec<RegObj>; 65536] = [REG_DEF; 65536];
+///RegObj buffer: needs to be a vec because `new` is const, only \[0\] is used
+static mut RO_BUF: Vec<RegObj> = Vec::new();
 
-static mut DRS: Option<usize> = None;	//direct register selector
+///direct register selector
+static mut DRS: Option<usize> = None;
 
-static mut RNG: Vec<RandState> = Vec::new();	//same problem as with RO_BUF
+///random number generator: needs to be a vec because `new` is const, only \[0\] is used
+static mut RNG: Vec<RandState> = Vec::new();
 
-static mut PARAMS: ParamStk = ParamStk::new();	//environment parameters
-static mut WPREC: u32 = 256;	//working precision (rug Float mantissa length)
+///environment parameters K,I,O
+static mut PARAMS: ParamStk = ParamStk::empty();
+///working precision W (Float mantissa length)
+static mut WPREC: u32 = 256;
 
 
-
-fn int(n: Float) -> Integer {	//discard fractional part if finite, default to 0 otherwise
+///discard fractional part if finite, default to 0 otherwise
+fn int(n: Float) -> Integer {
 	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
 }
 
@@ -286,32 +312,37 @@ fn file_mode(files: Vec<String>, inter: bool) {
 	}
 }
 
-//Float generator for library of constants (desired precision set by user)
-struct Flt(Box<dyn Fn(u32) -> Float>);
-unsafe impl Sync for Flt {}
-impl Flt {
-	fn new<T: 'static + Copy>(val: T) -> Self	//simple variant
+///Float generator for library of constants (known value, variable precision)
+struct FltGen(Box<dyn Fn(u32) -> Float>);
+unsafe impl Sync for FltGen {}
+impl FltGen {
+	///simple value
+	fn val<T: 'static + Copy>(val: T) -> Self
 	where Float: Assign<T> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, val)))
 	}
 
-	fn sci<T: 'static + Copy, U:'static + Copy>(man :T, exp: U) -> Self	//scientific notation
+	///scientific notation
+	fn sci<T: 'static + Copy, U: 'static + Copy>(man :T, exp: U) -> Self
 	where Float: Assign<T> + Assign<U> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, man)*Float::with_val(prec, exp).exp10()))
 	}
 
-	fn rec(que: &'static str, fun: &'static dyn Fn(Float) -> Float) -> Self {	//recursive (based on other unit)
+	///recursive (based on other unit)
+	fn rec(que: &'static str, fun: &'static dyn Fn(Float) -> Float) -> Self {
 		Self(Box::new(move |prec: u32| fun(CONSTANTS.get(que).unwrap().0(prec))))
 	}
 }
 
 lazy_static! {
-	static ref USES_REG: HashSet<char> = {	//all commands that use a register
+	///all commands that use a register
+	static ref USES_REG: HashSet<char> = {
 		let mut s = HashSet::new();
 		for c in "FsSlL:;bBZ<=>".chars() {s.insert(c);}
 		s
 	};
-	static ref CMD_SIGS: HashMap<char, CmdSig> = {	//command signatures and type error messages
+	///command signatures and type error messages
+	static ref CMD_SIGS: HashMap<char, CmdSig> = {
 		let mut m = HashMap::new();
 		use CmdSig::*;
 
@@ -333,111 +364,112 @@ lazy_static! {
 
 		m
 	};
-	static ref CONSTANTS: HashMap<&'static str, Flt> = {	//library of constants/conversion factors
+	///library of constants/conversion factors
+	static ref CONSTANTS: HashMap<&'static str, FltGen> = {
 		let mut m = HashMap::new();
 		/*----------------------------
 			MATHEMATICAL CONSTANTS
 		----------------------------*/
-		m.insert("e", Flt(Box::new(|prec| Float::with_val(prec, 1).exp())));
-		m.insert("pi", Flt::new(Constant::Pi));
-		m.insert("gamma", Flt::new(Constant::Euler));
-		m.insert("phi", Flt(Box::new(|prec| (Float::with_val(prec, 5).sqrt()+1)/2)));
-		for q in ["deg","°"] {m.insert(q, Flt(Box::new(|prec| Float::with_val(prec, Constant::Pi)/180)));}
-		for q in ["gon","grad"] {m.insert(q, Flt(Box::new(|prec| Float::with_val(prec, Constant::Pi)/200)));}
+		m.insert("e", FltGen(Box::new(|prec| Float::with_val(prec, 1).exp())));
+		m.insert("pi", FltGen::val(Constant::Pi));
+		m.insert("gamma", FltGen::val(Constant::Euler));
+		m.insert("phi", FltGen(Box::new(|prec| (Float::with_val(prec, 5).sqrt()+1)/2)));
+		for q in ["deg","°"] {m.insert(q, FltGen(Box::new(|prec| Float::with_val(prec, Constant::Pi)/180)));}
+		for q in ["gon","grad"] {m.insert(q, FltGen(Box::new(|prec| Float::with_val(prec, Constant::Pi)/200)));}
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
-		m.insert("c", Flt::new(299792458));
-		m.insert("hbar", Flt(Box::new(|prec| Flt::sci(662607015, -42).0(prec) / Flt::rec("pi", &|n| n*2).0(prec))));
-		m.insert("G", Flt::sci(6674, -3));
-		m.insert("qe", Flt::sci(1602176634, -28));
-		m.insert("NA", Flt::sci(602214076, 31));
-		m.insert("kB", Flt::sci(1380649, -29));
-		m.insert("u", Flt::sci(1660539066, -36));
-		m.insert("lp", Flt::sci(16162, -39));
-		m.insert("tp", Flt::sci(5391, -47));
-		m.insert("mp", Flt::sci(21764, -12));
-		m.insert("Tp", Flt::sci(14167, 28));
+		m.insert("c", FltGen::val(299792458));
+		m.insert("hbar", FltGen(Box::new(|prec| FltGen::sci(662607015, -42).0(prec) / FltGen::rec("pi", &|n| n*2).0(prec))));
+		m.insert("G", FltGen::sci(6674, -3));
+		m.insert("qe", FltGen::sci(1602176634, -28));
+		m.insert("NA", FltGen::sci(602214076, 31));
+		m.insert("kB", FltGen::sci(1380649, -29));
+		m.insert("u", FltGen::sci(1660539066, -36));
+		m.insert("lp", FltGen::sci(16162, -39));
+		m.insert("tp", FltGen::sci(5391, -47));
+		m.insert("mp", FltGen::sci(21764, -12));
+		m.insert("Tp", FltGen::sci(14167, 28));
 		/*------------------
 			LENGTH UNITS
 		------------------*/
-		m.insert("in", Flt::sci(254, -4));
-		m.insert("ft", Flt::rec("in", &|n| n*12));
-		m.insert("yd", Flt::rec("ft", &|n| n*3));
-		m.insert("m", Flt::new(1));
-		m.insert("fur", Flt::rec("ft", &|n| n*660));
-		m.insert("mi", Flt::rec("ft", &|n| n*5280));
-		m.insert("nmi", Flt::new(1852));
-		m.insert("AU", Flt::new(149597870700i64));
-		m.insert("ly", Flt::new(9460730472580800i64));
-		m.insert("pc", Flt(Box::new(|prec| Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))));
+		m.insert("in", FltGen::sci(254, -4));
+		m.insert("ft", FltGen::rec("in", &|n| n*12));
+		m.insert("yd", FltGen::rec("ft", &|n| n*3));
+		m.insert("m", FltGen::val(1));
+		m.insert("fur", FltGen::rec("ft", &|n| n*660));
+		m.insert("mi", FltGen::rec("ft", &|n| n*5280));
+		m.insert("nmi", FltGen::val(1852));
+		m.insert("AU", FltGen::val(149597870700i64));
+		m.insert("ly", FltGen::val(9460730472580800i64));
+		m.insert("pc", FltGen(Box::new(|prec| Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))));
 		/*-------------------------------
 			AREA & VOLUME UNITS
 			with no length equivalent
 		-------------------------------*/
-		for q in ["ac","acre"] {m.insert(q, Flt::sci(40468564224i64, -7));}
-		m.insert("l", Flt::sci(1, -3));
-		m.insert("ifloz", Flt::sci(284130625, -13));
-		m.insert("ipt", Flt::rec("ifloz", &|n| n*20));
-		m.insert("iqt", Flt::rec("ifloz", &|n| n*40));
-		m.insert("igal", Flt::rec("ifloz", &|n| n*160));
-		for q in ["ibu","ibsh"] {m.insert(q, Flt::rec("ifloz", &|n| n*1280));}
-		m.insert("ufldr", Flt::sci(36966911953125i64, -19));
-		m.insert("tsp", Flt::rec("ufldr", &|n| n/3*4));
-		m.insert("tbsp", Flt::rec("ufldr", &|n| n*4));
-		m.insert("ufloz", Flt::rec("ufldr", &|n| n*8));
-		m.insert("upt", Flt::rec("ufloz", &|n| n*16));
-		m.insert("uqt", Flt::rec("ufloz", &|n| n*32));
-		m.insert("ugal", Flt::rec("ufloz", &|n| n*128));
-		m.insert("bbl", Flt::rec("ugal", &|n| n*42));
-		m.insert("udpt", Flt::sci(5506104713575i64, -16));
-		m.insert("udqt", Flt::rec("udpt", &|n| n*2));
-		m.insert("udgal", Flt::rec("udpt", &|n| n*8));
-		for q in ["ubu","ubsh"] {m.insert(q, Flt::rec("udpt", &|n| n*64));}
-		m.insert("dbbl", Flt::sci(115627123584i64, -12));
+		for q in ["ac","acre"] {m.insert(q, FltGen::sci(40468564224i64, -7));}
+		m.insert("l", FltGen::sci(1, -3));
+		m.insert("ifloz", FltGen::sci(284130625, -13));
+		m.insert("ipt", FltGen::rec("ifloz", &|n| n*20));
+		m.insert("iqt", FltGen::rec("ifloz", &|n| n*40));
+		m.insert("igal", FltGen::rec("ifloz", &|n| n*160));
+		for q in ["ibu","ibsh"] {m.insert(q, FltGen::rec("ifloz", &|n| n*1280));}
+		m.insert("ufldr", FltGen::sci(36966911953125i64, -19));
+		m.insert("tsp", FltGen::rec("ufldr", &|n| n/3*4));
+		m.insert("tbsp", FltGen::rec("ufldr", &|n| n*4));
+		m.insert("ufloz", FltGen::rec("ufldr", &|n| n*8));
+		m.insert("upt", FltGen::rec("ufloz", &|n| n*16));
+		m.insert("uqt", FltGen::rec("ufloz", &|n| n*32));
+		m.insert("ugal", FltGen::rec("ufloz", &|n| n*128));
+		m.insert("bbl", FltGen::rec("ugal", &|n| n*42));
+		m.insert("udpt", FltGen::sci(5506104713575i64, -16));
+		m.insert("udqt", FltGen::rec("udpt", &|n| n*2));
+		m.insert("udgal", FltGen::rec("udpt", &|n| n*8));
+		for q in ["ubu","ubsh"] {m.insert(q, FltGen::rec("udpt", &|n| n*64));}
+		m.insert("dbbl", FltGen::sci(115627123584i64, -12));
 		/*----------------
 			MASS UNITS
 		----------------*/
-		m.insert("ct", Flt::sci(2, -4));
-		m.insert("oz", Flt::sci(28349523125i64, -12));
-		m.insert("lb", Flt::rec("oz", &|n| n*16));
-		m.insert("kg", Flt::new(1));
-		m.insert("st", Flt::rec("lb", &|n| n*14));
-		m.insert("t", Flt::rec("lb", &|n| n*2240));
+		m.insert("ct", FltGen::sci(2, -4));
+		m.insert("oz", FltGen::sci(28349523125i64, -12));
+		m.insert("lb", FltGen::rec("oz", &|n| n*16));
+		m.insert("kg", FltGen::val(1));
+		m.insert("st", FltGen::rec("lb", &|n| n*14));
+		m.insert("t", FltGen::rec("lb", &|n| n*2240));
 		/*----------------
 			TIME UNITS
 		----------------*/
-		m.insert("s", Flt::new(1));
-		m.insert("min", Flt::new(60));
-		m.insert("h", Flt::rec("min", &|n| n*60));
-		m.insert("d", Flt::rec("h", &|n| n*24));
-		m.insert("w", Flt::rec("d", &|n| n*7));
-		m.insert("mo", Flt::rec("d", &|n| n*30));
-		m.insert("a", Flt::rec("d", &|n| n*365));
-		m.insert("aj", Flt::rec("d", &|n| n*36525/100));
-		m.insert("ag", Flt::rec("d", &|n| n*3652425/10000));
+		m.insert("s", FltGen::val(1));
+		m.insert("min", FltGen::val(60));
+		m.insert("h", FltGen::rec("min", &|n| n*60));
+		m.insert("d", FltGen::rec("h", &|n| n*24));
+		m.insert("w", FltGen::rec("d", &|n| n*7));
+		m.insert("mo", FltGen::rec("d", &|n| n*30));
+		m.insert("a", FltGen::rec("d", &|n| n*365));
+		m.insert("aj", FltGen::rec("d", &|n| n*36525/100));
+		m.insert("ag", FltGen::rec("d", &|n| n*3652425/10000));
 		/*-----------------
 			OTHER UNITS
 		-----------------*/
-		m.insert("J", Flt::new(1));
-		m.insert("cal", Flt::sci(4184, -3));
-		m.insert("Pa", Flt::new(1));
-		m.insert("atm", Flt::new(101325));
-		m.insert("psi", Flt::sci(6894757293168i64, -9));
-		m.insert("torr", Flt::rec("atm", &|n| n/760));
+		m.insert("J", FltGen::val(1));
+		m.insert("cal", FltGen::sci(4184, -3));
+		m.insert("Pa", FltGen::val(1));
+		m.insert("atm", FltGen::val(101325));
+		m.insert("psi", FltGen::sci(6894757293168i64, -9));
+		m.insert("torr", FltGen::rec("atm", &|n| n/760));
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
 		------------------------------*/
-		m.insert("inf", Flt::new(Special::Infinity));
-		m.insert("ninf", Flt::new(Special::NegInfinity));
-		m.insert("nan", Flt::new(Special::Nan));
-		m.insert("pid", Flt::new(std::process::id()));
-		m.insert("author", Flt::new(43615));	//yay numerical nicknames!
+		m.insert("inf", FltGen::val(Special::Infinity));
+		m.insert("ninf", FltGen::val(Special::NegInfinity));
+		m.insert("nan", FltGen::val(Special::Nan));
+		m.insert("pid", FltGen::val(std::process::id()));
+		m.insert("author", FltGen::val(43615));	//yay numerical nicknames!
 		m
 	};
 }
 
-//calculate value, apply scale prefix and power suffix
+///calculate value with given precision, apply scale prefix and power suffix
 fn get_constant(prec: u32, query: &str) -> Option<Float> {
 	let mut q = query.to_string();
 	let mut scale = String::new();
@@ -475,9 +507,9 @@ fn get_constant(prec: u32, query: &str) -> Option<Float> {
 	}
 }
 
-//custom number printing function
-//if output base is over 36, prints in custom "any-base" notation
-//otherwise, applies precision like dc and converts from exponential notation if not too small
+///custom number printing function:
+///if output base is over 36, prints in custom "any-base" notation,
+///otherwise, applies precision like dc and converts from exponential notation if not too small
 fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	if !num.is_normal() {
 		if num.is_zero() {
@@ -588,8 +620,8 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	}
 }
 
-//CORE EXECUTION ENGINE
-//unsafe for accessing static mut objects across different runs
+///CORE EXECUTION ENGINE:
+///unsafe for accessing static mut objects across different runs
 unsafe fn exec(commands: String) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
@@ -1016,6 +1048,7 @@ unsafe fn exec(commands: String) {
 			},
 			/*----------------
 				ARITHMETIC
+				+str manip
 			----------------*/
 			//add or concatenate strings
 			'+' => {
@@ -1518,9 +1551,9 @@ unsafe fn exec(commands: String) {
 			'}' => {
 				PARAMS.destroy();
 			},
-			/*--------------------------
-				REGISTERS AND MACROS
-			--------------------------*/
+			/*---------------
+				REGISTERS
+			---------------*/
 			//save to top of register
 			's' => {
 				if REGS[ri].is_empty() {
@@ -1645,17 +1678,12 @@ unsafe fn exec(commands: String) {
 			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
 				if !svari {
-					if let Some(ia) = int(na.clone()).to_u32() {
-						if let Some(res) = char::from_u32(ia) {
-							MSTK.push(Obj::S(res.to_string()));
-						}
-						else {
-							eprintln!("! a: Unable to convert number {ia} to character: not a valid Unicode value");
-							MSTK.push(a);
-						}
+					let ia = int(na).to_u32_wrapping();
+					if let Some(res) = char::from_u32(ia) {
+						MSTK.push(Obj::S(res.to_string()));
 					}
 					else {
-						eprintln!("! a: Unable to convert number {} to character: valid range is 0 to {}", int(na), u32::MAX);
+						eprintln!("! a: Unable to convert number {ia} to character: not a valid Unicode value");
 						MSTK.push(a);
 					}
 				}
@@ -1770,7 +1798,9 @@ unsafe fn exec(commands: String) {
 				}
 				cmdstk.push(prompt_in.chars().rev().collect());
 			},
-
+			/*----------
+				MISC
+			----------*/
 			//execute file as script
 			'&' => {
 				match std::fs::read_to_string(sa.clone()) {
