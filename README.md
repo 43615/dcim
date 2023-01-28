@@ -37,7 +37,7 @@ export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 - `P` is now like `n`, but with a newline. The conversion feature is moved to `A`.
 - "Diagnostic" printing commands (all except `n` and `P`) now print brackets around strings for clarity.
 - Commands that need integers always implicitly round their arguments. When rounding, the fractional part is discarded (rounding towards zero).
-- The amount of registers provided is now fixed to 65536, meaning that any character on Unicode's Basic Multilingual Plane (0000-FFFF) can be used as a register name. This is the only arbitrary limit imposed on the user.
+- The amount of available registers is now unlimited. The lowest 2¹⁶ regs (indices 0..=65535) are preallocated and thus more efficient to access (number was chosen to match Unicode's Basic Multilingual Plane). To access arbitrary registers, use the [DRS](#direct-register-number-selection).
 - When saving or loading uninitialized array objects, all previously nonexistent objects are initialized with an empty string. This fixes undefined behaviour like with `123d:ala`.
 - Strings have full Unicode support (stored as UTF-8). The new string manipulation features index strings by characters.
 - The `!` pseudocommand for executing OS commands is replaced with `\`, which pops and runs a string.
@@ -109,15 +109,16 @@ export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 - `A` either converts a number to a UTF-8 string (like dc `P`, but without printing) or reverses the conversion.
 - `"`, which is also used for the [library of constants](#library-of-constants-and-conversion-factors), converts a number to its string representation (like printing, but without printing). Useful for prettifying output (tabulation etc.).
 ## Direct register number selection
-- `,` writes a number to a single-use direct register selector and marks it as valid.
-- This selector can only be written to and expires (becomes invalid) at the next call of any register command.
-- When it's valid, register commands access the register specified by the selector instead of stealing the next character as a register name.
+- `,` writes a number (or a string, which is converted like `A`) to a "direct register selector" and marks it as active.
+- This selector can only be written to and expires (becomes inactive) at the next call of any register command.
+- When it's active, register commands access the register specified by the selector instead of stealing the next character as a register name.
 - Example: `sa` and `97,s` are equivalent (assuming input base is 10).
-- If no register name is provided and the selector is marked as invalid, an error message is displayed.
+- If no register name is provided and the selector is marked as inactive, an error message is displayed.
 - Advantages/use cases:
+  - Extends the range of selectable registers to all integers instead of just inputtable Unicode chars.
+  - Because it also works with strings, registers can be "named" anything.
   - Enables scripts to select registers automatically without having to convert the number to a string first (`123,s` is shorter than `123a[s]r+x`).
   - Register numbers can be input in any base because the number is parsed like any other.
-  - All register numbers in the allowed range can be used, not just valid/inputtable Unicode characters.
 ## Macro changes
 - `X` pops a string and a number and executes the string that many times.
   - Examples: `[+]z2-X` sums the entire stack, `[Sa]z1-X` saves the entire stack to register 97, `[Lb]ZbX` loads the entirety of reg 98.

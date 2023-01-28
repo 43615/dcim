@@ -104,11 +104,6 @@ impl CmdSig {
 ///stack for (K,I,O) tuples, with methods for checked editing
 struct ParamStk(Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
-	///blank stack, must call `.create()` asap
-	const fn empty() -> Self {
-		Self(Vec::new())
-	}
-
 	///switch to new param context with defaults (-1,10,10)
 	fn create(&mut self) {
 		self.0.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
@@ -174,22 +169,39 @@ impl fmt::Display for ParamError {
 static mut MSTK: Vec<Obj> = Vec::new();
 
 const REG_DEF: Vec<RegObj> = Vec::new();	//required for init of REGS
-///array of registers
+///array of "low" registers, index limited to u16
 static mut REGS: [Vec<RegObj>; 65536] = [REG_DEF; 65536];
 ///RegObj buffer: needs to be a vec because `new` is const, only \[0\] is used
 static mut RO_BUF: Vec<RegObj> = Vec::new();
+///non-contiguous storage of arbitrarily-named registers
+static mut HIGH_REGS: RegMap = RegMap(Vec::new());
 
+///u16 or bigint
+enum RegIdx {
+	Low(u16),
+	High(Integer)
+}
+impl fmt::Display for RegIdx {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", match self {
+			Self::Low(u) => Integer::from(*u),
+			Self::High(i) => i.into()
+		})
+	}
+}
 ///direct register selector
-static mut DRS: Option<usize> = None;
+static mut DRS: Option<RegIdx> = None;
 
 ///random number generator: needs to be a vec because `new` is const, only \[0\] is used
 static mut RNG: Vec<RandState> = Vec::new();
 
 ///environment parameters K,I,O
-static mut PARAMS: ParamStk = ParamStk::empty();
+static mut PARAMS: ParamStk = ParamStk(Vec::new());
 ///working precision W (Float mantissa length)
 static mut WPREC: u32 = 256;
 
+///arbitrary register storage, wrapper to allow static mut initialization
+struct RegMap(Vec<HashMap<Integer, Vec<RegObj>>>);
 
 ///discard fractional part if finite, default to 0 otherwise
 fn int(n: Float) -> Integer {
@@ -204,6 +216,7 @@ fn main() {
 			a: Vec::new(),
 			o: DUMMY
 		});
+		HIGH_REGS.0.push(HashMap::new());
 		//init RNG, seed with 1024 bits of OS randomness
 		RNG.push(RandState::new());
 		let mut seed = [0u8; 128];
@@ -354,11 +367,11 @@ lazy_static! {
 
 		for c in "&$\\".chars() {m.insert(c, As);}
 
-		for c in "nPaA\"xgsS".chars() {m.insert(c, Ax);}
+		for c in "nPaA\"xgsS,".chars() {m.insert(c, Ax);}
 
 		m.insert('X', AsBn);
 
-		for c in "v°uytUYTNCDRkiow,;Q".chars() {m.insert(c, An);}
+		for c in "v°uytUYTNCDRkiow;Q".chars() {m.insert(c, An);}
 
 		for c in "VG<=>".chars() {m.insert(c, AnBn);}
 
@@ -632,16 +645,36 @@ unsafe fn exec(commands: String) {
 	
 		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');	//get next command
 
-		let ri: usize = if USES_REG.contains(&cmd) {	//get register index first since it's syntactically significant ("sq" etc)
-			if cmdstk.last().unwrap().is_empty() && DRS.is_none() {	//nothing provided
+		let (reg, rnum): (&mut Vec<RegObj>, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
+			if let Some(d) = DRS.take() {	//use DRS
+				match d {
+					RegIdx::Low(u) => (&mut REGS[u as usize], Integer::from(u)),
+					RegIdx::High(i) => {
+						if !HIGH_REGS.0[0].contains_key(&i) {
+							HIGH_REGS.0[0].insert(i.clone(), REG_DEF);	//touch reg
+						}
+						(HIGH_REGS.0[0].get_mut(&i).unwrap(), i)
+					}
+				}
+			}
+			else if let Some(c) = cmdstk.last_mut().unwrap().pop() {	//use next char
+				if let Ok(u) = u16::try_from(c as u32) {	//within u16
+					(&mut REGS[u as usize], u.into())
+				}
+				else {	//outside u16
+					let i = Integer::from(c as u32);
+					if !HIGH_REGS.0[0].contains_key(&i) {
+						HIGH_REGS.0[0].insert(i.clone(), REG_DEF);	//touch reg
+					}
+					(HIGH_REGS.0[0].get_mut(&i).unwrap(), i)
+				}
+			}
+			else {
 				eprintln!("! Command '{cmd}' needs a register number");
 				continue;
 			}
-			else {
-				DRS.take().unwrap_or_else(|| cmdstk.last_mut().unwrap().pop().unwrap() as usize)	//get DRS or next command char, set DRS to None
-			}
 		}
-		else {0};	//not needed
+		else {(&mut REGS[0], Integer::ZERO)};	//not used
 
 		let sig = CMD_SIGS.get(&cmd).unwrap_or(&CmdSig::Nil);
 		let adi = sig.adicity();
@@ -1028,18 +1061,18 @@ unsafe fn exec(commands: String) {
 
 			//print register
 			'F' => {
-				if !REGS[ri].is_empty(){
-					for i in (0..REGS[ri].len()).rev() {
-						match &REGS[ri][i].o {
+				if !reg.is_empty(){
+					for i in (0..reg.len()).rev() {
+						match &reg[i].o {
 							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
 							Obj::S(s) => {println!("[{s}]");},
 						}
-						if !REGS[ri][i].a.is_empty() {
-							let maxwidth = (REGS[ri][i].a.len()-1).to_string().len();	//length of longest index number
-							for ai in 0..REGS[ri][i].a.len() {
-								match &REGS[ri][i].a[ai] {
-									Obj::N(n) => {println!("\t{ai:>maxwidth$}: {}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
-									Obj::S(s) => {println!("\t{ai:>maxwidth$}: [{s}]");},
+						if !reg[i].a.is_empty() {
+							let width = (reg[i].a.len()-1).to_string().len();	//length of longest index number
+							for ai in 0..reg[i].a.len() {
+								match &reg[i].a[ai] {
+									Obj::N(n) => {println!("\t{ai:>width$}: {}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+									Obj::S(s) => {println!("\t{ai:>width$}: [{s}]");},
 								}
 							}
 						}
@@ -1517,7 +1550,7 @@ unsafe fn exec(commands: String) {
 					WPREC = u;
 				}
 				else {
-					eprintln!("! w: Working precision must be between 1 and {} (inclusive)", u32::MAX);
+					eprintln!("! w: Working precision must be in range 1 ≤ W ≤ {}", u32::MAX);
 					MSTK.push(a);
 				}
 			},
@@ -1556,56 +1589,56 @@ unsafe fn exec(commands: String) {
 			---------------*/
 			//save to top of register
 			's' => {
-				if REGS[ri].is_empty() {
-					REGS[ri].push(RegObj {
+				if reg.is_empty() {
+					reg.push(RegObj {
 						o: a,
 						a: Vec::new()
 					});
 				}
 				else {
-					REGS[ri].last_mut().unwrap().o = a;
+					reg.last_mut().unwrap().o = a;
 				}
 			},
 
 			//push to top of register
 			'S' => {
-				REGS[ri].push(RegObj{o: a, a: Vec::new()});
+				reg.push(RegObj{o: a, a: Vec::new()});
 			},
 
 			//load from top of register
 			'l' => {
-				if REGS[ri].is_empty() {
-					eprintln!("! l: Register {ri} is empty");
+				if reg.is_empty() {
+					eprintln!("! l: Register № {rnum} is empty");
 				}
 				else {
-					MSTK.push(REGS[ri].last().unwrap().o.clone());
+					MSTK.push(reg.last().unwrap().o.clone());
 				}
 			},
 
 			//pop from top of register
 			'L' => {
-				if REGS[ri].is_empty() {
-					eprintln!("! L: Register {ri} is empty");
+				if reg.is_empty() {
+					eprintln!("! L: Register № {rnum} is empty");
 				}
 				else {
-					MSTK.push(REGS[ri].pop().unwrap().o);
+					MSTK.push(reg.pop().unwrap().o);
 				}
 			},
 
 			//save to top-of-register's array
 			':' => {
-				if REGS[ri].is_empty() {
-					REGS[ri].push(RegObj {
+				if reg.is_empty() {
+					reg.push(RegObj {
 						o: DUMMY,	//create default register object if empty
 						a: Vec::new()
 					});
 				}
 				let int = int(nb);
 				if let Some(rai) = int.to_usize() {
-					if rai>=REGS[ri].last().unwrap().a.len() {
-						REGS[ri].last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+					if rai>=reg.last().unwrap().a.len() {
+						reg.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
 					}
-					REGS[ri].last_mut().unwrap().a[rai] = a;
+					reg.last_mut().unwrap().a[rai] = a;
 				}
 				else {
 					eprintln!("! :: Cannot possibly save to array index {int}");
@@ -1616,18 +1649,18 @@ unsafe fn exec(commands: String) {
 
 			//load from top-of-register's array
 			';' => {
-				if REGS[ri].is_empty() {
-					REGS[ri].push(RegObj {
+				if reg.is_empty() {
+					reg.push(RegObj {
 						o: DUMMY,	//create default register object if empty
 						a: Vec::new()
 					});
 				}
 				let int = int(na);
 				if let Some(rai) = int.to_usize() {
-					if rai>=REGS[ri].last().unwrap().a.len() {
-						REGS[ri].last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+					if rai>=reg.last().unwrap().a.len() {
+						reg.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
 					}
-					MSTK.push(REGS[ri].last().unwrap().a[rai].clone());
+					MSTK.push(reg.last().unwrap().a[rai].clone());
 				}
 				else {
 					eprintln!("! ;: Cannot possibly load from array index {int}");
@@ -1637,40 +1670,40 @@ unsafe fn exec(commands: String) {
 
 			//pop top-of-reg into buffer
 			'b' => {
-				if REGS[ri].is_empty() {
-					eprintln!("! b: Register {ri} is empty");
+				if reg.is_empty() {
+					eprintln!("! b: Register № {rnum} is empty");
 				}
 				else {
-					RO_BUF[0] = REGS[ri].pop().unwrap();
+					RO_BUF[0] = reg.pop().unwrap();
 				}
 			},
 
 			//push buffer to register
 			'B' => {
-				REGS[ri].push(RO_BUF[0].clone());
+				reg.push(RO_BUF[0].clone());
 			},
 
 			//push register depth
 			'Z' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, REGS[ri].len())));
+				MSTK.push(Obj::N(Float::with_val(WPREC, reg.len())));
 			},
 
-			//specify manual register index
+			//specify direct register selector
 			',' => {
-				let int = int(na);
-				if let Some(new_ri) = int.to_usize() {
-					if REGS.len()>new_ri {
-						DRS = Some(new_ri);
-					}
-					else {
-						eprintln!("! ,: Register {new_ri} is not available");
-						MSTK.push(a);
-					}
+				let int = if !svari {
+					int(na)	//from number
 				}
 				else {
-					eprintln!("! ,: Register {int} cannot possibly exist");
-					MSTK.push(a);
-				}
+					Integer::from_digits(sa.as_bytes(), Order::Msf)	//from string bytes
+				};
+				DRS = Some(
+					if let Some(u) = int.to_u16() {
+						RegIdx::Low(u)
+					}
+					else {
+						RegIdx::High(int)
+					}
+				);
 			},
 			/*------------
 				MACROS
@@ -1731,10 +1764,10 @@ unsafe fn exec(commands: String) {
 
 			//conditionally execute macro
 			'<'|'='|'>' => {
-				if REGS[ri].is_empty() {
-					eprintln!("! <=>: Register {ri} is empty");
+				if reg.is_empty() {
+					eprintln!("! <=>: Register № {rnum} is empty");
 				}
-				else if let Obj::S(mac) = &REGS[ri].last().unwrap().o {
+				else if let Obj::S(mac) = &reg.last().unwrap().o {
 					if inv != match cmd {
 					'<' => { nb < na },	//reverse order, GNU dc convention
 					'=' => { nb == na },
@@ -1748,7 +1781,7 @@ unsafe fn exec(commands: String) {
 					}
 				}
 				else {
-					eprintln!("! <=>: Top of register {ri} is not a string");
+					eprintln!("! <=>: Top of register № {rnum} is not a string");
 				}
 				inv = false;	//always reset inversion
 			},
@@ -1771,7 +1804,10 @@ unsafe fn exec(commands: String) {
 
 			//quit dcim
 			'q' => {
-				std::process::exit(DRS.unwrap_or(0) as i32);
+				std::process::exit(
+					if let Some(RegIdx::Low(u)) = DRS {u as i32}
+					else {0}
+				);
 			},
 
 			//quit a macro calls
