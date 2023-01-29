@@ -46,7 +46,7 @@ enum Obj {
 	N(Float),
 	S(String)
 }
-///unused Obj
+///unused/default Obj
 const DUMMY: Obj = Obj::S(String::new());
 
 ///register object, may have a dynamic array
@@ -171,10 +171,10 @@ static mut MSTK: Vec<Obj> = Vec::new();
 const REG_DEF: Vec<RegObj> = Vec::new();	//required for init of REGS
 ///array of "low" registers, index limited to u16
 static mut REGS: [Vec<RegObj>; 65536] = [REG_DEF; 65536];
-///RegObj buffer: needs to be a vec because `new` is const, only \[0\] is used
-static mut RO_BUF: Vec<RegObj> = Vec::new();
-///non-contiguous storage of arbitrarily-named registers
-static mut HIGH_REGS: RegMap = RegMap(Vec::new());
+///RegObj buffer for b/B
+static mut RO_BUF: RegObj = RegObj {o: DUMMY, a: Vec::new()};
+///non-contiguous storage of arbitrarily-numbered registers, vec because `HashMap::new()` isn't const
+static mut HIGH_REGS: Vec<HashMap<Integer, Vec<RegObj>>> = Vec::new();
 
 ///u16 or bigint
 enum RegIdx {
@@ -192,16 +192,13 @@ impl fmt::Display for RegIdx {
 ///direct register selector
 static mut DRS: Option<RegIdx> = None;
 
-///random number generator: needs to be a vec because `new` is const, only \[0\] is used
+///random number generator, vec because `RandState::new()` isn't const
 static mut RNG: Vec<RandState> = Vec::new();
 
 ///environment parameters K,I,O
 static mut PARAMS: ParamStk = ParamStk(Vec::new());
 ///working precision W (Float mantissa length)
 static mut WPREC: u32 = 256;
-
-///arbitrary register storage, wrapper to allow static mut initialization
-struct RegMap(Vec<HashMap<Integer, Vec<RegObj>>>);
 
 ///discard fractional part if finite, default to 0 otherwise
 fn int(n: Float) -> Integer {
@@ -211,12 +208,8 @@ fn int(n: Float) -> Integer {
 fn main() {
 	//init everything that doesn't have a const constructor
 	unsafe {
-		PARAMS.create();	//initialize env params
-		RO_BUF.push(RegObj{	//and RegObj buffer
-			a: Vec::new(),
-			o: DUMMY
-		});
-		HIGH_REGS.0.push(HashMap::new());
+		PARAMS.create();	//env params
+		HIGH_REGS.push(HashMap::new());	//reg hashmap
 		//init RNG, seed with 1024 bits of OS randomness
 		RNG.push(RandState::new());
 		let mut seed = [0u8; 128];
@@ -238,7 +231,7 @@ fn main() {
 				"help" => {h=true;}
 				_ => {
 					eprintln!("! Unrecognized option: --{flag}, use -h for help");
-					std::process::exit(0);
+					std::process::exit(1);
 				}
 			}
 			continue;
@@ -253,7 +246,7 @@ fn main() {
 					'h' => {h=true;}
 					_ => {
 						eprintln!("! Unrecognized option: -{flag}, use -h for help");
-						std::process::exit(0);
+						std::process::exit(1);
 					}
 				}
 			}
@@ -271,7 +264,10 @@ fn main() {
 		(true, false, false) => {interactive_mode(names.first().cloned());}	//normal interactive
 		(_, true, false) => {expression_mode(names, i);}	//expr mode, pass i on
 		(_, false, true) => {file_mode(names, i);}	//file mode, pass i on
-		(_, true, true) => {eprintln!("! Invalid options: both -e and -f present");}	//invalid combination
+		(_, true, true) => {	//invalid combination
+			eprintln!("! Invalid options: both -e and -f present");
+			std::process::exit(1);
+		}
 	}
 }
 
@@ -650,10 +646,10 @@ unsafe fn exec(commands: String) {
 				match d {
 					RegIdx::Low(u) => (&mut REGS[u as usize], Integer::from(u)),
 					RegIdx::High(i) => {
-						if !HIGH_REGS.0[0].contains_key(&i) {
-							HIGH_REGS.0[0].insert(i.clone(), REG_DEF);	//touch reg
+						if !HIGH_REGS[0].contains_key(&i) {
+							HIGH_REGS[0].insert(i.clone(), REG_DEF);	//touch reg
 						}
-						(HIGH_REGS.0[0].get_mut(&i).unwrap(), i)
+						(HIGH_REGS[0].get_mut(&i).unwrap(), i)
 					}
 				}
 			}
@@ -663,10 +659,10 @@ unsafe fn exec(commands: String) {
 				}
 				else {	//outside u16
 					let i = Integer::from(c as u32);
-					if !HIGH_REGS.0[0].contains_key(&i) {
-						HIGH_REGS.0[0].insert(i.clone(), REG_DEF);	//touch reg
+					if !HIGH_REGS[0].contains_key(&i) {
+						HIGH_REGS[0].insert(i.clone(), REG_DEF);	//touch reg
 					}
-					(HIGH_REGS.0[0].get_mut(&i).unwrap(), i)
+					(HIGH_REGS[0].get_mut(&i).unwrap(), i)
 				}
 			}
 			else {
@@ -1608,7 +1604,7 @@ unsafe fn exec(commands: String) {
 			//load from top of register
 			'l' => {
 				if reg.is_empty() {
-					eprintln!("! l: Register № {rnum} is empty");
+					eprintln!("! l: Register # {rnum} is empty");
 				}
 				else {
 					MSTK.push(reg.last().unwrap().o.clone());
@@ -1618,7 +1614,7 @@ unsafe fn exec(commands: String) {
 			//pop from top of register
 			'L' => {
 				if reg.is_empty() {
-					eprintln!("! L: Register № {rnum} is empty");
+					eprintln!("! L: Register # {rnum} is empty");
 				}
 				else {
 					MSTK.push(reg.pop().unwrap().o);
@@ -1671,16 +1667,16 @@ unsafe fn exec(commands: String) {
 			//pop top-of-reg into buffer
 			'b' => {
 				if reg.is_empty() {
-					eprintln!("! b: Register № {rnum} is empty");
+					eprintln!("! b: Register # {rnum} is empty");
 				}
 				else {
-					RO_BUF[0] = reg.pop().unwrap();
+					RO_BUF = reg.pop().unwrap();
 				}
 			},
 
 			//push buffer to register
 			'B' => {
-				reg.push(RO_BUF[0].clone());
+				reg.push(RO_BUF.clone());
 			},
 
 			//push register depth
@@ -1765,7 +1761,7 @@ unsafe fn exec(commands: String) {
 			//conditionally execute macro
 			'<'|'='|'>' => {
 				if reg.is_empty() {
-					eprintln!("! <=>: Register № {rnum} is empty");
+					eprintln!("! <=>: Register # {rnum} is empty");
 				}
 				else if let Obj::S(mac) = &reg.last().unwrap().o {
 					if inv != match cmd {
@@ -1781,7 +1777,7 @@ unsafe fn exec(commands: String) {
 					}
 				}
 				else {
-					eprintln!("! <=>: Top of register № {rnum} is not a string");
+					eprintln!("! <=>: Top of register # {rnum} is not a string");
 				}
 				inv = false;	//always reset inversion
 			},
