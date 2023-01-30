@@ -71,19 +71,9 @@ enum CmdSig {
 	AxBxCx
 }
 impl CmdSig {
-	///aka argument count
-	fn adicity(&self) -> u8 {
-		match self {
-			Self::Nil => 0,
-			Self::Ax|Self::An|Self::As => 1,
-			Self::AxBx|Self::AxBn|Self::AnBn|Self::AsBn => 2,
-			Self::AxBxCx => 3
-		}
-	}
-
 	///english plural ending
 	fn plural(&self) -> &str {
-		if self.adicity()==1 {""} else {"s"}
+		if matches!(self, Self::Ax|Self::An|Self::As) {""} else {"s"}
 	}
 
 	///correction messages
@@ -161,63 +151,37 @@ impl fmt::Display for ParamError {
 	}
 }
 
-/*---------------------------
-		STATE STORAGE
-	oops, all static mut!
----------------------------*/
-///main stack
-static mut MSTK: Vec<Obj> = Vec::new();
+///default register, const required for array init
+const REG_DEF: Vec<RegObj> = Vec::new();
 
-const REG_DEF: Vec<RegObj> = Vec::new();	//required for init of REGS
-///array of "low" registers, index limited to u16
-static mut REGS: [Vec<RegObj>; 65536] = [REG_DEF; 65536];
-///RegObj buffer for b/B
-static mut RO_BUF: RegObj = RegObj {o: DUMMY, a: Vec::new()};
-///non-contiguous storage of arbitrarily-numbered registers, vec because `HashMap::new()` isn't const
-static mut HIGH_REGS: Vec<HashMap<Integer, Vec<RegObj>>> = Vec::new();
-
-///u16 or bigint
-enum RegIdx {
-	Low(u16),
-	High(Integer)
+///whole state storage
+struct State<'a> {
+	///main stack
+	mstk: Vec<Obj>,
+	///hashmap of arbitrarily-numbered registers
+	regs: HashMap<Integer, Vec<RegObj>>,
+	///RegObj buffer
+	ro_buf: RegObj,
+	///manual register pointer
+	rptr: Option<Integer>,
+	///random number generator
+	rng: RandState<'a>,
+	///parameters K,I,O
+	par: ParamStk,
+	///working precision W
+	w: u32
 }
-impl fmt::Display for RegIdx {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", match self {
-			Self::Low(u) => Integer::from(*u),
-			Self::High(i) => i.into()
-		})
-	}
-}
-///direct register selector
-static mut DRS: Option<RegIdx> = None;
 
-///random number generator, vec because `RandState::new()` isn't const
-static mut RNG: Vec<RandState> = Vec::new();
-
-///environment parameters K,I,O
-static mut PARAMS: ParamStk = ParamStk(Vec::new());
-///working precision W (Float mantissa length)
-static mut WPREC: u32 = 256;
-
-///discard fractional part if finite, default to 0 otherwise
-fn int(n: Float) -> Integer {
+///standard rounding function: discard fractional part if finite, default to 0 otherwise
+fn round(n: Float) -> Integer {
 	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
 }
 
 fn main() {
-	//init everything that doesn't have a const constructor
-	unsafe {
-		PARAMS.create();	//env params
-		HIGH_REGS.push(HashMap::new());	//reg hashmap
-		//init RNG, seed with 1024 bits of OS randomness
-		RNG.push(RandState::new());
-		let mut seed = [0u8; 128];
-		OsRng.fill_bytes(&mut seed);
-		RNG[0].seed(&Integer::from_digits(&seed, Order::Msf));
-	}
+	/*-------------------
+		PARSE OPTIONS
+	-------------------*/
 
-	//parse options
 	let (mut i, mut e, mut f, mut h) = (false, false, false, false);
 	let mut names: Vec<String> = Vec::new();
 	let args: Vec<String> = std::env::args().skip(1).collect();	//get args, skip name of binary
@@ -252,18 +216,44 @@ fn main() {
 			}
 			continue;
 		}
-		names.push(arg);	//branchless ftw
+		names.push(arg);
 	}
 	
 	if h {	//always exits
 		println!("{}", *HELPMSG);
 		std::process::exit(0);
 	}
+
+	/*--------------
+		DO STUFF
+	--------------*/
+
+	//create and seed RNG, 1024 bits of OS randomness
+	let mut r = RandState::new();
+	let mut seed = [0u8; 128];
+	OsRng.fill_bytes(&mut seed);
+	r.seed(&Integer::from_digits(&seed, Order::Msf));
+
+	//create and init parameter stack
+	let mut p = ParamStk(Vec::new());
+	p.create();
+
+	//create state storage
+	let mut st = State {
+		mstk: Vec::new(),
+		regs: HashMap::new(),
+		ro_buf: RegObj {o: DUMMY, a: Vec::new()},
+		rptr: None,
+		rng: r,
+		par: p,
+		w: 256
+	};
+
 	match (i, e, f) {
-		(false, false, false) => {file_mode(names, false);}	//no flags: assume filenames
-		(true, false, false) => {interactive_mode(names.first().cloned());}	//normal interactive
-		(_, true, false) => {expression_mode(names, i);}	//expr mode, pass i on
-		(_, false, true) => {file_mode(names, i);}	//file mode, pass i on
+		(false, false, false) => {file_mode(&mut st, names, false);}	//no flags: assume filenames
+		(true, false, false) => {interactive_mode(&mut st, names.first().cloned());}	//normal interactive
+		(_, true, false) => {expression_mode(&mut st, names, i);}	//expr mode, pass i on
+		(_, false, true) => {file_mode(&mut st, names, i);}	//file mode, pass i on
 		(_, true, true) => {	//invalid combination
 			eprintln!("! Invalid options: both -e and -f present");
 			std::process::exit(1);
@@ -271,28 +261,28 @@ fn main() {
 	}
 }
 
-fn interactive_mode(prompt: Option<String>) {
+fn interactive_mode(st: &mut State, prompt: Option<String>) {
 	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	loop {
-		unsafe{exec(inputter.get());}
+		exec(st, inputter.get());
 	}
 }
 
-fn expression_mode(exprs: Vec<String>, inter: bool) {
+fn expression_mode(st: &mut State, exprs: Vec<String>, inter: bool) {
 	if exprs.is_empty() {
 		eprintln!("! No expression provided");
 	}
 	else {
 		for expr in exprs {
-			unsafe{exec(expr);}
+			exec(st, expr);
 		}
 	}
 	if inter {
-		interactive_mode(None);
+		interactive_mode(st, None);
 	}
 }
 
-fn file_mode(files: Vec<String>, inter: bool) {
+fn file_mode(st: &mut State, files: Vec<String>, inter: bool) {
 	if files.is_empty() {
 		eprintln!("! No file name provided");
 	}
@@ -305,10 +295,7 @@ fn file_mode(files: Vec<String>, inter: bool) {
 						script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 						script_nc.push('\n');
 					}
-					unsafe {
-						exec(script_nc);
-					}
-							
+					exec(st, script_nc);
 				},
 				Err(error) => {
 					eprintln!("! Unable to read file \"{file}\": {error}");
@@ -317,7 +304,7 @@ fn file_mode(files: Vec<String>, inter: bool) {
 		}
 	}
 	if inter {
-		interactive_mode(None);
+		interactive_mode(st, None);
 	}
 }
 
@@ -350,26 +337,26 @@ lazy_static! {
 		for c in "FsSlL:;bBZ<=>".chars() {s.insert(c);}
 		s
 	};
-	///command signatures and type error messages
-	static ref CMD_SIGS: HashMap<char, CmdSig> = {
+	///command signatures and adicities
+	static ref CMD_SIGS: HashMap<char, (CmdSig, u8)> = {
 		let mut m = HashMap::new();
 		use CmdSig::*;
 
-		for c in ['+','^'] {m.insert(c, AxBx);}
+		for c in ['+','^'] {m.insert(c, (AxBx, 2));}
 
-		m.insert('|', AxBxCx);
+		m.insert('|', (AxBxCx, 3));
 
-		for c in "-*/%~:".chars() {m.insert(c, AxBn);}
+		for c in "-*/%~:".chars() {m.insert(c, (AxBn, 2));}
 
-		for c in "&$\\".chars() {m.insert(c, As);}
+		for c in "&$\\".chars() {m.insert(c, (As, 1));}
 
-		for c in "nPaA\"xgsS,".chars() {m.insert(c, Ax);}
+		for c in "nPaA\"xgsS,".chars() {m.insert(c, (Ax, 1));}
 
-		m.insert('X', AsBn);
+		m.insert('X', (AsBn, 2));
 
-		for c in "v°uytUYTNCDRkiow;Q".chars() {m.insert(c, An);}
+		for c in "v°uytUYTNCDRkiow;Q".chars() {m.insert(c, (An, 1));}
 
-		for c in "VG<=>".chars() {m.insert(c, AnBn);}
+		for c in "VG<=>".chars() {m.insert(c, (AnBn, 2));}
 
 		m
 	};
@@ -504,13 +491,7 @@ fn get_constant(prec: u32, query: &str) -> Option<Float> {
 			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()))}
 			"abort" => {std::process::abort();}
 			"crash" => {get_constant(prec, "crash")}	//stack go brrrrr
-			"panic" => {
-				std::panic::panic_any(
-					unsafe {
-						if let Some(Obj::S(s)) = MSTK.last() {s} else {"Expected, [panic]\" was executed"}	//if top-of-stack is a string, display it
-					}
-				);
-			}
+			"panic" => {std::panic::panic_any("Expected, [panic]\" was executed");}
 			_ => None
 		}
 	}
@@ -629,61 +610,43 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	}
 }
 
-///CORE EXECUTION ENGINE:
-///unsafe for accessing static mut objects across different runs
-unsafe fn exec(commands: String) {
+///CORE EXECUTION ENGINE
+fn exec(st: &mut State, commands: String) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
 	if !commands.is_empty() {	//loop expects contents, do nothing if none provided
 		cmdstk.push(commands.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
 	}
+	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
 		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');	//get next command
 
 		let (reg, rnum): (&mut Vec<RegObj>, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
-			if let Some(d) = DRS.take() {	//use DRS
-				match d {
-					RegIdx::Low(u) => (&mut REGS[u as usize], Integer::from(u)),
-					RegIdx::High(i) => {
-						if !HIGH_REGS[0].contains_key(&i) {
-							HIGH_REGS[0].insert(i.clone(), REG_DEF);	//touch reg
-						}
-						(HIGH_REGS[0].get_mut(&i).unwrap(), i)
-					}
-				}
-			}
-			else if let Some(c) = cmdstk.last_mut().unwrap().pop() {	//use next char
-				if let Ok(u) = u16::try_from(c as u32) {	//within u16
-					(&mut REGS[u as usize], u.into())
-				}
-				else {	//outside u16
-					let i = Integer::from(c as u32);
-					if !HIGH_REGS[0].contains_key(&i) {
-						HIGH_REGS[0].insert(i.clone(), REG_DEF);	//touch reg
-					}
-					(HIGH_REGS[0].get_mut(&i).unwrap(), i)
-				}
-			}
+			let i = if let Some(i) = st.rptr.take() {i}	//take from reg ptr
+			else if let Some(c) = cmdstk.last_mut().unwrap().pop() {Integer::from(c as u32)}	//steal next command char
 			else {
 				eprintln!("! Command '{cmd}' needs a register number");
 				continue;
+			};
+			if !st.regs.contains_key(&i) {
+				st.regs.insert(i.clone(), REG_DEF);	//touch reg
 			}
+			(st.regs.get_mut(&i).unwrap(), i)
 		}
-		else {(&mut REGS[0], Integer::ZERO)};	//not used
+		else {(&mut dummy_reg, Integer::ZERO)};	//no register needed
 
-		let sig = CMD_SIGS.get(&cmd).unwrap_or(&CmdSig::Nil);
-		let adi = sig.adicity();
+		let (sig, adi) = CMD_SIGS.get(&cmd).unwrap_or(&(CmdSig::Nil, 0));	//get correct command signature
 
-		if MSTK.len() < adi as usize {	//check stack depth
+		if st.mstk.len() < *adi as usize {	//check stack depth
 			eprintln!("! Command '{cmd}' needs {} argument{}", adi, sig.plural());
 			continue;
 		}
 
 		let (c, b, a) = match adi {	//pop required amount from stack
-			1 => (DUMMY, DUMMY, MSTK.pop().unwrap()),
-			2 => (DUMMY, MSTK.pop().unwrap(), MSTK.pop().unwrap()),
-			3 => (MSTK.pop().unwrap(), MSTK.pop().unwrap(), MSTK.pop().unwrap()),
+			1 => (DUMMY, DUMMY, st.mstk.pop().unwrap()),
+			2 => (DUMMY, st.mstk.pop().unwrap(), st.mstk.pop().unwrap()),
+			3 => (st.mstk.pop().unwrap(), st.mstk.pop().unwrap(), st.mstk.pop().unwrap()),
 			_ => (DUMMY, DUMMY, DUMMY)
 		};
 
@@ -784,9 +747,9 @@ unsafe fn exec(commands: String) {
 		{
 			eprintln!("! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct());
 			match adi {	//push Objs back
-				1 => {MSTK.push(a);},
-				2 => {MSTK.push(a); MSTK.push(b);},
-				3 => {MSTK.push(a); MSTK.push(b); MSTK.push(c);},
+				1 => {st.mstk.push(a);},
+				2 => {st.mstk.push(a); st.mstk.push(b);},
+				3 => {st.mstk.push(a); st.mstk.push(b); st.mstk.push(c);},
 				_ => {}
 			}
 			continue;
@@ -798,7 +761,7 @@ unsafe fn exec(commands: String) {
 			------------------*/
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
-				if PARAMS.i()>36 {
+				if st.par.i()>36 {
 					eprintln!("! Any-base input must be used for input bases over 36");
 				}
 				else {
@@ -841,9 +804,9 @@ unsafe fn exec(commands: String) {
 					if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
 					if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
 					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
-					match Float::parse_radix(numstr.clone(), PARAMS.i().to_i32().unwrap()) {		
+					match Float::parse_radix(numstr.clone(), st.par.i().to_i32().unwrap()) {		
 						Ok(res) => {
-							MSTK.push(Obj::N(Float::with_val(WPREC, res)));
+							st.mstk.push(Obj::N(Float::with_val(st.w, res)));
 						},
 						Err(error) => {
 							eprintln!("! Unable to parse number \"{numstr}\": {error}");
@@ -856,10 +819,10 @@ unsafe fn exec(commands: String) {
 			'(' => {
 				let mut num = Integer::from(0);	//resulting number
 				if cmdstk.last().unwrap().is_empty() {
-					MSTK.push(Obj::N(Float::with_val(WPREC, num)));	//default to 0 if on end of input
+					st.mstk.push(Obj::N(Float::with_val(st.w, num)));	//default to 0 if on end of input
 				}
 				else {
-					let ibase = PARAMS.i();
+					let ibase = st.par.i();
 					let mut dig = String::new();	//digit being parsed
 					let mut neg = false;	//number negative?
 					let mut frac = false;	//fractional separator has occurred
@@ -971,8 +934,8 @@ unsafe fn exec(commands: String) {
 									if scale>1 {
 										scale /= ibase.clone();	//correct off-by-one error
 									}
-									MSTK.push(Obj::N(Float::with_val(WPREC, num * if neg {-1} else {1}) / scale
-										* Float::with_val(WPREC, ibase).pow(escale)));
+									st.mstk.push(Obj::N(Float::with_val(st.w, num * if neg {-1} else {1}) / scale
+										* Float::with_val(st.w, ibase).pow(escale)));
 									break;
 								}
 							},
@@ -1002,7 +965,7 @@ unsafe fn exec(commands: String) {
 					if cmd == ']' { nest-=1; }
 					if nest==0 {	//string finished
 						res.pop();	//remove closing bracket
-						MSTK.push(Obj::S(res));
+						st.mstk.push(Obj::S(res));
 						break;
 					}
 					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
@@ -1017,9 +980,9 @@ unsafe fn exec(commands: String) {
 			--------------*/
 			//print top with newline
 			'p' => {
-				if !MSTK.is_empty() {
-					match MSTK.last().unwrap() {
-						Obj::N(n) => {println!("{}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+				if !st.mstk.is_empty() {
+					match st.mstk.last().unwrap() {
+						Obj::N(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
 						Obj::S(s) => {println!("[{s}]");},
 					}
 				}
@@ -1027,10 +990,10 @@ unsafe fn exec(commands: String) {
 
 			//print full stack top to bottom
 			'f' => {
-				if !MSTK.is_empty() {
-					for i in (0..MSTK.len()).rev() {
-						match &MSTK[i] {
-							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+				if !st.mstk.is_empty() {
+					for i in (0..st.mstk.len()).rev() {
+						match &st.mstk[i] {
+							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
 							Obj::S(s) => {println!("[{s}]");},
 						}
 					}
@@ -1040,7 +1003,7 @@ unsafe fn exec(commands: String) {
 			//pop and print without newline
 			'n' => {
 				if !svari {
-					print!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));
+					print!("{}", flt_to_str(na, st.par.o(), st.par.k()));
 					stdout().flush().unwrap();
 				}
 				else {
@@ -1051,7 +1014,7 @@ unsafe fn exec(commands: String) {
 
 			//pop and print with newline
 			'P' => {
-					if !svari {println!("{}", flt_to_str(na, PARAMS.o(), PARAMS.k()));}
+					if !svari {println!("{}", flt_to_str(na, st.par.o(), st.par.k()));}
 					else {println!("{sa}");}
 			},
 
@@ -1060,14 +1023,14 @@ unsafe fn exec(commands: String) {
 				if !reg.is_empty(){
 					for i in (0..reg.len()).rev() {
 						match &reg[i].o {
-							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
 							Obj::S(s) => {println!("[{s}]");},
 						}
 						if !reg[i].a.is_empty() {
 							let width = (reg[i].a.len()-1).to_string().len();	//length of longest index number
 							for ai in 0..reg[i].a.len() {
 								match &reg[i].a[ai] {
-									Obj::N(n) => {println!("\t{ai:>width$}: {}", flt_to_str(n.clone(), PARAMS.o(), PARAMS.k()));},
+									Obj::N(n) => {println!("\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
 									Obj::S(s) => {println!("\t{ai:>width$}: [{s}]");},
 								}
 							}
@@ -1081,17 +1044,17 @@ unsafe fn exec(commands: String) {
 			----------------*/
 			//add or concatenate strings
 			'+' => {
-				if !svari {MSTK.push(Obj::N(Float::with_val(WPREC, na + nb)));}
-				else {MSTK.push(Obj::S(sa + &sb));}
+				if !svari {st.mstk.push(Obj::N(Float::with_val(st.w, na + nb)));}
+				else {st.mstk.push(Obj::S(sa + &sb));}
 			},
 
 			//subtract or remove chars from string
 			'-' => {
-				if !svari {MSTK.push(Obj::N(Float::with_val(WPREC, na - nb)));}
+				if !svari {st.mstk.push(Obj::N(Float::with_val(st.w, na - nb)));}
 				else {
-					let ib = int(nb);
+					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
-						MSTK.push(Obj::S(
+						st.mstk.push(Obj::S(
 							if ib<0 {	//remove from front
 								sa.chars().skip(n).collect()
 							}
@@ -1102,19 +1065,19 @@ unsafe fn exec(commands: String) {
 					}
 					else {
 						eprintln!("! -: Cannot possibly remove {ib} characters from a string");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 				}
 			},
 
 			//multiply or repeat/invert string
 			'*' => {
-				if !svari {MSTK.push(Obj::N(Float::with_val(WPREC, na * nb)));}
+				if !svari {st.mstk.push(Obj::N(Float::with_val(st.w, na * nb)));}
 				else {
-					let ib = int(nb);
+					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
-						MSTK.push(Obj::S(
+						st.mstk.push(Obj::S(
 							if ib<0 {	//repeat and reverse
 								sa.chars().rev().collect::<String>().repeat(n)
 							}
@@ -1125,8 +1088,8 @@ unsafe fn exec(commands: String) {
 					}
 					else {
 						eprintln!("! *: Cannot possibly repeat a string {ib} times");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 				}
 			},
@@ -1136,17 +1099,17 @@ unsafe fn exec(commands: String) {
 				if !svari {
 					if nb.is_zero() {
 						eprintln!("! /: Division by zero");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na / nb)));
+						st.mstk.push(Obj::N(Float::with_val(st.w, na / nb)));
 					}
 				}
 				else {
-					let ib = int(nb);
+					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
-						MSTK.push(Obj::S(
+						st.mstk.push(Obj::S(
 							if ib<0 {	//discard from front
 								sa.chars().skip(sa.chars().count().saturating_sub(n)).collect()
 							}
@@ -1157,8 +1120,8 @@ unsafe fn exec(commands: String) {
 					}
 					else {
 						eprintln!("! /: Cannot possibly shorten a string to {ib} characters");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 				}
 			},
@@ -1166,33 +1129,33 @@ unsafe fn exec(commands: String) {
 			//modulo or isolate char
 			'%' => {
 				if !svari {
-					let ia = int(na);
-					let ib = int(nb);
+					let ia = round(na);
+					let ib = round(nb);
 					if ib==0 {
 						eprintln!("! %: Reduction mod 0");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, ia % ib)));
+						st.mstk.push(Obj::N(Float::with_val(st.w, ia % ib)));
 					}
 				}
 				else {
-					let ib = int(nb);
+					let ib = round(nb);
 					if let Some(n) = ib.to_usize() {
 						if let Some(c) = sa.chars().nth(n) {
-							MSTK.push(Obj::S(c.into()))
+							st.mstk.push(Obj::S(c.into()))
 						}
 						else {
 							eprintln!("! %: String is too short for index {n}");
-							MSTK.push(a);
-							MSTK.push(b);
+							st.mstk.push(a);
+							st.mstk.push(b);
 						}
 					}
 					else {
 						eprintln!("! %: Cannot possibly extract character at index {ib}");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 				}
 			},
@@ -1200,29 +1163,29 @@ unsafe fn exec(commands: String) {
 			//euclidean division or split string
 			'~' => {
 				if !svari {
-					let ia = int(na);
-					let ib = int(nb);
+					let ia = round(na);
+					let ib = round(nb);
 					if ib==0 {
 						eprintln!("! ~: Reduction mod 0");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 					else {
 						let (quot, rem)=ia.div_rem_euc(ib);
-						MSTK.push(Obj::N(Float::with_val(WPREC, quot)));
-						MSTK.push(Obj::N(Float::with_val(WPREC, rem)));
+						st.mstk.push(Obj::N(Float::with_val(st.w, quot)));
+						st.mstk.push(Obj::N(Float::with_val(st.w, rem)));
 					}
 				}
 				else {
-					let ib = int(nb);
+					let ib = round(nb);
 					if let Some(n) = ib.to_usize() {
-						MSTK.push(Obj::S(sa.chars().take(n).collect()));
-						MSTK.push(Obj::S(sa.chars().skip(n).collect()));
+						st.mstk.push(Obj::S(sa.chars().take(n).collect()));
+						st.mstk.push(Obj::S(sa.chars().skip(n).collect()));
 					}
 					else {
 						eprintln!("! ~: Cannot possibly split a string at character {ib}");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 				}
 			},
@@ -1232,46 +1195,46 @@ unsafe fn exec(commands: String) {
 				if !svari {
 					if na<0 && nb.clone().abs()<1{
 						eprintln!("! ^: Root of negative number");
-						MSTK.push(a);
-						MSTK.push(b);
+						st.mstk.push(a);
+						st.mstk.push(b);
 					}
 					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb))));
+						st.mstk.push(Obj::N(Float::with_val(st.w, na.pow(nb))));
 					}
 				}
 				else if let Some(bidx) = sa.find(&sb) {	//find byte index
 					let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
-					MSTK.push(Obj::N(Float::with_val(WPREC, cidx)));
+					st.mstk.push(Obj::N(Float::with_val(st.w, cidx)));
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, -1)));	//not found, silent error
+					st.mstk.push(Obj::N(Float::with_val(st.w, -1)));	//not found, silent error
 				}
 			},
 
 			//modular exponentiation or find/replace in string
 			'|' => {
 				if !svari {
-					let ia = int(na);
-					let ib = int(nb);
-					let ic = int(nc);
+					let ia = round(na);
+					let ib = round(nb);
+					let ic = round(nc);
 					if ic==0 {
 						eprintln!("! |: Reduction mod 0");
-						MSTK.push(a);
-						MSTK.push(b);
-						MSTK.push(c);
+						st.mstk.push(a);
+						st.mstk.push(b);
+						st.mstk.push(c);
 					}
 					else if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
-						MSTK.push(Obj::N(Float::with_val(WPREC, res)));
+						st.mstk.push(Obj::N(Float::with_val(st.w, res)));
 					}
 					else {
 						eprintln!("! |: {ia} doesn't have an inverse mod {ic}");
-						MSTK.push(a);
-						MSTK.push(b);
-						MSTK.push(c);
+						st.mstk.push(a);
+						st.mstk.push(b);
+						st.mstk.push(c);
 					}
 				}
 				else {
-					MSTK.push(Obj::S(sa.replace(&sb, &sc)));
+					st.mstk.push(Obj::S(sa.replace(&sb, &sc)));
 				}
 			},
 
@@ -1279,10 +1242,10 @@ unsafe fn exec(commands: String) {
 			'v' => {
 				if na<0 {
 					eprintln!("! v: Root of negative number");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.sqrt())));
+					st.mstk.push(Obj::N(Float::with_val(st.w, na.sqrt())));
 				}
 			},
 
@@ -1290,11 +1253,11 @@ unsafe fn exec(commands: String) {
 			'V' => {
 				if na<0 && nb.clone().abs()>1{
 					eprintln!("! V: Root of negative number");
-					MSTK.push(a);
-					MSTK.push(b);
+					st.mstk.push(a);
+					st.mstk.push(b);
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.pow(nb.recip()))));
+					st.mstk.push(Obj::N(Float::with_val(st.w, na.pow(nb.recip()))));
 				}
 			},
 
@@ -1303,14 +1266,14 @@ unsafe fn exec(commands: String) {
 				if !svari {
 					if na<=0 {
 						eprintln!("! g: Logarithm of non-positive number");
-						MSTK.push(a);
+						st.mstk.push(a);
 					}
 					else {
-						MSTK.push(Obj::N(Float::with_val(WPREC, na.ln())));
+						st.mstk.push(Obj::N(Float::with_val(st.w, na.ln())));
 					}
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().count())));
+					st.mstk.push(Obj::N(Float::with_val(st.w, sa.chars().count())));
 				}
 			},
 
@@ -1318,42 +1281,42 @@ unsafe fn exec(commands: String) {
 			'G' => {
 				if na<=0 {
 					eprintln!("! G: Logarithm of non-positive number");
-					MSTK.push(a);
-					MSTK.push(b);
+					st.mstk.push(a);
+					st.mstk.push(b);
 				}
 				else if nb==1||nb<=0{
 					eprintln!("! G: Logarithm with base ≤0 or =1");
-					MSTK.push(a);
-					MSTK.push(b);
+					st.mstk.push(a);
+					st.mstk.push(b);
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.ln()/nb.ln())));
+					st.mstk.push(Obj::N(Float::with_val(st.w, na.ln()/nb.ln())));
 				}
 			},
 
 			//sine
 			'u' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, na.sin())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, na.sin())));
 			},
 
 			//cosine
 			'y' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, na.cos())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, na.cos())));
 			},
 
 			//tangent
 			't' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, na.tan())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, na.tan())));
 			},
 
 			//arc-sine
 			'U' => {
 				if na.clone().abs()>1 {
 					eprintln!("! U: Arc-sine of value outside [-1,1]");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.asin())));
+					st.mstk.push(Obj::N(Float::with_val(st.w, na.asin())));
 				}
 			},
 
@@ -1361,59 +1324,59 @@ unsafe fn exec(commands: String) {
 			'Y' => {
 				if na.clone().abs()>1 {
 					eprintln!("! Y: Arc-cosine of value outside [-1,1]");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, na.acos())));
+					st.mstk.push(Obj::N(Float::with_val(st.w, na.acos())));
 				}
 			},
 
 			//arc-tangent
 			'T' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, na.atan())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, na.atan())));
 			},
 
 			//random integer [0;a)
 			'N' => {
-				let int = int(na);
+				let int = round(na);
 				if int<=0 {
 					eprintln!("! N: Upper bound for random value must be above 0");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, int.random_below(&mut RNG[0]))));
+					st.mstk.push(Obj::N(Float::with_val(st.w, int.random_below(&mut st.rng))));
 				}
 			},
 
 			//constant/conversion factor lookup or convert number to string
 			'"' => {
 				if !svari {
-					MSTK.push(Obj::S(flt_to_str(na.clone(), PARAMS.o(), PARAMS.k())));
+					st.mstk.push(Obj::S(flt_to_str(na.clone(), st.par.o(), st.par.k())));
 				}
 				else {
 					match sa.matches(' ').count() {
 						0 => {	//normal lookup
-							if let Some(res) = get_constant(WPREC, &sa) {
-								MSTK.push(Obj::N(res));
+							if let Some(res) = get_constant(st.w, &sa) {
+								st.mstk.push(Obj::N(res));
 							}
 							else {
 								eprintln!("! \": Constant/conversion factor not found");
-								MSTK.push(a);
+								st.mstk.push(a);
 							}
 						},
 						1 => {	//conversion shorthand, left divided by right
 							let (sl, sr) = sa.split_once(' ').unwrap();
-							if let (Some(nl), Some(nr)) = (get_constant(WPREC, sl), get_constant(WPREC, sr)) {
-								MSTK.push(Obj::N(nl/nr));
+							if let (Some(nl), Some(nr)) = (get_constant(st.w, sl), get_constant(st.w, sr)) {
+								st.mstk.push(Obj::N(nl/nr));
 							}
 							else {
 								eprintln!("! \": Constant/conversion factor not found");
-								MSTK.push(a);
+								st.mstk.push(a);
 							}
 						},
 						_ => {
 							eprintln!("! \": Too many spaces in constant/conversion query");
-							MSTK.push(a);
+							st.mstk.push(a);
 						},
 					}
 				}
@@ -1421,61 +1384,62 @@ unsafe fn exec(commands: String) {
 
 			//deg -> rad shorthand
 			'°' => {
-				MSTK.push(Obj::N(na * Float::with_val(WPREC, Constant::Pi) / 180));
+				st.mstk.push(Obj::N(na * Float::with_val(st.w, Constant::Pi) / 180));
 			},
 			/*------------------------
 				STACK MANIPULATION
 			------------------------*/
 			//clear stack
 			'c' => {
-				MSTK.clear();
+				st.mstk.clear();
 			},
 
 			//remove top a objects from stack
 			'C' => {
-				let int = int(na);
+				let int = round(na);
 				if let Some(mut num) = int.to_usize() {
-					if num>MSTK.len() { num = MSTK.len(); }	//limit clear count
-					MSTK.truncate(MSTK.len()-num);
+					if num>st.mstk.len() { num = st.mstk.len(); }	//limit clear count
+					st.mstk.truncate(st.mstk.len()-num);
 				}
 				else {
 					eprintln!("! C: Cannot possibly remove {int} objects from the main stack");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//duplicate top of stack
 			'd' => {
-				if MSTK.is_empty() {
+				if st.mstk.is_empty() {
 					eprintln!("! d: Nothing to duplicate");
 				}
 				else {
-					MSTK.extend_from_within(MSTK.len()-1..);
+					st.mstk.extend_from_within(st.mstk.len()-1..);
 				}
 			},
 
 			//duplicate top a objects
 			'D' => {
-				let int = int(na);
+				let int = round(na);
 				if let Some(num) = int.to_usize() {
-					if num<=MSTK.len() {
-						MSTK.extend_from_within(MSTK.len()-num..);
+					if num<=st.mstk.len() {
+						st.mstk.extend_from_within(st.mstk.len()-num..);
 					}
 					else {
 						eprintln!("! D: Not enough objects to duplicate");
-						MSTK.push(a);
+						st.mstk.push(a);
 					}
 				}
 				else {
 					eprintln!("! D: Cannot possibly duplicate {int} objects");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//swap top 2 objects
 			'r' => {
-				if MSTK.len()>=2 {
-					MSTK.swap(MSTK.len()-2, MSTK.len()-1);
+				let len = st.mstk.len();
+				if len>=2 {
+					st.mstk.swap(len-2, len-1);
 				}
 				else {
 					eprintln!("! r: Not enough objects to swap");
@@ -1484,101 +1448,102 @@ unsafe fn exec(commands: String) {
 
 			//rotate top a objects
 			'R' => {
-				let mut int = int(na);
+				let mut int = round(na);
 				if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
 				if let Some(num) = int.clone().abs().to_usize() {
-					if num<=MSTK.len() {
-						let sl = MSTK.as_mut_slice();
+					let len = st.mstk.len();
+					if num<=len {
+						let sl = st.mstk.as_mut_slice();
 						if int<0 {
-							sl[MSTK.len()-num..].rotate_left(1);	//if negative, rotate left/down
+							sl[len-num..].rotate_left(1);	//if negative, rotate left/down
 						}
 						else {
-							sl[MSTK.len()-num..].rotate_right(1);	//right/up otherwise
+							sl[len-num..].rotate_right(1);	//right/up otherwise
 						}
-						MSTK = sl.to_vec();
+						st.mstk = sl.to_vec();
 					}
 					else {
 						eprintln!("! R: Not enough objects to rotate");
-						MSTK.push(a);
+						st.mstk.push(a);
 					}
 				}
 				else {
 					eprintln!("! R: Cannot possibly rotate {} objects", int.abs());
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//push stack depth
 			'z' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, MSTK.len())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, st.mstk.len())));
 			},
-			/*----------------------------
-				ENVIRONMENT PARAMETERS
-			----------------------------*/
+			/*----------------
+				PARAMETERS
+			----------------*/
 			//set output precision
 			'k' => {
-				if let Err(e) = PARAMS.set_k(int(na)) {
+				if let Err(e) = st.par.set_k(round(na)) {
 					eprintln!("{e}");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//set input base
 			'i' => {
-				if let Err(e) = PARAMS.set_i(int(na)) {
+				if let Err(e) = st.par.set_i(round(na)) {
 					eprintln!("{e}");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//set output base
 			'o' => {
-				if let Err(e) = PARAMS.set_o(int(na)) {
+				if let Err(e) = st.par.set_o(round(na)) {
 					eprintln!("{e}");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//set working precision
 			'w' => {
-				let i = int(na);
+				let i = round(na);
 				if let (Some(u), false) = (i.to_u32(), i==0u8) {
-					WPREC = u;
+					st.w = u;
 				}
 				else {
 					eprintln!("! w: Working precision must be in range 1 ≤ W ≤ {}", u32::MAX);
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//push output precision
 			'K' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, PARAMS.k())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, st.par.k())));
 			},
 
 			//push input base
 			'I' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, PARAMS.i())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, st.par.i())));
 			},
 
 			//push output base
 			'O' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, PARAMS.o())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, st.par.o())));
 			},
 
 			//push working precision
 			'W' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, WPREC)));
+				st.mstk.push(Obj::N(Float::with_val(st.w, st.w)));
 			},
 
 			//create new k,i,o context
 			'{' => {
-				PARAMS.create();
+				st.par.create();
 			},
 
 			//revert to previous context
 			'}' => {
-				PARAMS.destroy();
+				st.par.destroy();
 			},
 			/*---------------
 				REGISTERS
@@ -1586,10 +1551,7 @@ unsafe fn exec(commands: String) {
 			//save to top of register
 			's' => {
 				if reg.is_empty() {
-					reg.push(RegObj {
-						o: a,
-						a: Vec::new()
-					});
+					reg.push(RegObj{o: a, a: Vec::new()});
 				}
 				else {
 					reg.last_mut().unwrap().o = a;
@@ -1603,21 +1565,21 @@ unsafe fn exec(commands: String) {
 
 			//load from top of register
 			'l' => {
-				if reg.is_empty() {
-					eprintln!("! l: Register # {rnum} is empty");
+				if let Some(ro) = reg.last() {
+					st.mstk.push(ro.o.clone());
 				}
 				else {
-					MSTK.push(reg.last().unwrap().o.clone());
+					eprintln!("! l: Register # {rnum} is empty");
 				}
 			},
 
 			//pop from top of register
 			'L' => {
-				if reg.is_empty() {
-					eprintln!("! L: Register # {rnum} is empty");
+				if let Some(ro) = reg.pop() {
+					st.mstk.push(ro.o);
 				}
 				else {
-					MSTK.push(reg.pop().unwrap().o);
+					eprintln!("! L: Register # {rnum} is empty");
 				}
 			},
 
@@ -1629,7 +1591,7 @@ unsafe fn exec(commands: String) {
 						a: Vec::new()
 					});
 				}
-				let int = int(nb);
+				let int = round(nb);
 				if let Some(rai) = int.to_usize() {
 					if rai>=reg.last().unwrap().a.len() {
 						reg.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
@@ -1638,8 +1600,8 @@ unsafe fn exec(commands: String) {
 				}
 				else {
 					eprintln!("! :: Cannot possibly save to array index {int}");
-					MSTK.push(a);
-					MSTK.push(b);
+					st.mstk.push(a);
+					st.mstk.push(b);
 				}
 			},
 
@@ -1651,55 +1613,48 @@ unsafe fn exec(commands: String) {
 						a: Vec::new()
 					});
 				}
-				let int = int(na);
+				let int = round(na);
 				if let Some(rai) = int.to_usize() {
 					if rai>=reg.last().unwrap().a.len() {
 						reg.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
 					}
-					MSTK.push(reg.last().unwrap().a[rai].clone());
+					st.mstk.push(reg.last().unwrap().a[rai].clone());
 				}
 				else {
 					eprintln!("! ;: Cannot possibly load from array index {int}");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
 			//pop top-of-reg into buffer
 			'b' => {
-				if reg.is_empty() {
-					eprintln!("! b: Register # {rnum} is empty");
+				if let Some(ro) = reg.pop() {
+					st.ro_buf = ro;
 				}
 				else {
-					RO_BUF = reg.pop().unwrap();
+					eprintln!("! b: Register # {rnum} is empty");
 				}
 			},
 
 			//push buffer to register
 			'B' => {
-				reg.push(RO_BUF.clone());
+				reg.push(st.ro_buf.clone());
 			},
 
 			//push register depth
 			'Z' => {
-				MSTK.push(Obj::N(Float::with_val(WPREC, reg.len())));
+				st.mstk.push(Obj::N(Float::with_val(st.w, reg.len())));
 			},
 
-			//specify direct register selector
+			//specify manual register pointer
 			',' => {
 				let int = if !svari {
-					int(na)	//from number
+					round(na)	//from number
 				}
 				else {
 					Integer::from_digits(sa.as_bytes(), Order::Msf)	//from string bytes
 				};
-				DRS = Some(
-					if let Some(u) = int.to_u16() {
-						RegIdx::Low(u)
-					}
-					else {
-						RegIdx::High(int)
-					}
-				);
+				st.rptr = Some(int);
 			},
 			/*------------
 				MACROS
@@ -1707,37 +1662,37 @@ unsafe fn exec(commands: String) {
 			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
 				if !svari {
-					let ia = int(na).to_u32_wrapping();
+					let ia = round(na).to_u32_wrapping();
 					if let Some(res) = char::from_u32(ia) {
-						MSTK.push(Obj::S(res.to_string()));
+						st.mstk.push(Obj::S(res.to_string()));
 					}
 					else {
 						eprintln!("! a: Unable to convert number {ia} to character: not a valid Unicode value");
-						MSTK.push(a);
+						st.mstk.push(a);
 					}
 				}
 				else if sa.is_empty() {
 					eprintln!("! a: Cannot convert empty string to number");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, sa.chars().next().unwrap() as u32)));
+					st.mstk.push(Obj::N(Float::with_val(st.w, sa.chars().next().unwrap() as u32)));
 				}
 			},
 
 			//convert number to UTF-8 string or back
 			'A' => {
 				if !svari {
-					if let Ok(res) = String::from_utf8(int(na.clone()).to_digits::<u8>(Order::Msf)) {
-						MSTK.push(Obj::S(res));
+					if let Ok(res) = String::from_utf8(round(na.clone()).to_digits::<u8>(Order::Msf)) {
+						st.mstk.push(Obj::S(res));
 					}
 					else {
-						eprintln!("! A: Unable to convert number {} to string: not a valid UTF-8 sequence", int(na));
-						MSTK.push(a);
+						eprintln!("! A: Unable to convert number {} to string: not a valid UTF-8 sequence", round(na));
+						st.mstk.push(a);
 					}
 				}
 				else {
-					MSTK.push(Obj::N(Float::with_val(WPREC, Integer::from_digits(sa.as_bytes(), Order::Msf))));
+					st.mstk.push(Obj::N(Float::with_val(st.w, Integer::from_digits(sa.as_bytes(), Order::Msf))));
 				}
 			},
 
@@ -1749,7 +1704,7 @@ unsafe fn exec(commands: String) {
 						}
 						cmdstk.push(sa.chars().rev().collect());
 				} else {
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
@@ -1784,7 +1739,7 @@ unsafe fn exec(commands: String) {
 
 			//auto-macro
 			'X' => {
-				let int = int(nb);
+				let int = round(nb);
 				if let Some(reps) = int.to_usize() {
 					if cmdstk.last().unwrap().is_empty() {
 						cmdstk.pop();	//optimize tail call
@@ -1793,22 +1748,22 @@ unsafe fn exec(commands: String) {
 				}
 				else {
 					eprintln!("! X: Cannot possibly repeat a macro {int} times");
-					MSTK.push(a);
-					MSTK.push(b);
+					st.mstk.push(a);
+					st.mstk.push(b);
 				}
 			},
 
 			//quit dcim
 			'q' => {
 				std::process::exit(
-					if let Some(RegIdx::Low(u)) = DRS {u as i32}
+					if let Some(i) = &st.rptr {i.to_i32_wrapping()}
 					else {0}
 				);
 			},
 
 			//quit a macro calls
 			'Q' => {
-				let int = int(na);
+				let int = round(na);
 				if let Some(mut num) = int.to_usize() {
 					if num>cmdstk.len() {num=cmdstk.len();}
 					cmdstk.truncate(cmdstk.len()-num);
@@ -1818,7 +1773,7 @@ unsafe fn exec(commands: String) {
 				}
 				else {
 					eprintln!("! Q: Cannot possibly quit {int} levels");
-					MSTK.push(a);
+					st.mstk.push(a);
 				}
 			},
 
@@ -1846,7 +1801,7 @@ unsafe fn exec(commands: String) {
 					},
 					Err(err) => {
 						eprintln!("! &: Unable to read file \"{sa}\": {err}");
-						MSTK.push(a);
+						st.mstk.push(a);
 					},
 				}
 			},
@@ -1855,11 +1810,11 @@ unsafe fn exec(commands: String) {
 			'$' => {
 				match std::env::var(sa.clone()) {
 					Ok(val) => {
-						MSTK.push(Obj::S(val));
+						st.mstk.push(Obj::S(val));
 					},
 					Err(err) => {
 						eprintln!("! $: Unable to get value of ${sa}: {err}");
-						MSTK.push(a);
+						st.mstk.push(a);
 					},
 				}
 			},
@@ -1882,7 +1837,7 @@ unsafe fn exec(commands: String) {
 							},
 							Err(err) => {
 								eprintln!("! \\: Unable to execute OS command \"{oscmd}\": {err}");
-								MSTK.push(a.clone());
+								st.mstk.push(a.clone());
 							},
 						}
 					}
