@@ -614,9 +614,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 fn exec(st: &mut State, commands: String) {
 	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
-	if !commands.is_empty() {	//loop expects contents, do nothing if none provided
-		cmdstk.push(commands.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
-	}
+	cmdstk.push(commands.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
@@ -652,98 +650,97 @@ fn exec(st: &mut State, commands: String) {
 
 		let (mut na, mut nb, mut nc) = (Float::new(1), Float::new(1), Float::new(1));	//number slots
 		let (mut sa, mut sb, mut sc) = (String::new(), String::new(), String::new());	//string slots
-		let mut svari = false;	//string variant of overloaded command is used
+		let mut svari = false;	//use string variant of overloaded command
 
-		if !(	//check and destructure Objs
-			match sig {
-				CmdSig::Nil => true,
+		if
+			match sig {	//check and destructure Objs
+				CmdSig::Nil => false,
 				CmdSig::Ax => match &a {
 					Obj::N(x) => {
 						na = x.clone();
-						true
+						false
 					},
 					Obj::S(x) => {
 						sa = x.clone();
-						svari = true;
-						true
+						svari = false;
+						false
 					}
 				},
 				CmdSig::An => match &a {
 					Obj::N(x) => {
 						na = x.clone();
-						true
+						false
 					},
-					_ => false
+					_ => true
 				},
 				CmdSig::As => match &a {
 					Obj::S(x) => {
 						sa = x.clone();
-						true
+						false
 					},
-					_ => false
+					_ => true
 				},
 				CmdSig::AxBx => match (&a, &b) {
 					(Obj::N(x), Obj::N(y)) => {
 						na = x.clone();
 						nb = y.clone();
-						true
+						false
 					},
 					(Obj::S(x), Obj::S(y)) => {
 						sa = x.clone();
 						sb = y.clone();
-						svari = true;
-						true
+						svari = false;
+						false
 					},
-					_ => false
+					_ => true
 				},
 				CmdSig::AxBn => match (&a, &b) {
 					(Obj::N(x), Obj::N(y)) => {
 						na = x.clone();
 						nb = y.clone();
-						true
+						false
 					},
 					(Obj::S(x), Obj::N(y)) => {
 						sa = x.clone();
 						nb = y.clone();
-						svari = true;
-						true
+						svari = false;
+						false
 					},
-					_ => false
+					_ => true
 				},
 				CmdSig::AnBn => match (&a, &b) {
 					(Obj::N(x), Obj::N(y)) => {
 						na = x.clone();
 						nb = y.clone();
-						true
+						false
 					},
-					_ => false
+					_ => true
 				},
 				CmdSig::AsBn => match (&a, &b) {
 					(Obj::S(x), Obj::N(y)) => {
 						sa = x.clone();
 						nb = y.clone();
-						true
+						false
 					},
-					_ => false
+					_ => true
 				},
 				CmdSig::AxBxCx => match (&a, &b, &c) {
 					(Obj::N(x), Obj::N(y), Obj::N(z)) => {
 						na = x.clone();
 						nb = y.clone();
 						nc = z.clone();
-						true
+						false
 					},
 					(Obj::S(x), Obj::S(y), Obj::S(z)) => {
 						sa = x.clone();
 						sb = y.clone();
 						sc = z.clone();
-						svari = true;
-						true
+						svari = false;
+						false
 					},
-					_ => false
+					_ => true
 				},
 			}
-		)
 		{
 			eprintln!("! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct());
 			match adi {	//push Objs back
