@@ -662,7 +662,7 @@ fn exec(st: &mut State, commands: String) {
 					},
 					Obj::S(x) => {
 						sa = x.clone();
-						svari = false;
+						svari = true;
 						false
 					}
 				},
@@ -689,7 +689,7 @@ fn exec(st: &mut State, commands: String) {
 					(Obj::S(x), Obj::S(y)) => {
 						sa = x.clone();
 						sb = y.clone();
-						svari = false;
+						svari = true;
 						false
 					},
 					_ => true
@@ -703,7 +703,7 @@ fn exec(st: &mut State, commands: String) {
 					(Obj::S(x), Obj::N(y)) => {
 						sa = x.clone();
 						nb = y.clone();
-						svari = false;
+						svari = true;
 						false
 					},
 					_ => true
@@ -735,7 +735,7 @@ fn exec(st: &mut State, commands: String) {
 						sa = x.clone();
 						sb = y.clone();
 						sc = z.clone();
-						svari = false;
+						svari = true;
 						false
 					},
 					_ => true
@@ -771,16 +771,16 @@ fn exec(st: &mut State, commands: String) {
 						cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');
 					}
 					//keep adding to numstr until number is finished
-					'STDNUM_FINISHED: loop {
+					loop {
 						//numbers, periods and exponential notation
 						if cmd.is_ascii_digit()||cmd == '.'||cmd == '@' {
-							if cmd == '.' { if frac { break 'STDNUM_FINISHED; } else { frac = true; } } //break on encountering second '.'
+							if cmd == '.' { if frac { break; } else { frac = true; } } //break on encountering second '.'
 							if cmd == '@' { neg = false; }	//allow for second negative sign in exponent
 							numstr.push(cmd);						
 						}
 						//'_' needs to be replaced with '-'
 						else if cmd == '_' {
-							if neg { break 'STDNUM_FINISHED; } else { neg = true; } //break on encountering second '_'
+							if neg { break; } else { neg = true; } //break on encountering second '_'
 							numstr.push('-');
 						}
 						//parse letters if number is prefixed with quote
@@ -789,11 +789,11 @@ fn exec(st: &mut State, commands: String) {
 								numstr.push(cmd);							
 							}
 							else {
-								break 'STDNUM_FINISHED;
+								break;
 							}
 						}
 						else {
-							break 'STDNUM_FINISHED;
+							break;
 						}
 						cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');
 					}
