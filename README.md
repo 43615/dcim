@@ -34,17 +34,17 @@ export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 ```
 
 ## Most important changes compared to GNU dc
-- Shell argument syntax has been expanded, run `dcim -h` to learn more.
+- Expanded shell argument syntax, run `dcim -h` to learn more.
 - Default (interactive/shell) mode now has a prompt indicator.
 - Error messages are much more helpful and differentiated, and are always prefixed with `! `.
-- When semantic errors occur, all used objects are returned to the stack.
+- When type/semantic errors occur, all used objects are returned to the stack.
 - Numbers are binary floats with user-changeable precision (`W`). The parameter `K` only applies to output.
 - Strings have full Unicode support (stored in UTF-8).
-- Several new arithmetic and string manipulation commands have been added.
+- Several new arithmetic and string manipulation commands.
 - Niladic (non-popping) printing commands print brackets around strings for clarity.
 - Commands that need integers round numbers towards zero (discarding the fractional part).
 - Number input/output bases are unlimited upwards, bases above 36 use a custom "any-base" notation.
 - The amount of registers provided is now unlimited.
 - Arbitrary registers can be selected with a "register pointer" command.
 - Nonexistent register array objects are initialized with empty strings.
-- There is a library of various constants and unit conversion factors.
+- A library of various named constants and unit conversion factors.
