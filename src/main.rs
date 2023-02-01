@@ -1,4 +1,3 @@
-use std::fmt;
 use std::io::{stdout, Write};
 use std::time::{SystemTime, Duration};
 use std::collections::{HashSet, HashMap};
@@ -105,28 +104,28 @@ impl ParamStk {
 	}
 
 	///checked edit of current output precision
-	fn set_k(&mut self, n: Integer) -> Result<(), ParamError> {
+	fn set_k(&mut self, n: Integer) -> Result<(), &str> {
 		if n>=-1 {
 			self.0.last_mut().unwrap().0 = n;
 			Ok(())
 		}
-		else {Err(ParamError::K)}
+		else {Err("! k: Output precision must be at least -1")}
 	}
 	///checked edit of current input base
-	fn set_i(&mut self, n: Integer) -> Result<(), ParamError> {
+	fn set_i(&mut self, n: Integer) -> Result<(), &str> {
 		if n>=2 {
 			self.0.last_mut().unwrap().1 = n;
 			Ok(())
 		}
-		else {Err(ParamError::I)}
+		else {Err("! i: Input base must be at least 2")}
 	}
 	///checked edit of current output base
-	fn set_o(&mut self, n: Integer) -> Result<(), ParamError> {
+	fn set_o(&mut self, n: Integer) -> Result<(), &str> {
 		if n>=2 {
 			self.0.last_mut().unwrap().2 = n;
 			Ok(())
 		}
-		else {Err(ParamError::O)}
+		else {Err("! o: Output base must be at least 2")}
 	}
 	
 	///current output precision
@@ -135,20 +134,6 @@ impl ParamStk {
 	fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
 	///current output base
 	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
-}
-///printable errors of ParamStk setters
-#[repr(u8)]
-enum ParamError {
-	K, I, O
-}
-impl fmt::Display for ParamError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", match self {
-			Self::K => "! k: Output precision must be at least -1",
-			Self::I => "! i: Input base must be at least 2",
-			Self::O => "! o: Output base must be at least 2",
-		})
-	}
 }
 
 ///default register, const required for array init
@@ -616,6 +601,7 @@ fn exec(st: &mut State, commands: String) {
 	let mut inv = false;	//invert next comparison
 	cmdstk.push(commands.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
+
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
 		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');	//get next command
@@ -805,7 +791,7 @@ fn exec(st: &mut State, commands: String) {
 					if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
 					if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
 					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
-					match Float::parse_radix(numstr.clone(), st.par.i().to_i32().unwrap()) {		
+					match Float::parse_radix(numstr.clone(), st.par.i().to_i32().unwrap()) {
 						Ok(res) => {
 							st.mstk.push(Obj::N(Float::with_val(st.w, res)));
 						},
