@@ -627,10 +627,14 @@ fn exec(st: &mut State, commands: String) {
 				eprintln!("! Command '{cmd}' needs a register number");
 				continue;
 			};
-			if !st.regs.contains_key(&i) {
-				st.regs.insert(i.clone(), REG_DEF);	//touch reg
-			}
-			(st.regs.get_mut(&i).unwrap(), i)
+			(
+				if let Some(r) = st.regs.get_mut(&i) {r}
+				else {
+					st.regs.insert(i.clone(), REG_DEF);
+					st.regs.get_mut(&i).unwrap()
+				},
+				i
+			)
 		}
 		else {(&mut dummy_reg, Integer::ZERO)};	//no register needed
 
