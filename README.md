@@ -11,7 +11,7 @@
 
 This readme only mentions changes compared to GNU dc. If you're unfamiliar with its core principles, read its man page or [the Wikipedia article](https://en.wikipedia.org/wiki/dc_(computer_program)).
 
-[**Complete documentation in the wiki**](../../wiki)
+[**Complete documentation in the wiki**](https://github.com/43615/dcim/wiki)
 
 ## Building
 (Assuming complete and up-to-date build environment)
