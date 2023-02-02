@@ -104,7 +104,7 @@ impl ParamStk {
 	}
 
 	///checked edit of current output precision
-	fn set_k(&mut self, n: Integer) -> Result<(), &str> {
+	fn set_k(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=-1 {
 			self.0.last_mut().unwrap().0 = n;
 			Ok(())
@@ -112,7 +112,7 @@ impl ParamStk {
 		else {Err("! k: Output precision must be at least -1")}
 	}
 	///checked edit of current input base
-	fn set_i(&mut self, n: Integer) -> Result<(), &str> {
+	fn set_i(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=2 {
 			self.0.last_mut().unwrap().1 = n;
 			Ok(())
@@ -120,7 +120,7 @@ impl ParamStk {
 		else {Err("! i: Input base must be at least 2")}
 	}
 	///checked edit of current output base
-	fn set_o(&mut self, n: Integer) -> Result<(), &str> {
+	fn set_o(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=2 {
 			self.0.last_mut().unwrap().2 = n;
 			Ok(())
@@ -160,6 +160,55 @@ struct State<'a> {
 ///standard rounding function: discard fractional part if finite, default to 0 otherwise
 fn round(n: Float) -> Integer {
 	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
+}
+
+///parse any-base number
+fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static str> {
+	let (mut mstr, estr) = match src.split(['@', 'e', 'E']).collect::<Vec<&str>>()[..] {	//split at exponential symbol
+		[m] => (m, "0"),
+		[m, e] => (m, e),
+		_ => {return Err("more than one exponential part");}	//x@y@z not allowed
+	};
+
+	let mneg = if let Some(s) = mstr.strip_prefix(['-', '_']) {	//get negative sign out of the way
+		mstr = s;
+		true
+	}
+	else {false};
+
+	let exp = if let Ok(i) = Integer::parse(estr.replace('_', "-")) {
+		Float::with_val(prec, &base).pow(i.complete())	//final exponent
+	}
+	else {return Err("invalid exponential part");};
+
+	let mut man = Integer::from(0);	//resulting mantissa
+	let mut scale = Integer::from(1);	//scale to divide by
+	let mut frac = false;	//. has occurred
+	
+	for mut dig in mstr.split_inclusive([' ', '.']) {	//split into digits, scan from the left:
+		
+		man *= &base;	//multiply existing mantissa by base
+		if frac {scale *= &base;}	//counter scale-up if fractional part has started
+		
+		if let Some(d) = dig.strip_suffix('.') {	//digit followed by .
+			if frac {return Err("more than one '.'");}
+			frac = true;
+			dig = d;
+		}
+		
+		let di = if let Ok(i) = Integer::parse(String::from('0')+dig) {i.complete()}
+		else {return Err("invalid character in digit");};
+		
+		if di >= base {return Err("digit too high for input base");}
+		
+		man += di;	//add new digit
+	}
+
+	if mneg {man *= -1;}
+
+	Ok(
+		Float::with_val(prec, man) / scale * exp
+	)
 }
 
 fn main() {
@@ -804,140 +853,15 @@ fn exec(st: &mut State, commands: String) {
 
 			//any-base number input
 			'(' => {
-				let mut num = Integer::from(0);	//resulting number
-				if cmdstk.last().unwrap().is_empty() {
-					st.mstk.push(Obj::N(Float::with_val(st.w, num)));	//default to 0 if on end of input
+				let mut to_parse = String::new();
+				cmd = cmdstk.last_mut().unwrap().pop().unwrap_or(')');	//overwrite opening parenthesis, close if nothing left
+				while cmd != ')' {
+					to_parse.push(cmd);
+					cmd = cmdstk.last_mut().unwrap().pop().unwrap_or(')');
 				}
-				else {
-					let ibase = st.par.i();
-					let mut dig = String::new();	//digit being parsed
-					let mut neg = false;	//number negative?
-					let mut frac = false;	//fractional separator has occurred
-					let mut scale = Integer::from(1);	//scale to divide by, for non-integers
-					let mut exp = false;	//exponential symbol has occurred
-					'CANCEL_ABNUM: loop {
-						cmd = if let Some(c) = cmdstk.last_mut().unwrap().pop() {c} else {')'};	//get next character, finish number if not possible
-						match cmd {
-							'0'..='9' => {
-								dig.push(cmd);	//add numerals to digit
-							},
-							'-'|'_' => {
-								if neg {
-									eprintln!("! Unable to parse any-base number: more than one negative sign");
-									if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
-										cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
-									}
-									else {
-										cmdstk.last_mut().unwrap().clear();
-									}
-									break;
-								}
-								neg = true;
-							},
-							'.' => {
-								if frac {
-									eprintln!("! Unable to parse any-base number: more than one fractional separator");
-									if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
-										cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
-									}
-									else {
-										cmdstk.last_mut().unwrap().clear();
-									}
-									break;
-								}
-								frac = true;
-								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration
-							},
-							'@' => {
-								exp = true;
-								cmdstk.last_mut().unwrap().push(' ');	//end digit in next iteration, exponent handled by finalizer
-							},
-							' '|')' => {	//if digit or whole number is finished
-								let digint = if dig.clone().is_empty() {Integer::ZERO} else {Integer::parse(dig.clone()).unwrap().complete()};	//parse digit, default to 0
-								if digint >= ibase {
-									eprintln!("! Unable to parse any-base number: digit '{digint}' is too high for base {ibase}");
-									if cmd==')' {break;}
-									else {
-										if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
-											cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
-										}
-										else {
-											cmdstk.last_mut().unwrap().clear();
-										}
-										break;
-									}
-								}
-								num *= ibase.clone();	//add digit to number: multiply old contents by radix...
-								num += digint;	//... and add new digit
-								dig.clear();
-								if frac {
-									scale *= ibase.clone();	//if fractional part has started, make scale keep up
-								}
-								let escale =	//power applied to input base for exponential notation
-								if exp {	//if exponential part has begun
-									let mut epart = String::new();
-									let mut eneg = false;
-									while !cmdstk.last().unwrap().is_empty() {
-										cmd = cmdstk.last_mut().unwrap().pop().unwrap();
-										match cmd {
-											'0'..='9' => {
-												epart.push(cmd);
-											},
-											'-'|'_' => {
-												if eneg {
-													eprintln!("! Unable to parse any-base number: more than one negative sign in exponent");
-													if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
-														cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
-													}
-													else {
-														cmdstk.last_mut().unwrap().clear();
-													}
-													break 'CANCEL_ABNUM;
-												}
-												epart.insert(0, '-');
-												eneg = true;
-											},
-											')' => {
-												break;
-											},
-											_ => {
-												eprintln!("! Unable to parse any-base number: invalid character '{cmd}' in exponent");
-												if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
-													cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
-												}
-												else {
-													cmdstk.last_mut().unwrap().clear();
-												}
-												break 'CANCEL_ABNUM;
-											},
-										}
-									}
-									Integer::parse(epart).unwrap().complete()
-								}
-								else {
-									Integer::from(0)
-								};
-								if cmd==')' {	//if number finished, push to stack
-									if scale>1 {
-										scale /= ibase.clone();	//correct off-by-one error
-									}
-									st.mstk.push(Obj::N(Float::with_val(st.w, num * if neg {-1} else {1}) / scale
-										* Float::with_val(st.w, ibase).pow(escale)));
-									break;
-								}
-							},
-							_ => {
-								eprintln!("! Invalid character in any-base number: '{cmd}'");
-								if let Some(idx) = cmdstk.last().unwrap().rfind(')') {
-									cmdstk.last_mut().unwrap().truncate(idx);	//remove rest of erroneous number
-								}
-								else {
-									cmdstk.last_mut().unwrap().clear();
-								}
-								break;
-							},
-						}
-					}
+				match parse_abnum(to_parse, st.par.i(), st.w) {
+					Ok(n) => {st.mstk.push(Obj::N(n));}
+					Err(e) => {eprintln!("! Unable to parse any-base number: {e}");}
 				}
 			},
 
