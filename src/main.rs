@@ -1,6 +1,6 @@
 use std::io::{stdout, Write};
 use std::time::{SystemTime, Duration};
-use std::collections::{HashSet, HashMap};
+use std::collections::{VecDeque, HashSet, HashMap};
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
 use rand::{RngCore, rngs::OsRng};
 use read_input::prelude::*;
@@ -645,19 +645,18 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 }
 
 ///CORE EXECUTION ENGINE
-fn exec(st: &mut State, commands: String) {
-	let mut cmdstk: Vec<String> = Vec::new();	//stack of reversed command strings to execute, enables pseudorecursive macro calls
+fn exec(st: &mut State, cmds_in: String) {
+	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds_in.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
-	cmdstk.push(commands.chars().rev().collect());	//all command strings are reversed since pop() is O(1)
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
 
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
-		let mut cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');	//get next command
+		let mut cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');	//get next command
 
 		let (reg, rnum): (&mut Vec<RegObj>, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
 			let i = if let Some(i) = st.rptr.take() {i}	//take from reg ptr
-			else if let Some(c) = cmdstk.last_mut().unwrap().pop() {Integer::from(c as u32)}	//steal next command char
+			else if let Some(c) = cmdstk.last_mut().unwrap().pop_front() {Integer::from(c as u32)}	//steal next command char
 			else {
 				eprintln!("! Command '{cmd}' needs a register number");
 				continue;
@@ -807,7 +806,7 @@ fn exec(st: &mut State, commands: String) {
 					let mut alpha = false;	//letters are used
 					if cmd == '\'' {
 						alpha = true;
-						cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');
+						cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');
 					}
 					//keep adding to numstr until number is finished
 					loop {
@@ -834,9 +833,9 @@ fn exec(st: &mut State, commands: String) {
 						else {
 							break;
 						}
-						cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');
+						cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');
 					}
-					cmdstk.last_mut().unwrap().push(cmd);	//restore first char that isn't part of the number
+					cmdstk.last_mut().unwrap().push_front(cmd);	//restore first char that isn't part of the number
 					if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
 					if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
 					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
@@ -854,10 +853,10 @@ fn exec(st: &mut State, commands: String) {
 			//any-base number input
 			'(' => {
 				let mut to_parse = String::new();
-				cmd = cmdstk.last_mut().unwrap().pop().unwrap_or(')');	//overwrite opening parenthesis, close if nothing left
+				cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or(')');	//overwrite opening parenthesis, close if nothing left
 				while cmd != ')' {
 					to_parse.push(cmd);
-					cmd = cmdstk.last_mut().unwrap().pop().unwrap_or(')');
+					cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or(')');
 				}
 				match parse_abnum(to_parse, st.par.i(), st.w) {
 					Ok(n) => {st.mstk.push(Obj::N(n));}
@@ -869,7 +868,7 @@ fn exec(st: &mut State, commands: String) {
 			'[' => {
 				let mut res = String::new();	//result string
 				let mut nest: usize = 1;	//nesting level
-				cmd = cmdstk.last_mut().unwrap().pop().unwrap_or('\0');	//overwrite opening bracket, null if nothing left
+				cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');	//overwrite opening bracket, null if nothing left
 				loop {
 					res.push(cmd);
 					if cmd == '[' { nest+=1; }
@@ -883,7 +882,7 @@ fn exec(st: &mut State, commands: String) {
 						eprintln!("! Unable to parse string \"[{res}\": missing closing bracket");
 						break;
 					}
-					else {cmd = cmdstk.last_mut().unwrap().pop().unwrap();}
+					else {cmd = cmdstk.last_mut().unwrap().pop_front().unwrap();}
 				}
 			},
 			/*--------------
@@ -1613,7 +1612,7 @@ fn exec(st: &mut State, commands: String) {
 						if cmdstk.last().unwrap().is_empty() {
 							cmdstk.pop();	//optimize tail call
 						}
-						cmdstk.push(sa.chars().rev().collect());
+						cmdstk.push(sa.chars().collect());
 				} else {
 					st.mstk.push(a);
 				}
@@ -1639,7 +1638,7 @@ fn exec(st: &mut State, commands: String) {
 						if cmdstk.last().unwrap().is_empty() {
 							cmdstk.pop();	//optimize tail call
 						}
-						cmdstk.push(mac.chars().rev().collect());
+						cmdstk.push(mac.chars().collect());
 					}
 				}
 				else {
@@ -1679,7 +1678,7 @@ fn exec(st: &mut State, commands: String) {
 					if num>cmdstk.len() {num=cmdstk.len();}
 					cmdstk.truncate(cmdstk.len()-num);
 					if cmdstk.is_empty() {
-						cmdstk.push(String::new());	//guarantee at least one object
+						cmdstk.push(VecDeque::new());	//guarantee at least one object
 					}
 				}
 				else {
@@ -1694,7 +1693,7 @@ fn exec(st: &mut State, commands: String) {
 				if cmdstk.last().unwrap().is_empty() {
 					cmdstk.pop();	//optimize tail call
 				}
-				cmdstk.push(prompt_in.chars().rev().collect());
+				cmdstk.push(prompt_in.chars().collect());
 			},
 			/*----------
 				MISC
@@ -1708,7 +1707,7 @@ fn exec(st: &mut State, commands: String) {
 							script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 							script_nc.push('\n');
 						}
-						cmdstk.push(script_nc.chars().rev().collect());
+						cmdstk.push(script_nc.chars().collect());
 					},
 					Err(err) => {
 						eprintln!("! &: Unable to read file \"{sa}\": {err}");
