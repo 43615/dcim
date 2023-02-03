@@ -1308,8 +1308,9 @@ fn exec(st: &mut State, cmds_in: String) {
 			'C' => {
 				let int = round(na);
 				if let Some(mut num) = int.to_usize() {
-					if num>st.mstk.len() { num = st.mstk.len(); }	//limit clear count
-					st.mstk.truncate(st.mstk.len()-num);
+					let len = st.mstk.len();
+					if num>len { num = len; }	//limit clear count
+					st.mstk.truncate(len-num);
 				}
 				else {
 					eprintln!("! C: Cannot possibly remove {int} objects from the main stack");
@@ -1675,8 +1676,9 @@ fn exec(st: &mut State, cmds_in: String) {
 			'Q' => {
 				let int = round(na);
 				if let Some(mut num) = int.to_usize() {
-					if num>cmdstk.len() {num=cmdstk.len();}
-					cmdstk.truncate(cmdstk.len()-num);
+					let len = cmdstk.len();
+					if num>len {num=len;}
+					cmdstk.truncate(len-num);
 					if cmdstk.is_empty() {
 						cmdstk.push(VecDeque::new());	//guarantee at least one object
 					}
