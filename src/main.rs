@@ -1654,7 +1654,7 @@ fn exec(st: &mut State, cmds_in: String) {
 					if cmdstk.last().unwrap().is_empty() {
 						cmdstk.pop();	//optimize tail call
 					}
-					cmdstk.resize(cmdstk.len()+reps, sa.chars().rev().collect());
+					cmdstk.resize(cmdstk.len()+reps, sa.chars().collect());
 				}
 				else {
 					eprintln!("! X: Cannot possibly repeat a macro {int} times");
