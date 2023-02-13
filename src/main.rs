@@ -370,7 +370,7 @@ impl FltGen {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, man)*Float::with_val(prec, exp).exp10()))
 	}
 
-	///recursive (based on other unit)
+	///recursive (apply function to existing unit)
 	fn rec(que: &'static str, fun: &'static dyn Fn(Float) -> Float) -> Self {
 		Self(Box::new(move |prec: u32| fun(CONSTANTS.get(que).unwrap().0(prec))))
 	}
@@ -415,8 +415,8 @@ lazy_static! {
 		m.insert("pi", FltGen::val(Constant::Pi));
 		m.insert("gamma", FltGen::val(Constant::Euler));
 		m.insert("phi", FltGen(Box::new(|prec| (Float::with_val(prec, 5).sqrt()+1)/2)));
-		for q in ["deg","°"] {m.insert(q, FltGen(Box::new(|prec| Float::with_val(prec, Constant::Pi)/180)));}
-		for q in ["gon","grad"] {m.insert(q, FltGen(Box::new(|prec| Float::with_val(prec, Constant::Pi)/200)));}
+		for q in ["deg","°"] {m.insert(q, FltGen::rec("pi", &|n| n/180));}
+		for q in ["gon","grad"] {m.insert(q, FltGen::rec("pi", &|n| n/200));}
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
