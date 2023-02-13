@@ -42,11 +42,12 @@ Command line options:
 ///basic object: either number or string
 #[derive(Clone)]
 enum Obj {
-	N(Float),
-	S(String)
+	Num(Float),
+	Str(String)
 }
+use Obj::*;
 ///unused/default Obj
-const DUMMY: Obj = Obj::S(String::new());
+const DUMMY: Obj = Str(String::new());
 
 ///register object, may have a dynamic array
 #[derive(Clone)]
@@ -69,23 +70,24 @@ enum CmdSig {
 	AsBn,
 	AxBxCx
 }
+use CmdSig::*;
 impl CmdSig {
 	///english plural ending
 	fn plural(&self) -> &str {
-		if matches!(self, Self::Ax|Self::An|Self::As) {""} else {"s"}
+		if matches!(self, Ax|An|As) {""} else {"s"}
 	}
 
 	///correction messages
 	fn correct(&self) -> &str {
 		match self {
-			Self::Nil|Self::Ax => "",
-			Self::An => "must be a number",
-			Self::As => "must be a string",
-			Self::AxBx => "must be two numbers or two strings",
-			Self::AxBn => "2nd must be a number",
-			Self::AnBn => "must be two numbers",
-			Self::AsBn => "1st must be a string, 2nd must be a number",
-			Self::AxBxCx => "must be three numbers or three strings",
+			Nil|Ax => "",
+			An => "must be a number",
+			As => "must be a string",
+			AxBx => "must be two numbers or two strings",
+			AxBn => "2nd must be a number",
+			AnBn => "must be two numbers",
+			AsBn => "1st must be a string, 2nd must be a number",
+			AxBxCx => "must be three numbers or three strings",
 		}
 	}
 }
@@ -158,7 +160,7 @@ struct State<'a> {
 }
 
 ///standard rounding function: discard fractional part if finite, default to 0 otherwise
-fn round(n: Float) -> Integer {
+fn round(n: &Float) -> Integer {
 	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
 }
 
@@ -216,17 +218,18 @@ fn main() {
 		PARSE OPTIONS
 	-------------------*/
 
-	let (mut i, mut e, mut f, mut h) = (false, false, false, false);
-	let mut names: Vec<String> = Vec::new();
-	let args: Vec<String> = std::env::args().skip(1).collect();	//get args, skip name of binary
-	if args.is_empty() {i=true};	//default to interactive
-	for arg in args {
-		if let Some(flag) = arg.strip_prefix("--") {	//long option
+	let (mut i, mut e, mut f) = (false, false, false);	//flags
+	let mut names: Vec<String> = Vec::new();	//buf for filenames/expressions
+	for arg in std::env::args().skip(1) {	//get args, skip name of binary
+		if let Some(flag) = arg.strip_prefix("--") {	//long variants
 			match flag {
 				"inter" => {i=true;}
 				"expr" => {e=true;}
 				"file" => {f=true;}
-				"help" => {h=true;}
+				"help" => {	//prioritized, always terminate
+					println!("{}", *HELPMSG);
+					std::process::exit(0);
+				}
 				_ => {
 					eprintln!("! Unrecognized option: --{flag}, use -h for help");
 					std::process::exit(1);
@@ -234,14 +237,16 @@ fn main() {
 			}
 			continue;
 		}
-		if arg.starts_with('-') {	//short option, multiple at once possible
+		if arg.starts_with('-') {	//short variants, multiple at once possible
 			for flag in arg.chars() {
 				match flag {
 					'-' => {}	//allow -f-i or similar
 					'i' => {i=true;}
 					'e' => {e=true;}
 					'f' => {f=true;}
-					'h' => {h=true;}
+					'h' => {	//prioritized, always terminate
+						println!("{}", *HELPMSG);
+						std::process::exit(0);}
 					_ => {
 						eprintln!("! Unrecognized option: -{flag}, use -h for help");
 						std::process::exit(1);
@@ -250,27 +255,12 @@ fn main() {
 			}
 			continue;
 		}
-		names.push(arg);
-	}
-	
-	if h {	//always exits
-		println!("{}", *HELPMSG);
-		std::process::exit(0);
+		names.push(arg);	//not a flag
 	}
 
 	/*--------------
 		DO STUFF
 	--------------*/
-
-	//create and seed RNG, 1024 bits of OS randomness
-	let mut r = RandState::new();
-	let mut seed = [0u8; 128];
-	OsRng.fill_bytes(&mut seed);
-	r.seed(&Integer::from_digits(&seed, Order::Msf));
-
-	//create and init parameter stack
-	let mut p = ParamStk(Vec::new());
-	p.create();
 
 	//create state storage
 	let mut st = State {
@@ -278,15 +268,34 @@ fn main() {
 		regs: HashMap::new(),
 		ro_buf: RegObj {o: DUMMY, a: Vec::new()},
 		rptr: None,
-		rng: r,
-		par: p,
+		rng: {
+			//seed RNG with 1024 bits of OS randomness
+			let mut r = RandState::new();
+			let mut seed = [0u8; 128];
+			OsRng.fill_bytes(&mut seed);
+			r.seed(&Integer::from_digits(&seed, Order::Msf));
+			r
+		},
+		par: {
+			let mut p = ParamStk(Vec::new());
+			p.create();
+			p
+		},
 		w: 256
 	};
 
+	//decide operating mode
 	match (i, e, f) {
-		(false, false, false) => {file_mode(&mut st, names, false);}	//no flags: assume filenames
-		(true, false, false) => {interactive_mode(&mut st, names.first().cloned());}	//normal interactive
-		(_, true, false) => {expression_mode(&mut st, names, i);}	//expr mode, pass i on
+		(false, false, false) => {	//no flags
+			if names.is_empty() {
+				inter_mode(&mut st, None);	//interactive with default prompt
+			}
+			else {
+				file_mode(&mut st, names, false);	//-f is optional
+			}
+		}
+		(true, false, false) => {inter_mode(&mut st, names.first().cloned());}	//interactive with custom prompt
+		(_, true, false) => {expr_mode(&mut st, names, i);}	//expr mode, pass i on
 		(_, false, true) => {file_mode(&mut st, names, i);}	//file mode, pass i on
 		(_, true, true) => {	//invalid combination
 			eprintln!("! Invalid options: both -e and -f present");
@@ -295,14 +304,16 @@ fn main() {
 	}
 }
 
-fn interactive_mode(st: &mut State, prompt: Option<String>) {
+///infinite prompt-eval loop
+fn inter_mode(st: &mut State, prompt: Option<String>) {
 	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	loop {
 		exec(st, inputter.get());
 	}
 }
 
-fn expression_mode(st: &mut State, exprs: Vec<String>, inter: bool) {
+///takes input from cmd args
+fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool) {
 	if exprs.is_empty() {
 		eprintln!("! No expression provided");
 	}
@@ -312,10 +323,11 @@ fn expression_mode(st: &mut State, exprs: Vec<String>, inter: bool) {
 		}
 	}
 	if inter {
-		interactive_mode(st, None);
+		inter_mode(st, None);
 	}
 }
 
+///takes input from file contents, removes #comments
 fn file_mode(st: &mut State, files: Vec<String>, inter: bool) {
 	if files.is_empty() {
 		eprintln!("! No file name provided");
@@ -338,7 +350,7 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool) {
 		}
 	}
 	if inter {
-		interactive_mode(st, None);
+		inter_mode(st, None);
 	}
 }
 
@@ -374,7 +386,6 @@ lazy_static! {
 	///command signatures and adicities
 	static ref CMD_SIGS: HashMap<char, (CmdSig, u8)> = {
 		let mut m = HashMap::new();
-		use CmdSig::*;
 
 		for c in ['+','^'] {m.insert(c, (AxBx, 2));}
 
@@ -648,23 +659,27 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 fn exec(st: &mut State, cmds_in: String) {
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds_in.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
+
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
+
+	let nx_init = (&Float::new(1), &Float::new(1), &Float::new(1));	//init for number slots
+	let sx_init = (&String::new(), &String::new(), &String::new());	//init for string slots
 
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
 		let mut cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');	//get next command
 
 		let (reg, rnum): (&mut Vec<RegObj>, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
-			let i = if let Some(i) = st.rptr.take() {i}	//take from reg ptr
-			else if let Some(c) = cmdstk.last_mut().unwrap().pop_front() {Integer::from(c as u32)}	//steal next command char
+			let i = if let Some(i) = st.rptr.take() {i}	//take index from reg ptr
+			else if let Some(c) = cmdstk.last_mut().unwrap().pop_front() {Integer::from(c as u32)}	//steal next command char as index
 			else {
 				eprintln!("! Command '{cmd}' needs a register number");
 				continue;
 			};
 			(
-				if let Some(r) = st.regs.get_mut(&i) {r}
+				if let Some(r) = st.regs.get_mut(&i) {r}	//reg already exists?
 				else {
-					st.regs.insert(i.clone(), REG_DEF);
+					st.regs.insert(i.clone(), REG_DEF);	//else touch reg
 					st.regs.get_mut(&i).unwrap()
 				},
 				i
@@ -672,7 +687,7 @@ fn exec(st: &mut State, cmds_in: String) {
 		}
 		else {(&mut dummy_reg, Integer::ZERO)};	//no register needed
 
-		let (sig, adi) = CMD_SIGS.get(&cmd).unwrap_or(&(CmdSig::Nil, 0));	//get correct command signature
+		let (sig, adi) = CMD_SIGS.get(&cmd).unwrap_or(&(Nil, 0));	//get correct command signature
 
 		if st.mstk.len() < *adi as usize {	//check stack depth
 			eprintln!("! Command '{cmd}' needs {} argument{}", adi, sig.plural());
@@ -686,94 +701,84 @@ fn exec(st: &mut State, cmds_in: String) {
 			_ => (DUMMY, DUMMY, DUMMY)
 		};
 
-		let (mut na, mut nb, mut nc) = (Float::new(1), Float::new(1), Float::new(1));	//number slots
-		let (mut sa, mut sb, mut sc) = (String::new(), String::new(), String::new());	//string slots
-		let mut svari = false;	//use string variant of overloaded command
+		let (mut na, mut nb, mut nc) = nx_init;	//create number slots
+		let (mut sa, mut sb, mut sc) = sx_init;	//create string slots
+		let mut strv = false;	//use string variant of overloaded command (not stridsvagn :/)
 
 		if
 			match sig {	//check and destructure Objs
-				CmdSig::Nil => false,
-				CmdSig::Ax => match &a {
-					Obj::N(x) => {
-						na = x.clone();
+				Nil => false,
+				Ax => match &a {
+					Num(x) => {
+						na = x;
 						false
 					},
-					Obj::S(x) => {
-						sa = x.clone();
-						svari = true;
+					Str(x) => {
+						sa = x;
+						strv = true;
 						false
 					}
 				},
-				CmdSig::An => match &a {
-					Obj::N(x) => {
-						na = x.clone();
+				An => match &a {
+					Num(x) => {
+						na = x;
 						false
 					},
 					_ => true
 				},
-				CmdSig::As => match &a {
-					Obj::S(x) => {
-						sa = x.clone();
+				As => match &a {
+					Str(x) => {
+						sa = x;
 						false
 					},
 					_ => true
 				},
-				CmdSig::AxBx => match (&a, &b) {
-					(Obj::N(x), Obj::N(y)) => {
-						na = x.clone();
-						nb = y.clone();
+				AxBx => match (&a, &b) {
+					(Num(x), Num(y)) => {
+						(na, nb) = (x, y);
 						false
 					},
-					(Obj::S(x), Obj::S(y)) => {
-						sa = x.clone();
-						sb = y.clone();
-						svari = true;
-						false
-					},
-					_ => true
-				},
-				CmdSig::AxBn => match (&a, &b) {
-					(Obj::N(x), Obj::N(y)) => {
-						na = x.clone();
-						nb = y.clone();
-						false
-					},
-					(Obj::S(x), Obj::N(y)) => {
-						sa = x.clone();
-						nb = y.clone();
-						svari = true;
+					(Str(x), Str(y)) => {
+						(sa, sb) = (x, y);
+						strv = true;
 						false
 					},
 					_ => true
 				},
-				CmdSig::AnBn => match (&a, &b) {
-					(Obj::N(x), Obj::N(y)) => {
-						na = x.clone();
-						nb = y.clone();
+				AxBn => match (&a, &b) {
+					(Num(x), Num(y)) => {
+						(na, nb) = (x, y);
+						false
+					},
+					(Str(x), Num(y)) => {
+						(sa, nb) = (x, y);
+						strv = true;
 						false
 					},
 					_ => true
 				},
-				CmdSig::AsBn => match (&a, &b) {
-					(Obj::S(x), Obj::N(y)) => {
-						sa = x.clone();
-						nb = y.clone();
+				AnBn => match (&a, &b) {
+					(Num(x), Num(y)) => {
+						(na, nb) = (x, y);
 						false
 					},
 					_ => true
 				},
-				CmdSig::AxBxCx => match (&a, &b, &c) {
-					(Obj::N(x), Obj::N(y), Obj::N(z)) => {
-						na = x.clone();
-						nb = y.clone();
-						nc = z.clone();
+				AsBn => match (&a, &b) {
+					(Str(x), Num(y)) => {
+						(sa, nb) = (x, y);
 						false
 					},
-					(Obj::S(x), Obj::S(y), Obj::S(z)) => {
-						sa = x.clone();
-						sb = y.clone();
-						sc = z.clone();
-						svari = true;
+					_ => true
+				},
+				AxBxCx => match (&a, &b, &c) {
+					(Num(x), Num(y), Num(z)) => {
+						(na, nb, nc) = (x, y, z);
+						false
+					},
+					(Str(x), Str(y), Str(z)) => {
+						(sa, sb, sc) = (x, y, z);
+						strv = true;
 						false
 					},
 					_ => true
@@ -841,7 +846,7 @@ fn exec(st: &mut State, cmds_in: String) {
 					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
 					match Float::parse_radix(numstr.clone(), st.par.i().to_i32().unwrap()) {
 						Ok(res) => {
-							st.mstk.push(Obj::N(Float::with_val(st.w, res)));
+							st.mstk.push(Num(Float::with_val(st.w, res)));
 						},
 						Err(error) => {
 							eprintln!("! Unable to parse number \"{numstr}\": {error}");
@@ -859,7 +864,7 @@ fn exec(st: &mut State, cmds_in: String) {
 					cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or(')');
 				}
 				match parse_abnum(to_parse, st.par.i(), st.w) {
-					Ok(n) => {st.mstk.push(Obj::N(n));}
+					Ok(n) => {st.mstk.push(Num(n));}
 					Err(e) => {eprintln!("! Unable to parse any-base number: {e}");}
 				}
 			},
@@ -875,7 +880,7 @@ fn exec(st: &mut State, cmds_in: String) {
 					if cmd == ']' { nest-=1; }
 					if nest==0 {	//string finished
 						res.pop();	//remove closing bracket
-						st.mstk.push(Obj::S(res));
+						st.mstk.push(Str(res));
 						break;
 					}
 					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
@@ -892,8 +897,8 @@ fn exec(st: &mut State, cmds_in: String) {
 			'p' => {
 				if !st.mstk.is_empty() {
 					match st.mstk.last().unwrap() {
-						Obj::N(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-						Obj::S(s) => {println!("[{s}]");},
+						Num(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
+						Str(s) => {println!("[{s}]");},
 					}
 				}
 			},
@@ -903,8 +908,8 @@ fn exec(st: &mut State, cmds_in: String) {
 				if !st.mstk.is_empty() {
 					for i in (0..st.mstk.len()).rev() {
 						match &st.mstk[i] {
-							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-							Obj::S(s) => {println!("[{s}]");},
+							Num(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
+							Str(s) => {println!("[{s}]");},
 						}
 					}
 				}
@@ -912,8 +917,8 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//pop and print without newline
 			'n' => {
-				if !svari {
-					print!("{}", flt_to_str(na, st.par.o(), st.par.k()));
+				if !strv {
+					print!("{}", flt_to_str(na.clone(), st.par.o(), st.par.k()));
 					stdout().flush().unwrap();
 				}
 				else {
@@ -924,7 +929,7 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//pop and print with newline
 			'P' => {
-					if !svari {println!("{}", flt_to_str(na, st.par.o(), st.par.k()));}
+					if !strv {println!("{}", flt_to_str(na.clone(), st.par.o(), st.par.k()));}
 					else {println!("{sa}");}
 			},
 
@@ -933,15 +938,15 @@ fn exec(st: &mut State, cmds_in: String) {
 				if !reg.is_empty(){
 					for i in (0..reg.len()).rev() {
 						match &reg[i].o {
-							Obj::N(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-							Obj::S(s) => {println!("[{s}]");},
+							Num(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
+							Str(s) => {println!("[{s}]");},
 						}
 						if !reg[i].a.is_empty() {
 							let width = (reg[i].a.len()-1).to_string().len();	//length of longest index number
 							for ai in 0..reg[i].a.len() {
 								match &reg[i].a[ai] {
-									Obj::N(n) => {println!("\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-									Obj::S(s) => {println!("\t{ai:>width$}: [{s}]");},
+									Num(n) => {println!("\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
+									Str(s) => {println!("\t{ai:>width$}: [{s}]");},
 								}
 							}
 						}
@@ -954,17 +959,17 @@ fn exec(st: &mut State, cmds_in: String) {
 			----------------*/
 			//add or concatenate strings
 			'+' => {
-				if !svari {st.mstk.push(Obj::N(Float::with_val(st.w, na + nb)));}
-				else {st.mstk.push(Obj::S(sa + &sb));}
+				if !strv {st.mstk.push(Num(Float::with_val(st.w, na + nb)));}
+				else {st.mstk.push(Str(sa.clone() + sb));}
 			},
 
 			//subtract or remove chars from string
 			'-' => {
-				if !svari {st.mstk.push(Obj::N(Float::with_val(st.w, na - nb)));}
+				if !strv {st.mstk.push(Num(Float::with_val(st.w, na - nb)));}
 				else {
 					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
-						st.mstk.push(Obj::S(
+						st.mstk.push(Str(
 							if ib<0 {	//remove from front
 								sa.chars().skip(n).collect()
 							}
@@ -983,11 +988,11 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//multiply or repeat/invert string
 			'*' => {
-				if !svari {st.mstk.push(Obj::N(Float::with_val(st.w, na * nb)));}
+				if !strv {st.mstk.push(Num(Float::with_val(st.w, na * nb)));}
 				else {
 					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
-						st.mstk.push(Obj::S(
+						st.mstk.push(Str(
 							if ib<0 {	//repeat and reverse
 								sa.chars().rev().collect::<String>().repeat(n)
 							}
@@ -1006,20 +1011,20 @@ fn exec(st: &mut State, cmds_in: String) {
 			
 			//divide or shorten string to length
 			'/' => {
-				if !svari {
+				if !strv {
 					if nb.is_zero() {
 						eprintln!("! /: Division by zero");
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
 					else {
-						st.mstk.push(Obj::N(Float::with_val(st.w, na / nb)));
+						st.mstk.push(Num(Float::with_val(st.w, na / nb)));
 					}
 				}
 				else {
 					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
-						st.mstk.push(Obj::S(
+						st.mstk.push(Str(
 							if ib<0 {	//discard from front
 								sa.chars().skip(sa.chars().count().saturating_sub(n)).collect()
 							}
@@ -1038,7 +1043,7 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//modulo or isolate char
 			'%' => {
-				if !svari {
+				if !strv {
 					let ia = round(na);
 					let ib = round(nb);
 					if ib==0 {
@@ -1047,14 +1052,14 @@ fn exec(st: &mut State, cmds_in: String) {
 						st.mstk.push(b);
 					}
 					else {
-						st.mstk.push(Obj::N(Float::with_val(st.w, ia % ib)));
+						st.mstk.push(Num(Float::with_val(st.w, ia % ib)));
 					}
 				}
 				else {
 					let ib = round(nb);
 					if let Some(n) = ib.to_usize() {
 						if let Some(c) = sa.chars().nth(n) {
-							st.mstk.push(Obj::S(c.into()))
+							st.mstk.push(Str(c.into()))
 						}
 						else {
 							eprintln!("! %: String is too short for index {n}");
@@ -1072,7 +1077,7 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//euclidean division or split string
 			'~' => {
-				if !svari {
+				if !strv {
 					let ia = round(na);
 					let ib = round(nb);
 					if ib==0 {
@@ -1082,15 +1087,15 @@ fn exec(st: &mut State, cmds_in: String) {
 					}
 					else {
 						let (quot, rem)=ia.div_rem_euc(ib);
-						st.mstk.push(Obj::N(Float::with_val(st.w, quot)));
-						st.mstk.push(Obj::N(Float::with_val(st.w, rem)));
+						st.mstk.push(Num(Float::with_val(st.w, quot)));
+						st.mstk.push(Num(Float::with_val(st.w, rem)));
 					}
 				}
 				else {
 					let ib = round(nb);
 					if let Some(n) = ib.to_usize() {
-						st.mstk.push(Obj::S(sa.chars().take(n).collect()));
-						st.mstk.push(Obj::S(sa.chars().skip(n).collect()));
+						st.mstk.push(Str(sa.chars().take(n).collect()));
+						st.mstk.push(Str(sa.chars().skip(n).collect()));
 					}
 					else {
 						eprintln!("! ~: Cannot possibly split a string at character {ib}");
@@ -1102,28 +1107,28 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//exponentiation or find in string
 			'^' => {
-				if !svari {
-					if na<0 && nb.clone().abs()<1{
+				if !strv {
+					if *na<0 && nb.clone().abs()<1{
 						eprintln!("! ^: Root of negative number");
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
 					else {
-						st.mstk.push(Obj::N(Float::with_val(st.w, na.pow(nb))));
+						st.mstk.push(Num(Float::with_val(st.w, na.pow(nb))));
 					}
 				}
-				else if let Some(bidx) = sa.find(&sb) {	//find byte index
+				else if let Some(bidx) = sa.find(sb) {	//find byte index
 					let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
-					st.mstk.push(Obj::N(Float::with_val(st.w, cidx)));
+					st.mstk.push(Num(Float::with_val(st.w, cidx)));
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, -1)));	//not found, silent error
+					st.mstk.push(Num(Float::with_val(st.w, -1)));	//not found, silent error
 				}
 			},
 
 			//modular exponentiation or find/replace in string
 			'|' => {
-				if !svari {
+				if !strv {
 					let ia = round(na);
 					let ib = round(nb);
 					let ic = round(nc);
@@ -1134,7 +1139,7 @@ fn exec(st: &mut State, cmds_in: String) {
 						st.mstk.push(c);
 					}
 					else if let Ok(res) = ia.clone().pow_mod(&ib, &ic) {
-						st.mstk.push(Obj::N(Float::with_val(st.w, res)));
+						st.mstk.push(Num(Float::with_val(st.w, res)));
 					}
 					else {
 						eprintln!("! |: {ia} doesn't have an inverse mod {ic}");
@@ -1144,79 +1149,79 @@ fn exec(st: &mut State, cmds_in: String) {
 					}
 				}
 				else {
-					st.mstk.push(Obj::S(sa.replace(&sb, &sc)));
+					st.mstk.push(Str(sa.replace(sb, sc)));
 				}
 			},
 
 			//square root
 			'v' => {
-				if na<0 {
+				if *na<0 {
 					eprintln!("! v: Root of negative number");
 					st.mstk.push(a);
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, na.sqrt())));
+					st.mstk.push(Num(Float::with_val(st.w, na.clone().sqrt())));
 				}
 			},
 
 			//bth root
 			'V' => {
-				if na<0 && nb.clone().abs()>1{
+				if *na<0 && nb.clone().abs()>1{
 					eprintln!("! V: Root of negative number");
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, na.pow(nb.recip()))));
+					st.mstk.push(Num(Float::with_val(st.w, na.pow(nb.clone().recip()))));
 				}
 			},
 
 			//length of string or natural logarithm
 			'g' => {
-				if !svari {
-					if na<=0 {
+				if !strv {
+					if *na<=0 {
 						eprintln!("! g: Logarithm of non-positive number");
 						st.mstk.push(a);
 					}
 					else {
-						st.mstk.push(Obj::N(Float::with_val(st.w, na.ln())));
+						st.mstk.push(Num(Float::with_val(st.w, na.clone().ln())));
 					}
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, sa.chars().count())));
+					st.mstk.push(Num(Float::with_val(st.w, sa.chars().count())));
 				}
 			},
 
 			//base b logarithm
 			'G' => {
-				if na<=0 {
+				if *na<=0 {
 					eprintln!("! G: Logarithm of non-positive number");
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
-				else if nb==1||nb<=0{
+				else if *nb==1||*nb<=0{
 					eprintln!("! G: Logarithm with base ≤0 or =1");
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, na.ln()/nb.ln())));
+					st.mstk.push(Num(Float::with_val(st.w, na.clone().ln()/nb.clone().ln())));
 				}
 			},
 
 			//sine
 			'u' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, na.sin())));
+				st.mstk.push(Num(Float::with_val(st.w, na.clone().sin())));
 			},
 
 			//cosine
 			'y' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, na.cos())));
+				st.mstk.push(Num(Float::with_val(st.w, na.clone().cos())));
 			},
 
 			//tangent
 			't' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, na.tan())));
+				st.mstk.push(Num(Float::with_val(st.w, na.clone().tan())));
 			},
 
 			//arc-sine
@@ -1226,7 +1231,7 @@ fn exec(st: &mut State, cmds_in: String) {
 					st.mstk.push(a);
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, na.asin())));
+					st.mstk.push(Num(Float::with_val(st.w, na.clone().asin())));
 				}
 			},
 
@@ -1237,13 +1242,13 @@ fn exec(st: &mut State, cmds_in: String) {
 					st.mstk.push(a);
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, na.acos())));
+					st.mstk.push(Num(Float::with_val(st.w, na.clone().acos())));
 				}
 			},
 
 			//arc-tangent
 			'T' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, na.atan())));
+				st.mstk.push(Num(Float::with_val(st.w, na.clone().atan())));
 			},
 
 			//random integer [0;a)
@@ -1254,20 +1259,20 @@ fn exec(st: &mut State, cmds_in: String) {
 					st.mstk.push(a);
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, int.random_below(&mut st.rng))));
+					st.mstk.push(Num(Float::with_val(st.w, int.random_below(&mut st.rng))));
 				}
 			},
 
 			//constant/conversion factor lookup or convert number to string
 			'"' => {
-				if !svari {
-					st.mstk.push(Obj::S(flt_to_str(na.clone(), st.par.o(), st.par.k())));
+				if !strv {
+					st.mstk.push(Str(flt_to_str(na.clone(), st.par.o(), st.par.k())));
 				}
 				else {
 					match sa.matches(' ').count() {
 						0 => {	//normal lookup
-							if let Some(res) = get_constant(st.w, &sa) {
-								st.mstk.push(Obj::N(res));
+							if let Some(res) = get_constant(st.w, sa) {
+								st.mstk.push(Num(res));
 							}
 							else {
 								eprintln!("! \": Constant/conversion factor not found");
@@ -1277,7 +1282,7 @@ fn exec(st: &mut State, cmds_in: String) {
 						1 => {	//conversion shorthand, left divided by right
 							let (sl, sr) = sa.split_once(' ').unwrap();
 							if let (Some(nl), Some(nr)) = (get_constant(st.w, sl), get_constant(st.w, sr)) {
-								st.mstk.push(Obj::N(nl/nr));
+								st.mstk.push(Num(nl/nr));
 							}
 							else {
 								eprintln!("! \": Constant/conversion factor not found");
@@ -1294,7 +1299,7 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//deg -> rad shorthand
 			'°' => {
-				st.mstk.push(Obj::N(na * Float::with_val(st.w, Constant::Pi) / 180));
+				st.mstk.push(Num(na * Float::with_val(st.w, Constant::Pi) / 180));
 			},
 			/*------------------------
 				STACK MANIPULATION
@@ -1386,7 +1391,7 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//push stack depth
 			'z' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, st.mstk.len())));
+				st.mstk.push(Num(Float::with_val(st.w, st.mstk.len())));
 			},
 			/*----------------
 				PARAMETERS
@@ -1429,22 +1434,22 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//push output precision
 			'K' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, st.par.k())));
+				st.mstk.push(Num(Float::with_val(st.w, st.par.k())));
 			},
 
 			//push input base
 			'I' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, st.par.i())));
+				st.mstk.push(Num(Float::with_val(st.w, st.par.i())));
 			},
 
 			//push output base
 			'O' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, st.par.o())));
+				st.mstk.push(Num(Float::with_val(st.w, st.par.o())));
 			},
 
 			//push working precision
 			'W' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, st.w)));
+				st.mstk.push(Num(Float::with_val(st.w, st.w)));
 			},
 
 			//create new k,i,o context
@@ -1554,28 +1559,29 @@ fn exec(st: &mut State, cmds_in: String) {
 
 			//push register depth
 			'Z' => {
-				st.mstk.push(Obj::N(Float::with_val(st.w, reg.len())));
+				st.mstk.push(Num(Float::with_val(st.w, reg.len())));
 			},
 
 			//specify manual register pointer
 			',' => {
-				let int = if !svari {
-					round(na)	//from number
-				}
-				else {
-					Integer::from_digits(sa.as_bytes(), Order::Msf)	//from string bytes
-				};
-				st.rptr = Some(int);
+				st.rptr = Some(
+					if !strv {
+						round(na)	//from number
+					}
+					else {
+						Integer::from_digits(sa.as_bytes(), Order::Msf)	//from string bytes
+					}
+				);
 			},
 			/*------------
 				MACROS
 			------------*/
 			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
-				if !svari {
+				if !strv {
 					let ia = round(na).to_u32_wrapping();
 					if let Some(res) = char::from_u32(ia) {
-						st.mstk.push(Obj::S(res.to_string()));
+						st.mstk.push(Str(res.to_string()));
 					}
 					else {
 						eprintln!("! a: Unable to convert number {ia} to character: not a valid Unicode value");
@@ -1587,15 +1593,15 @@ fn exec(st: &mut State, cmds_in: String) {
 					st.mstk.push(a);
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, sa.chars().next().unwrap() as u32)));
+					st.mstk.push(Num(Float::with_val(st.w, sa.chars().next().unwrap() as u32)));
 				}
 			},
 
 			//convert number to UTF-8 string or back
 			'A' => {
-				if !svari {
-					if let Ok(res) = String::from_utf8(round(na.clone()).to_digits::<u8>(Order::Msf)) {
-						st.mstk.push(Obj::S(res));
+				if !strv {
+					if let Ok(res) = String::from_utf8(round(na).to_digits::<u8>(Order::Msf)) {
+						st.mstk.push(Str(res));
 					}
 					else {
 						eprintln!("! A: Unable to convert number {} to string: not a valid UTF-8 sequence", round(na));
@@ -1603,13 +1609,13 @@ fn exec(st: &mut State, cmds_in: String) {
 					}
 				}
 				else {
-					st.mstk.push(Obj::N(Float::with_val(st.w, Integer::from_digits(sa.as_bytes(), Order::Msf))));
+					st.mstk.push(Num(Float::with_val(st.w, Integer::from_digits(sa.as_bytes(), Order::Msf))));
 				}
 			},
 
 			//execute string as macro
 			'x' => {
-				if svari {
+				if strv {
 						if cmdstk.last().unwrap().is_empty() {
 							cmdstk.pop();	//optimize tail call
 						}
@@ -1629,7 +1635,7 @@ fn exec(st: &mut State, cmds_in: String) {
 				if reg.is_empty() {
 					eprintln!("! <=>: Register # {rnum} is empty");
 				}
-				else if let Obj::S(mac) = &reg.last().unwrap().o {
+				else if let Str(mac) = &reg.last().unwrap().o {
 					if inv != match cmd {
 					'<' => { nb < na },	//reverse order, GNU dc convention
 					'=' => { nb == na },
@@ -1722,7 +1728,7 @@ fn exec(st: &mut State, cmds_in: String) {
 			'$' => {
 				match std::env::var(sa.clone()) {
 					Ok(val) => {
-						st.mstk.push(Obj::S(val));
+						st.mstk.push(Str(val));
 					},
 					Err(err) => {
 						eprintln!("! $: Unable to get value of ${sa}: {err}");
