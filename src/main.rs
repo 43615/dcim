@@ -271,7 +271,7 @@ fn main() {
 		rng: {
 			//seed RNG with 1024 bits of OS randomness
 			let mut r = RandState::new();
-			let mut seed = [0u8; 128];
+			let mut seed = [0_u8; 128];
 			OsRng.fill_bytes(&mut seed);
 			r.seed(&Integer::from_digits(&seed, Order::Msf));
 			r
@@ -411,93 +411,93 @@ lazy_static! {
 		/*----------------------------
 			MATHEMATICAL CONSTANTS
 		----------------------------*/
-		m.insert("e", FltGen(Box::new(|prec| Float::with_val(prec, 1).exp())));
+		m.insert("e", FltGen(Box::new(|prec| Float::with_val(prec, 1_u8).exp())));
 		m.insert("pi", FltGen::val(Constant::Pi));
 		m.insert("gamma", FltGen::val(Constant::Euler));
-		m.insert("phi", FltGen(Box::new(|prec| (Float::with_val(prec, 5).sqrt()+1)/2)));
-		for q in ["deg","°"] {m.insert(q, FltGen::rec("pi", &|n| n/180));}
-		for q in ["gon","grad"] {m.insert(q, FltGen::rec("pi", &|n| n/200));}
+		m.insert("phi", FltGen(Box::new(|prec| (Float::with_val(prec, 5_u8).sqrt()+1_u8)/2_u8)));
+		for q in ["deg","°"] {m.insert(q, FltGen::rec("pi", &|n| n/180_u8));}
+		for q in ["gon","grad"] {m.insert(q, FltGen::rec("pi", &|n| n/200_u8));}
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
-		m.insert("c", FltGen::val(299792458));
-		m.insert("hbar", FltGen(Box::new(|prec| FltGen::sci(662607015, -42).0(prec) / FltGen::rec("pi", &|n| n*2).0(prec))));
-		m.insert("G", FltGen::sci(6674, -3));
-		m.insert("qe", FltGen::sci(1602176634, -28));
-		m.insert("NA", FltGen::sci(602214076, 31));
-		m.insert("kB", FltGen::sci(1380649, -29));
-		m.insert("u", FltGen::sci(1660539066, -36));
-		m.insert("lp", FltGen::sci(16162, -39));
-		m.insert("tp", FltGen::sci(5391, -47));
-		m.insert("mp", FltGen::sci(21764, -12));
-		m.insert("Tp", FltGen::sci(14167, 28));
+		m.insert("c", FltGen::val(299792458_u32));
+		m.insert("hbar", FltGen(Box::new(|prec| FltGen::sci(662607015_u32, -42_i8).0(prec) / FltGen::rec("pi", &|n| n*2_u8).0(prec))));
+		m.insert("G", FltGen::sci(6674_u16, -3_i8));
+		m.insert("qe", FltGen::sci(1602176634_u32, -28_i8));
+		m.insert("NA", FltGen::sci(602214076_u32, 31_u8));
+		m.insert("kB", FltGen::sci(1380649_u32, -29_i8));
+		m.insert("u", FltGen::sci(1660539066_u32, -36_i8));
+		m.insert("lp", FltGen::sci(16162_u16, -39_i8));
+		m.insert("tp", FltGen::sci(5391_u16, -47_i8));
+		m.insert("mp", FltGen::sci(21764_u16, -12_i8));
+		m.insert("Tp", FltGen::sci(14167_u16, 28_u8));
 		/*------------------
 			LENGTH UNITS
 		------------------*/
-		m.insert("in", FltGen::sci(254, -4));
-		m.insert("ft", FltGen::rec("in", &|n| n*12));
-		m.insert("yd", FltGen::rec("ft", &|n| n*3));
-		m.insert("m", FltGen::val(1));
-		m.insert("fur", FltGen::rec("ft", &|n| n*660));
-		m.insert("mi", FltGen::rec("ft", &|n| n*5280));
-		m.insert("nmi", FltGen::val(1852));
-		m.insert("AU", FltGen::val(149597870700i64));
-		m.insert("ly", FltGen::val(9460730472580800i64));
-		m.insert("pc", FltGen(Box::new(|prec| Float::with_val(prec, 96939420213600000i64)/Float::with_val(prec, Constant::Pi))));
+		m.insert("in", FltGen::sci(254_u8, -4_i8));
+		m.insert("ft", FltGen::rec("in", &|n| n*12_u8));
+		m.insert("yd", FltGen::rec("ft", &|n| n*3_u8));
+		m.insert("m", FltGen::val(1_u8));
+		m.insert("fur", FltGen::rec("ft", &|n| n*660_u16));
+		m.insert("mi", FltGen::rec("ft", &|n| n*5280_u16));
+		m.insert("nmi", FltGen::val(1852_u16));
+		m.insert("AU", FltGen::val(149597870700_u64));
+		m.insert("ly", FltGen::val(9460730472580800_u64));
+		m.insert("pc", FltGen(Box::new(|prec| Float::with_val(prec, 96939420213600000_u64)/Float::with_val(prec, Constant::Pi))));
 		/*-------------------------------
 			AREA & VOLUME UNITS
 			with no length equivalent
 		-------------------------------*/
-		for q in ["ac","acre"] {m.insert(q, FltGen::sci(40468564224i64, -7));}
-		m.insert("l", FltGen::sci(1, -3));
-		m.insert("ifloz", FltGen::sci(284130625, -13));
-		m.insert("ipt", FltGen::rec("ifloz", &|n| n*20));
-		m.insert("iqt", FltGen::rec("ifloz", &|n| n*40));
-		m.insert("igal", FltGen::rec("ifloz", &|n| n*160));
-		for q in ["ibu","ibsh"] {m.insert(q, FltGen::rec("ifloz", &|n| n*1280));}
-		m.insert("ufldr", FltGen::sci(36966911953125i64, -19));
-		m.insert("tsp", FltGen::rec("ufldr", &|n| n/3*4));
-		m.insert("tbsp", FltGen::rec("ufldr", &|n| n*4));
-		m.insert("ufloz", FltGen::rec("ufldr", &|n| n*8));
-		m.insert("upt", FltGen::rec("ufloz", &|n| n*16));
-		m.insert("uqt", FltGen::rec("ufloz", &|n| n*32));
-		m.insert("ugal", FltGen::rec("ufloz", &|n| n*128));
-		m.insert("bbl", FltGen::rec("ugal", &|n| n*42));
-		m.insert("udpt", FltGen::sci(5506104713575i64, -16));
-		m.insert("udqt", FltGen::rec("udpt", &|n| n*2));
-		m.insert("udgal", FltGen::rec("udpt", &|n| n*8));
-		for q in ["ubu","ubsh"] {m.insert(q, FltGen::rec("udpt", &|n| n*64));}
-		m.insert("dbbl", FltGen::sci(115627123584i64, -12));
+		for q in ["ac","acre"] {m.insert(q, FltGen::sci(40468564224_u64, -7_i8));}
+		m.insert("l", FltGen::sci(1_u8, -3_i8));
+		m.insert("ifloz", FltGen::sci(284130625_u32, -13_i8));
+		m.insert("ipt", FltGen::rec("ifloz", &|n| n*20_u8));
+		m.insert("iqt", FltGen::rec("ifloz", &|n| n*40_u8));
+		m.insert("igal", FltGen::rec("ifloz", &|n| n*160_u8));
+		for q in ["ibu","ibsh"] {m.insert(q, FltGen::rec("ifloz", &|n| n*1280_u16));}
+		m.insert("ufldr", FltGen::sci(36966911953125_u64, -19_i8));
+		m.insert("tsp", FltGen::rec("ufldr", &|n| n/3_u8*4_u8));
+		m.insert("tbsp", FltGen::rec("ufldr", &|n| n*4_u8));
+		m.insert("ufloz", FltGen::rec("ufldr", &|n| n*8_u8));
+		m.insert("upt", FltGen::rec("ufloz", &|n| n*16_u8));
+		m.insert("uqt", FltGen::rec("ufloz", &|n| n*32_u8));
+		m.insert("ugal", FltGen::rec("ufloz", &|n| n*128_u8));
+		m.insert("bbl", FltGen::rec("ugal", &|n| n*42_u8));
+		m.insert("udpt", FltGen::sci(5506104713575_u64, -16_i8));
+		m.insert("udqt", FltGen::rec("udpt", &|n| n*2_u8));
+		m.insert("udgal", FltGen::rec("udpt", &|n| n*8_u8));
+		for q in ["ubu","ubsh"] {m.insert(q, FltGen::rec("udpt", &|n| n*64_u8));}
+		m.insert("dbbl", FltGen::sci(115627123584_i64, -12_i8));
 		/*----------------
 			MASS UNITS
 		----------------*/
-		m.insert("ct", FltGen::sci(2, -4));
-		m.insert("oz", FltGen::sci(28349523125i64, -12));
-		m.insert("lb", FltGen::rec("oz", &|n| n*16));
-		m.insert("kg", FltGen::val(1));
-		m.insert("st", FltGen::rec("lb", &|n| n*14));
-		m.insert("t", FltGen::rec("lb", &|n| n*2240));
+		m.insert("ct", FltGen::sci(2_u8, -4_i8));
+		m.insert("oz", FltGen::sci(28349523125_u64, -12_i8));
+		m.insert("lb", FltGen::rec("oz", &|n| n*16_u8));
+		m.insert("kg", FltGen::val(1_u8));
+		m.insert("st", FltGen::rec("lb", &|n| n*14_u8));
+		m.insert("t", FltGen::rec("lb", &|n| n*2240_u16));
 		/*----------------
 			TIME UNITS
 		----------------*/
-		m.insert("s", FltGen::val(1));
-		m.insert("min", FltGen::val(60));
-		m.insert("h", FltGen::rec("min", &|n| n*60));
-		m.insert("d", FltGen::rec("h", &|n| n*24));
-		m.insert("w", FltGen::rec("d", &|n| n*7));
-		m.insert("mo", FltGen::rec("d", &|n| n*30));
-		m.insert("a", FltGen::rec("d", &|n| n*365));
-		m.insert("aj", FltGen::rec("d", &|n| n*36525/100));
-		m.insert("ag", FltGen::rec("d", &|n| n*3652425/10000));
+		m.insert("s", FltGen::val(1_u8));
+		m.insert("min", FltGen::val(60_u8));
+		m.insert("h", FltGen::rec("min", &|n| n*60_u8));
+		m.insert("d", FltGen::rec("h", &|n| n*24_u8));
+		m.insert("w", FltGen::rec("d", &|n| n*7_u8));
+		m.insert("mo", FltGen::rec("d", &|n| n*30_u8));
+		m.insert("a", FltGen::rec("d", &|n| n*365_u16));
+		m.insert("aj", FltGen::rec("d", &|n| n*36525_u16/100_u8));
+		m.insert("ag", FltGen::rec("d", &|n| n*3652425_u32/10000_u16));
 		/*-----------------
 			OTHER UNITS
 		-----------------*/
-		m.insert("J", FltGen::val(1));
-		m.insert("cal", FltGen::sci(4184, -3));
-		m.insert("Pa", FltGen::val(1));
-		m.insert("atm", FltGen::val(101325));
-		m.insert("psi", FltGen::sci(6894757293168i64, -9));
-		m.insert("torr", FltGen::rec("atm", &|n| n/760));
+		m.insert("J", FltGen::val(1_u8));
+		m.insert("cal", FltGen::sci(4184_u16, -3_i8));
+		m.insert("Pa", FltGen::val(1_u8));
+		m.insert("atm", FltGen::val(101325_u32));
+		m.insert("psi", FltGen::sci(6894757293168_u64, -9_i8));
+		m.insert("torr", FltGen::rec("atm", &|n| n/760_u16));
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
 		------------------------------*/
@@ -505,7 +505,7 @@ lazy_static! {
 		m.insert("ninf", FltGen::val(Special::NegInfinity));
 		m.insert("nan", FltGen::val(Special::Nan));
 		m.insert("pid", FltGen::val(std::process::id()));
-		m.insert("author", FltGen::val(43615));	//yay numerical nicknames!
+		m.insert("author", FltGen::val(43615_u16));	//yay numerical nicknames!
 		m
 	};
 }
@@ -662,8 +662,9 @@ fn exec(st: &mut State, cmds_in: String) {
 
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
 
-	let nx_init = (&Float::new(1), &Float::new(1), &Float::new(1));	//init for number slots
-	let sx_init = (&String::new(), &String::new(), &String::new());	//init for string slots
+	//default contents of string/number slots
+	let sx_dummy = String::new();
+	let nx_dummy = Float::new(1);
 
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 	
@@ -701,8 +702,8 @@ fn exec(st: &mut State, cmds_in: String) {
 			_ => (DUMMY, DUMMY, DUMMY)
 		};
 
-		let (mut na, mut nb, mut nc) = nx_init;	//create number slots
-		let (mut sa, mut sb, mut sc) = sx_init;	//create string slots
+		let (mut na, mut nb, mut nc) = (&nx_dummy, &nx_dummy, &nx_dummy);	//create number slots
+		let (mut sa, mut sb, mut sc) = (&sx_dummy, &sx_dummy, &sx_dummy);	//create string slots
 		let mut strv = false;	//use string variant of overloaded command (not stridsvagn :/)
 
 		if
@@ -1423,7 +1424,7 @@ fn exec(st: &mut State, cmds_in: String) {
 			//set working precision
 			'w' => {
 				let i = round(na);
-				if let (Some(u), false) = (i.to_u32(), i==0u8) {
+				if let (Some(u), false) = (i.to_u32(), i==0_u8) {
 					st.w = u;
 				}
 				else {
