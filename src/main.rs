@@ -72,11 +72,13 @@ enum CmdSig {
 }
 use CmdSig::*;
 impl CmdSig {
+	#[inline(always)]
 	///english plural ending
 	fn plural(&self) -> &str {
 		if matches!(self, Ax|An|As) {""} else {"s"}
 	}
 
+	#[inline(always)]
 	///correction messages
 	fn correct(&self) -> &str {
 		match self {
@@ -95,16 +97,19 @@ impl CmdSig {
 ///stack for (K,I,O) tuples, with methods for checked editing
 struct ParamStk(Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
+	#[inline(always)]
 	///switch to new param context with defaults (-1,10,10)
 	fn create(&mut self) {
 		self.0.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
 	}
+	#[inline(always)]
 	///revert to previous context, reset to defaults if nonexistent
 	fn destroy(&mut self) {
 		self.0.pop();
 		if self.0.is_empty() {self.create()}
 	}
 
+	#[inline(always)]
 	///checked edit of current output precision
 	fn set_k(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=-1 {
@@ -113,6 +118,7 @@ impl ParamStk {
 		}
 		else {Err("! k: Output precision must be at least -1")}
 	}
+	#[inline(always)]
 	///checked edit of current input base
 	fn set_i(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=2 {
@@ -121,6 +127,7 @@ impl ParamStk {
 		}
 		else {Err("! i: Input base must be at least 2")}
 	}
+	#[inline(always)]
 	///checked edit of current output base
 	fn set_o(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=2 {
@@ -129,11 +136,13 @@ impl ParamStk {
 		}
 		else {Err("! o: Output base must be at least 2")}
 	}
-	
+	#[inline(always)]
 	///current output precision
 	fn k(&self) -> Integer {self.0.last().unwrap().0.clone()}
+	#[inline(always)]
 	///current input base
 	fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
+	#[inline(always)]
 	///current output base
 	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
 }
@@ -159,11 +168,13 @@ struct State<'a> {
 	w: u32
 }
 
+#[inline(always)]
 ///standard rounding function: discard fractional part if finite, default to 0 otherwise
 fn round(n: &Float) -> Integer {
 	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
 }
 
+#[inline(always)]
 ///parse any-base number
 fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static str> {
 	let (mut mstr, estr) = match src.split(['@', 'e', 'E']).collect::<Vec<&str>>()[..] {	//split at exponential symbol
@@ -358,18 +369,21 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool) {
 struct FltGen(Box<dyn Fn(u32) -> Float>);
 unsafe impl Sync for FltGen {}
 impl FltGen {
+	#[inline(always)]
 	///simple value
 	fn val<T: 'static + Copy>(val: T) -> Self
 	where Float: Assign<T> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, val)))
 	}
 
+	#[inline(always)]
 	///scientific notation
 	fn sci<T: 'static + Copy, U: 'static + Copy>(man :T, exp: U) -> Self
 	where Float: Assign<T> + Assign<U> {
 		Self(Box::new(move |prec: u32| Float::with_val(prec, man)*Float::with_val(prec, exp).exp10()))
 	}
 
+	#[inline(always)]
 	///recursive (apply function to existing unit)
 	fn rec(que: &'static str, fun: &'static dyn Fn(Float) -> Float) -> Self {
 		Self(Box::new(move |prec: u32| fun(CONSTANTS.get(que).unwrap().0(prec))))
@@ -510,6 +524,7 @@ lazy_static! {
 	};
 }
 
+#[inline(always)]
 ///calculate value with given precision, apply scale prefix and power suffix
 fn get_constant(prec: u32, query: &str) -> Option<Float> {
 	let mut q = query.to_string();
@@ -542,6 +557,7 @@ fn get_constant(prec: u32, query: &str) -> Option<Float> {
 	}
 }
 
+#[inline(always)]
 ///custom number printing function:
 ///if output base is over 36, prints in custom "any-base" notation,
 ///otherwise, applies precision like dc and converts from exponential notation if not too small
