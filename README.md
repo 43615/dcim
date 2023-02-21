@@ -48,3 +48,14 @@ export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 - Arbitrary registers can be selected with a "register pointer" command.
 - Nonexistent register array objects are initialized with empty strings.
 - A library of various named constants and unit conversion factors.
+
+## Using dc:im in your code (WIP)
+- Create a state storage struct (`State::default`).
+  - *Non-trivial defaults can be customized with corresponding `.custom_*` methods.*
+- Execute commands with `exec`.
+- Example:
+```rust
+let mut s = dcim::State::default()
+	.custom_w(1_000_000_000);
+dcim::exec(&mut s, "[pi]\"p");  //calculate π to 1 billion bits, print
+```
