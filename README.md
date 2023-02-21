@@ -57,5 +57,5 @@ export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 ```rust
 let mut s = dcim::State::default()
 	.custom_w(1_000_000_000);
-dcim::exec(&mut s, "[pi]\"p");  //calculate π to 1 billion bits, print
+dcim::exec(&mut s, "[pi]\"p".into());  //calculate π to 1 billion bits, print
 ```
