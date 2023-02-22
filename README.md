@@ -18,7 +18,7 @@ This readme only mentions changes compared to GNU dc. If you're unfamiliar with 
 
 ### In general
 ```
-cargo install --git https://github.com/43615/dcim
+cargo install dcim
 ```
 
 ### Windows
@@ -49,13 +49,17 @@ export RUSTFLAGS=" -C link-arg=$(clang -print-libgcc-file-name)"
 - Nonexistent register array objects are initialized with empty strings.
 - A library of various named constants and unit conversion factors.
 
-## Using dc:im in your code (WIP)
-- Create a state storage struct (`State::default`).
+## Using dc:im in your code
+- Create a state storage struct (`State::default()`).
   - *Non-trivial defaults can be customized with corresponding `.custom_*` methods.*
+- Create a set of IO streams (`IOTriple`).
+  - *The macro `stdio!()` creates a set that uses standard input, output and error.* 
 - Execute commands with `exec`.
 - Example:
 ```rust
-let mut s = dcim::State::default()
-	.custom_w(1_000_000_000);
-dcim::exec(&mut s, "[pi]\"p".into());  //calculate π to 1 billion bits, print
+use dcim::*;
+let mut state = State::default()  //create state storage
+    .custom_w(1_000_000_000);   //precision to 1 billion bits
+let mut io = stdio!();    //will print to console
+exec(&mut state, &mut io, "[pi]\"p").unwrap();  //calculate π, print
 ```

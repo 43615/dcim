@@ -1,8 +1,8 @@
 use dcim::*;
 use read_input::prelude::*;
 
-const HELPMSG: &str =
-r##"╭─────────────────────────╮
+const HELPMSG: &str = "\
+╭─────────────────────────╮
 │   ╷           •         │
 │   │                     │
 │ ╭─┤  ╭─╴  •  ╶┤   ┌─┬─╮ │
@@ -17,10 +17,10 @@ Command line options:
 (order/position of --flags doesn't matter)
 
 <nothing>
-	Defaults to "-i".
+	Defaults to \"-i\".
 
 --inter|-i [PROMPT]
-	Interactive mode, standard prompt-eval loop. A custom prompt may be provided, default is "> ".
+	Interactive mode, standard prompt-eval loop. A custom prompt may be provided, default is \"> \".
 
 --expr|-e [--inter|-i] EXPR1 [EXPR2] [EXPR3] ...
 	Expression mode, executes expressions in order. If combined with -i, enters interactive mode after expressions are finished.
@@ -30,15 +30,19 @@ Command line options:
 	For each line in the file(s), comments (following the first #) are removed before execution.
 	-f is optional: If at least one option is provided without any --flags, file mode is implied.
 
+--safe|-s
+	Enable safe mode: disallows commands that interact with the OS (&, $, \\).
+
 --help|-h
-	Ignores all other options and prints this help message."##;
+	Ignores all other options and prints this help message.\
+";
 
 fn main() {
 	/*-------------------
 		PARSE OPTIONS
 	-------------------*/
 
-	let (mut i, mut e, mut f) = (false, false, false);	//flags
+	let (mut i, mut e, mut f, mut s) = (false, false, false, false);	//flags
 	let mut names: Vec<String> = Vec::new();	//buf for filenames/expressions
 	for arg in std::env::args().skip(1) {	//get args, skip name of binary
 		if let Some(flag) = arg.strip_prefix("--") {	//long variants
@@ -46,6 +50,7 @@ fn main() {
 				"inter" => {i=true;}
 				"expr" => {e=true;}
 				"file" => {f=true;}
+				"safe" => {s=true;}
 				"help" => {	//prioritized, always terminate
 					println!("{HELPMSG}");
 					std::process::exit(0);
@@ -64,6 +69,7 @@ fn main() {
 					'i' => {i=true;}
 					'e' => {e=true;}
 					'f' => {f=true;}
+					's' => {s=true;}
 					'h' => {	//prioritized, always terminate
 						println!("{HELPMSG}");
 						std::process::exit(0);}
@@ -89,15 +95,15 @@ fn main() {
 	match (i, e, f) {
 		(false, false, false) => {	//no flags
 			if names.is_empty() {
-				inter_mode(&mut st, None);	//interactive with default prompt
+				inter_mode(&mut st, None, s);	//interactive with default prompt
 			}
 			else {
-				file_mode(&mut st, names, false);	//-f is optional
+				file_mode(&mut st, names, false, s);	//-f is optional
 			}
 		}
-		(true, false, false) => {inter_mode(&mut st, names.first().cloned());}	//interactive with custom prompt
-		(_, true, false) => {expr_mode(&mut st, names, i);}	//expr mode, pass i on
-		(_, false, true) => {file_mode(&mut st, names, i);}	//file mode, pass i on
+		(true, false, false) => {inter_mode(&mut st, names.first().cloned(), s);}	//interactive with custom prompt
+		(_, true, false) => {expr_mode(&mut st, names, i, s);}	//expr mode, pass i on
+		(_, false, true) => {file_mode(&mut st, names, i, s);}	//file mode, pass i on
 		(_, true, true) => {	//invalid combination
 			eprintln!("! Invalid options: both -e and -f present");
 			std::process::exit(1);
@@ -106,34 +112,39 @@ fn main() {
 }
 
 ///infinite prompt-eval loop
-fn inter_mode(st: &mut State, prompt: Option<String>) {
+fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
 	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
+	let mut io = stdio!();
 	loop {
-		exec(st, inputter.get());
+		#[allow(unused_must_use)]
+		{exec(st, &mut io, safe, &inputter.get());}
 	}
 }
 
 ///takes input from cmd args
-fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool) {
+fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool, safe: bool) {
 	if exprs.is_empty() {
 		eprintln!("! No expression provided");
 	}
 	else {
+		let mut io = stdio!();
 		for expr in exprs {
-			exec(st, expr);
+			#[allow(unused_must_use)]
+			{exec(st, &mut io, safe, &expr);}
 		}
 	}
 	if inter {
-		inter_mode(st, None);
+		inter_mode(st, None, safe);
 	}
 }
 
 ///takes input from file contents, removes #comments
-fn file_mode(st: &mut State, files: Vec<String>, inter: bool) {
+fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
 	if files.is_empty() {
 		eprintln!("! No file name provided");
 	}
 	else {
+		let mut io = stdio!();
 		for file in files {
 			match std::fs::read_to_string(&file) {
 				Ok(script) => {
@@ -142,7 +153,8 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool) {
 						script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 						script_nc.push('\n');
 					}
-					exec(st, script_nc);
+					#[allow(unused_must_use)]
+					{exec(st, &mut io, safe, &script_nc);}
 				},
 				Err(error) => {
 					eprintln!("! Unable to read file \"{file}\": {error}");
@@ -151,6 +163,6 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool) {
 		}
 	}
 	if inter {
-		inter_mode(st, None);
+		inter_mode(st, None, safe);
 	}
 }

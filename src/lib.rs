@@ -1,9 +1,8 @@
-use std::io::{stdout, Write};
+use std::io::{Write, BufRead};
 use std::time::{SystemTime, Duration};
 use std::collections::{VecDeque, HashSet, HashMap};
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
 use rand::{RngCore, rngs::OsRng};
-use read_input::prelude::*;
 #[macro_use]
 extern crate lazy_static;
 
@@ -543,8 +542,26 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	}
 }
 
-///execute commands on given state
-pub fn exec(st: &mut State, cmds: String) {
+///Combined IO streams
+pub struct IOTriple<'a> {
+	pub input: &'a mut dyn BufRead,
+	pub output: &'a mut dyn Write,
+	pub error: &'a mut dyn Write
+}
+#[macro_export]
+///IO triple from standard input, output and error
+macro_rules! stdio {
+	() => {
+		::dcim::IOTriple {
+			input: &mut ::std::io::BufReader::new(::std::io::stdin()),
+			output: &mut ::std::io::stdout(),
+			error: &mut ::std::io::stderr()
+		}
+	}
+}
+
+///Execute commands on given state, use provided input/output/error streams
+pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<()> {
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
 
@@ -562,7 +579,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			let i = if let Some(i) = st.rptr.take() {i}	//take index from reg ptr
 			else if let Some(c) = cmdstk.last_mut().unwrap().pop_front() {Integer::from(c as u32)}	//steal next command char as index
 			else {
-				eprintln!("! Command '{cmd}' needs a register number");
+				writeln!(io.error, "! Command '{cmd}' needs a register number")?;
 				continue;
 			};
 			(
@@ -579,7 +596,7 @@ pub fn exec(st: &mut State, cmds: String) {
 		let (sig, adi) = CMD_SIGS.get(&cmd).unwrap_or(&(Nil, 0));	//get correct command signature
 
 		if st.mstk.len() < *adi as usize {	//check stack depth
-			eprintln!("! Command '{cmd}' needs {} argument{}", adi, sig.plural());
+			writeln!(io.error, "! Command '{cmd}' needs {} argument{}", adi, sig.plural())?;
 			continue;
 		}
 
@@ -674,7 +691,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			},
 		}
 		{
-			eprintln!("! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct());
+			writeln!(io.error, "! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct())?;
 			match adi {	//push Objs back
 				1 => {st.mstk.push(a);},
 				2 => {st.mstk.push(a); st.mstk.push(b);},
@@ -691,7 +708,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
 				if st.par.i()>36 {
-					eprintln!("! Any-base input must be used for input bases over 36");
+					writeln!(io.error, "! Any-base input must be used for input bases over 36")?;
 				}
 				else {
 					let mut numstr = String::new();	//gets filled with number to be parsed later
@@ -737,8 +754,8 @@ pub fn exec(st: &mut State, cmds: String) {
 						Ok(res) => {
 							st.mstk.push(Num(Float::with_val(st.w, res)));
 						},
-						Err(error) => {
-							eprintln!("! Unable to parse number \"{numstr}\": {error}");
+						Err(err) => {
+							writeln!(io.error, "! Unable to parse number \"{numstr}\": {err}")?;
 						},
 					}
 				}
@@ -754,7 +771,7 @@ pub fn exec(st: &mut State, cmds: String) {
 				}
 				match parse_abnum(to_parse, st.par.i(), st.w) {
 					Ok(n) => {st.mstk.push(Num(n));}
-					Err(e) => {eprintln!("! Unable to parse any-base number: {e}");}
+					Err(e) => {writeln!(io.error, "! Unable to parse any-base number: {e}")?;}
 				}
 			},
 
@@ -773,7 +790,7 @@ pub fn exec(st: &mut State, cmds: String) {
 						break;
 					}
 					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
-						eprintln!("! Unable to parse string \"[{res}\": missing closing bracket");
+						writeln!(io.error, "! Unable to parse string \"[{res}\": missing closing bracket")?;
 						break;
 					}
 					else {cmd = cmdstk.last_mut().unwrap().pop_front().unwrap();}
@@ -786,8 +803,8 @@ pub fn exec(st: &mut State, cmds: String) {
 			'p' => {
 				if !st.mstk.is_empty() {
 					match st.mstk.last().unwrap() {
-						Num(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-						Str(s) => {println!("[{s}]");},
+						Num(n) => {writeln!(io.output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+						Str(s) => {writeln!(io.output, "[{s}]")?;},
 					}
 				}
 			},
@@ -797,8 +814,8 @@ pub fn exec(st: &mut State, cmds: String) {
 				if !st.mstk.is_empty() {
 					for i in (0..st.mstk.len()).rev() {
 						match &st.mstk[i] {
-							Num(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-							Str(s) => {println!("[{s}]");},
+							Num(n) => {writeln!(io.output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+							Str(s) => {writeln!(io.output, "[{s}]")?;},
 						}
 					}
 				}
@@ -807,19 +824,19 @@ pub fn exec(st: &mut State, cmds: String) {
 			//pop and print without newline
 			'n' => {
 				if !strv {
-					print!("{}", flt_to_str(na.clone(), st.par.o(), st.par.k()));
-					stdout().flush().unwrap();
+					write!(io.output, "{}", flt_to_str(na.clone(), st.par.o(), st.par.k()))?;
+					io.output.flush().unwrap();
 				}
 				else {
-					print!("{sa}");
-					stdout().flush().unwrap();
+					write!(io.output, "{sa}")?;
+					io.output.flush().unwrap()
 				}
 			},
 
 			//pop and print with newline
 			'P' => {
-				if !strv {println!("{}", flt_to_str(na.clone(), st.par.o(), st.par.k()));}
-				else {println!("{sa}");}
+				if !strv {writeln!(io.output, "{}", flt_to_str(na.clone(), st.par.o(), st.par.k()))?;}
+				else {writeln!(io.output, "{sa}")?;}
 			},
 
 			//print register
@@ -827,15 +844,15 @@ pub fn exec(st: &mut State, cmds: String) {
 				if !reg.is_empty(){
 					for i in (0..reg.len()).rev() {
 						match &reg[i].o {
-							Num(n) => {println!("{}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-							Str(s) => {println!("[{s}]");},
+							Num(n) => {writeln!(io.output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+							Str(s) => {writeln!(io.output, "[{s}]")?;},
 						}
 						if !reg[i].a.is_empty() {
 							let width = (reg[i].a.len()-1).to_string().len();	//length of longest index number
 							for ai in 0..reg[i].a.len() {
 								match &reg[i].a[ai] {
-									Num(n) => {println!("\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()));},
-									Str(s) => {println!("\t{ai:>width$}: [{s}]");},
+									Num(n) => {writeln!(io.output, "\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+									Str(s) => {writeln!(io.output, "\t{ai:>width$}: [{s}]")?;},
 								}
 							}
 						}
@@ -868,7 +885,7 @@ pub fn exec(st: &mut State, cmds: String) {
 						));
 					}
 					else {
-						eprintln!("! -: Cannot possibly remove {ib} characters from a string");
+						writeln!(io.error, "! -: Cannot possibly remove {ib} characters from a string")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -891,7 +908,7 @@ pub fn exec(st: &mut State, cmds: String) {
 						));
 					}
 					else {
-						eprintln!("! *: Cannot possibly repeat a string {ib} times");
+						writeln!(io.error, "! *: Cannot possibly repeat a string {ib} times")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -902,7 +919,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			'/' => {
 				if !strv {
 					if nb.is_zero() {
-						eprintln!("! /: Division by zero");
+						writeln!(io.error, "! /: Division by zero")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -923,7 +940,7 @@ pub fn exec(st: &mut State, cmds: String) {
 						));
 					}
 					else {
-						eprintln!("! /: Cannot possibly shorten a string to {ib} characters");
+						writeln!(io.error, "! /: Cannot possibly shorten a string to {ib} characters")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -936,7 +953,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					let ia = round(na);
 					let ib = round(nb);
 					if ib==0 {
-						eprintln!("! %: Reduction mod 0");
+						writeln!(io.error, "! %: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -951,13 +968,13 @@ pub fn exec(st: &mut State, cmds: String) {
 							st.mstk.push(Str(c.into()))
 						}
 						else {
-							eprintln!("! %: String is too short for index {n}");
+							writeln!(io.error, "! %: String is too short for index {n}")?;
 							st.mstk.push(a);
 							st.mstk.push(b);
 						}
 					}
 					else {
-						eprintln!("! %: Cannot possibly extract character at index {ib}");
+						writeln!(io.error, "! %: Cannot possibly extract character at index {ib}")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -970,7 +987,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					let ia = round(na);
 					let ib = round(nb);
 					if ib==0 {
-						eprintln!("! ~: Reduction mod 0");
+						writeln!(io.error, "! ~: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -987,7 +1004,7 @@ pub fn exec(st: &mut State, cmds: String) {
 						st.mstk.push(Str(sa.chars().skip(n).collect()));
 					}
 					else {
-						eprintln!("! ~: Cannot possibly split a string at character {ib}");
+						writeln!(io.error, "! ~: Cannot possibly split a string at character {ib}")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -998,7 +1015,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			'^' => {
 				if !strv {
 					if *na<0 && nb.clone().abs()<1{
-						eprintln!("! ^: Root of negative number");
+						writeln!(io.error, "! ^: Root of negative number")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -1022,7 +1039,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					let ib = round(nb);
 					let ic = round(nc);
 					if ic==0 {
-						eprintln!("! |: Reduction mod 0");
+						writeln!(io.error, "! |: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 						st.mstk.push(c);
@@ -1031,7 +1048,7 @@ pub fn exec(st: &mut State, cmds: String) {
 						st.mstk.push(Num(Float::with_val(st.w, res)));
 					}
 					else {
-						eprintln!("! |: {ia} doesn't have an inverse mod {ic}");
+						writeln!(io.error, "! |: {ia} doesn't have an inverse mod {ic}")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 						st.mstk.push(c);
@@ -1045,7 +1062,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//square root
 			'v' => {
 				if *na<0 {
-					eprintln!("! v: Root of negative number");
+					writeln!(io.error, "! v: Root of negative number")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1056,7 +1073,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//bth root
 			'V' => {
 				if *na<0 && nb.clone().abs()>1{
-					eprintln!("! V: Root of negative number");
+					writeln!(io.error, "! V: Root of negative number")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
@@ -1069,7 +1086,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			'g' => {
 				if !strv {
 					if *na<=0 {
-						eprintln!("! g: Logarithm of non-positive number");
+						writeln!(io.error, "! g: Logarithm of non-positive number")?;
 						st.mstk.push(a);
 					}
 					else {
@@ -1084,12 +1101,12 @@ pub fn exec(st: &mut State, cmds: String) {
 			//base b logarithm
 			'G' => {
 				if *na<=0 {
-					eprintln!("! G: Logarithm of non-positive number");
+					writeln!(io.error, "! G: Logarithm of non-positive number")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
 				else if *nb==1||*nb<=0{
-					eprintln!("! G: Logarithm with base ≤0 or =1");
+					writeln!(io.error, "! G: Logarithm with base ≤0 or =1")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
@@ -1116,7 +1133,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//arc-sine
 			'U' => {
 				if na.clone().abs()>1 {
-					eprintln!("! U: Arc-sine of value outside [-1,1]");
+					writeln!(io.error, "! U: Arc-sine of value outside [-1,1]")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1127,7 +1144,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//arc-cosine
 			'Y' => {
 				if na.clone().abs()>1 {
-					eprintln!("! Y: Arc-cosine of value outside [-1,1]");
+					writeln!(io.error, "! Y: Arc-cosine of value outside [-1,1]")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1144,7 +1161,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			'N' => {
 				let int = round(na);
 				if int<=0 {
-					eprintln!("! N: Upper bound for random value must be above 0");
+					writeln!(io.error, "! N: Upper bound for random value must be above 0")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1164,7 +1181,7 @@ pub fn exec(st: &mut State, cmds: String) {
 								st.mstk.push(Num(res));
 							}
 							else {
-								eprintln!("! \": Constant/conversion factor not found");
+								writeln!(io.error, "! \": Constant/conversion factor not found")?;
 								st.mstk.push(a);
 							}
 						},
@@ -1174,12 +1191,12 @@ pub fn exec(st: &mut State, cmds: String) {
 								st.mstk.push(Num(nl/nr));
 							}
 							else {
-								eprintln!("! \": Constant/conversion factor not found");
+								writeln!(io.error, "! \": Constant/conversion factor not found")?;
 								st.mstk.push(a);
 							}
 						},
 						_ => {
-							eprintln!("! \": Too many spaces in constant/conversion query");
+							writeln!(io.error, "! \": Too many spaces in constant/conversion query")?;
 							st.mstk.push(a);
 						},
 					}
@@ -1207,7 +1224,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					st.mstk.truncate(len-num);
 				}
 				else {
-					eprintln!("! C: Cannot possibly remove {int} objects from the main stack");
+					writeln!(io.error, "! C: Cannot possibly remove {int} objects from the main stack")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1215,7 +1232,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//duplicate top of stack
 			'd' => {
 				if st.mstk.is_empty() {
-					eprintln!("! d: Nothing to duplicate");
+					writeln!(io.error, "! d: Nothing to duplicate")?;
 				}
 				else {
 					st.mstk.extend_from_within(st.mstk.len()-1..);
@@ -1230,12 +1247,12 @@ pub fn exec(st: &mut State, cmds: String) {
 						st.mstk.extend_from_within(st.mstk.len()-num..);
 					}
 					else {
-						eprintln!("! D: Not enough objects to duplicate");
+						writeln!(io.error, "! D: Not enough objects to duplicate")?;
 						st.mstk.push(a);
 					}
 				}
 				else {
-					eprintln!("! D: Cannot possibly duplicate {int} objects");
+					writeln!(io.error, "! D: Cannot possibly duplicate {int} objects")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1247,7 +1264,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					st.mstk.swap(len-2, len-1);
 				}
 				else {
-					eprintln!("! r: Not enough objects to swap");
+					writeln!(io.error, "! r: Not enough objects to swap")?;
 				}
 			},
 
@@ -1268,12 +1285,12 @@ pub fn exec(st: &mut State, cmds: String) {
 						st.mstk = sl.to_vec();
 					}
 					else {
-						eprintln!("! R: Not enough objects to rotate");
+						writeln!(io.error, "! R: Not enough objects to rotate")?;
 						st.mstk.push(a);
 					}
 				}
 				else {
-					eprintln!("! R: Cannot possibly rotate {} objects", int.abs());
+					writeln!(io.error, "! R: Cannot possibly rotate {} objects", int.abs())?;
 					st.mstk.push(a);
 				}
 			},
@@ -1288,7 +1305,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//set output precision
 			'k' => {
 				if let Err(e) = st.par.set_k(round(na)) {
-					eprintln!("{e}");
+					writeln!(io.error, "{e}")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1296,7 +1313,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//set input base
 			'i' => {
 				if let Err(e) = st.par.set_i(round(na)) {
-					eprintln!("{e}");
+					writeln!(io.error, "{e}")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1304,7 +1321,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//set output base
 			'o' => {
 				if let Err(e) = st.par.set_o(round(na)) {
-					eprintln!("{e}");
+					writeln!(io.error, "{e}")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1316,7 +1333,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					st.w = u;
 				}
 				else {
-					eprintln!("! w: Working precision must be in range 1 ≤ W ≤ {}", u32::MAX);
+					writeln!(io.error, "! w: Working precision must be in range 1 ≤ W ≤ {}", u32::MAX)?;
 					st.mstk.push(a);
 				}
 			},
@@ -1374,7 +1391,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					st.mstk.push(ro.o.clone());
 				}
 				else {
-					eprintln!("! l: Register # {rnum} is empty");
+					writeln!(io.error, "! l: Register # {rnum} is empty")?;
 				}
 			},
 
@@ -1384,7 +1401,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					st.mstk.push(ro.o);
 				}
 				else {
-					eprintln!("! L: Register # {rnum} is empty");
+					writeln!(io.error, "! L: Register # {rnum} is empty")?;
 				}
 			},
 
@@ -1404,7 +1421,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					reg.last_mut().unwrap().a[rai] = a;
 				}
 				else {
-					eprintln!("! :: Cannot possibly save to array index {int}");
+					writeln!(io.error, "! :: Cannot possibly save to array index {int}")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
@@ -1426,7 +1443,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					st.mstk.push(reg.last().unwrap().a[rai].clone());
 				}
 				else {
-					eprintln!("! ;: Cannot possibly load from array index {int}");
+					writeln!(io.error, "! ;: Cannot possibly load from array index {int}")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1437,7 +1454,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					st.ro_buf = ro;
 				}
 				else {
-					eprintln!("! b: Register # {rnum} is empty");
+					writeln!(io.error, "! b: Register # {rnum} is empty")?;
 				}
 			},
 
@@ -1473,12 +1490,12 @@ pub fn exec(st: &mut State, cmds: String) {
 						st.mstk.push(Str(res.to_string()));
 					}
 					else {
-						eprintln!("! a: Unable to convert number {ia} to character: not a valid Unicode value");
+						writeln!(io.error, "! a: Unable to convert number {ia} to character: not a valid Unicode value")?;
 						st.mstk.push(a);
 					}
 				}
 				else if sa.is_empty() {
-					eprintln!("! a: Cannot convert empty string to number");
+					writeln!(io.error, "! a: Cannot convert empty string to number")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1493,7 +1510,7 @@ pub fn exec(st: &mut State, cmds: String) {
 						st.mstk.push(Str(res));
 					}
 					else {
-						eprintln!("! A: Unable to convert number {} to string: not a valid UTF-8 sequence", round(na));
+						writeln!(io.error, "! A: Unable to convert number {} to string: not a valid UTF-8 sequence", round(na))?;
 						st.mstk.push(a);
 					}
 				}
@@ -1522,7 +1539,7 @@ pub fn exec(st: &mut State, cmds: String) {
 			//conditionally execute macro
 			'<'|'='|'>' => {
 				if reg.is_empty() {
-					eprintln!("! <=>: Register # {rnum} is empty");
+					writeln!(io.error, "! <=>: Register # {rnum} is empty")?;
 				}
 				else if let Str(mac) = &reg.last().unwrap().o {
 					if inv != match cmd {
@@ -1538,7 +1555,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					}
 				}
 				else {
-					eprintln!("! <=>: Top of register # {rnum} is not a string");
+					writeln!(io.error, "! <=>: Top of register # {rnum} is not a string")?;
 				}
 				inv = false;	//always reset inversion
 			},
@@ -1553,7 +1570,7 @@ pub fn exec(st: &mut State, cmds: String) {
 					cmdstk.resize(cmdstk.len()+reps, sa.chars().collect());
 				}
 				else {
-					eprintln!("! X: Cannot possibly repeat a macro {int} times");
+					writeln!(io.error, "! X: Cannot possibly repeat a macro {int} times")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
@@ -1579,14 +1596,15 @@ pub fn exec(st: &mut State, cmds: String) {
 					}
 				}
 				else {
-					eprintln!("! Q: Cannot possibly quit {int} levels");
+					writeln!(io.error, "! Q: Cannot possibly quit {int} levels")?;
 					st.mstk.push(a);
 				}
 			},
 
 			//prompt and execute
 			'?' => {
-				let prompt_in = input::<String>().get();
+				let mut prompt_in = String::new();
+				io.input.read_line(&mut prompt_in)?;
 				if cmdstk.last().unwrap().is_empty() {
 					cmdstk.pop();	//optimize tail call
 				}
@@ -1597,57 +1615,75 @@ pub fn exec(st: &mut State, cmds: String) {
 			----------*/
 			//execute file as script
 			'&' => {
-				match std::fs::read_to_string(sa.clone()) {
-					Ok(script) => {
-						let mut script_nc = String::new();	//script with comments removed
-						for line in script.split('\n') {
-							script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
-							script_nc.push('\n');
-						}
-						cmdstk.push(script_nc.chars().collect());
-					},
-					Err(err) => {
-						eprintln!("! &: Unable to read file \"{sa}\": {err}");
-						st.mstk.push(a);
-					},
+				if !safe {
+					match std::fs::read_to_string(sa.clone()) {
+						Ok(script) => {
+							let mut script_nc = String::new();	//script with comments removed
+							for line in script.split('\n') {
+								script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
+								script_nc.push('\n');
+							}
+							cmdstk.push(script_nc.chars().collect());
+						},
+						Err(err) => {
+							writeln!(io.error, "! &: Unable to read file \"{sa}\": {err}")?;
+							st.mstk.push(a);
+						},
+					}
+				}
+				else {
+					writeln!(io.error, "! &: Not allowed in safe mode")?;
+					st.mstk.push(a);
 				}
 			},
 
 			//get environment variable
 			'$' => {
-				match std::env::var(sa.clone()) {
-					Ok(val) => {
-						st.mstk.push(Str(val));
-					},
-					Err(err) => {
-						eprintln!("! $: Unable to get value of ${sa}: {err}");
-						st.mstk.push(a);
-					},
+				if !safe {
+					match std::env::var(sa.clone()) {
+						Ok(val) => {
+							st.mstk.push(Str(val));
+						},
+						Err(err) => {
+							writeln!(io.error, "! $: Unable to get value of ${sa}: {err}")?;
+							st.mstk.push(a);
+						},
+					}
+				}
+				else {
+					writeln!(io.error, "! $: Not allowed in safe mode")?;
+					st.mstk.push(a);
 				}
 			},
 
 			//execute os command(s)
 			'\\' => {
-				for oscmd in sa.clone().split(';') {
-					if let Some((var, val)) = oscmd.split_once('=') {	//set variable
-						std::env::set_var(var, val);
-					}
-					else {	//normal command
-						let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
-						match std::process::Command::new(args.remove(0)).args(args).spawn() {
-							Ok(mut child) => {
-								if let Ok(stat) = child.wait() {
-									if let Some(code) = stat.code() {
-										if code!=0 {eprintln!("! \\: OS command \"{oscmd}\" exited with code {code}");}
+				if !safe {
+					for oscmd in sa.clone().split(';') {
+						if let Some((var, val)) = oscmd.split_once('=') {	//set variable
+							std::env::set_var(var, val);
+						}
+						else {	//normal command
+							let mut args: Vec<&str> = oscmd.trim().split(' ').collect();
+							match std::process::Command::new(args.remove(0)).args(args).spawn() {
+								Ok(mut child) => {
+									if let Ok(stat) = child.wait() {
+										if let Some(code) = stat.code() {
+											if code!=0 {writeln!(io.error, "! \\: OS command \"{oscmd}\" exited with code {code}")?;}
+										}
 									}
-								}
-							},
-							Err(err) => {
-								eprintln!("! \\: Unable to execute OS command \"{oscmd}\": {err}");
-								st.mstk.push(a.clone());
-							},
+								},
+								Err(err) => {
+									writeln!(io.error, "! \\: Unable to execute OS command \"{oscmd}\": {err}")?;
+									st.mstk.push(a.clone());
+								},
+							}
 						}
 					}
+				}
+				else {
+					writeln!(io.error, "! \\: Not allowed in safe mode")?;
+					st.mstk.push(a);
 				}
 			},
 
@@ -1658,7 +1694,7 @@ pub fn exec(st: &mut State, cmds: String) {
 
 			//notify on invalid command, keep going
 			_ => {
-				if !cmd.is_whitespace()&&cmd!='\0' { eprintln!("! Invalid command: {cmd} (U+{:04X})", cmd as u32); }
+				if !cmd.is_whitespace()&&cmd!='\0' { writeln!(io.error, "! Invalid command: {cmd} (U+{:04X})", cmd as u32)?; }
 			},
 		}
 		while let Some(ptr) = cmdstk.last() {	//clean up empty command strings
@@ -1668,4 +1704,5 @@ pub fn exec(st: &mut State, cmds: String) {
 			else{break;}
 		}
 	}
+	Ok(())
 }
