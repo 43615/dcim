@@ -14,7 +14,7 @@ dc improved - Expanded rewrite of a classic RPN calculator / esoteric programmin
 Core principles of GNU dc are preserved, full documentation at https://github.com/43615/dcim/wiki
 
 Command line options:
-(order/position of --flags doesn't matter)
+(order/position/repetition of --flags doesn't matter)
 
 <nothing>
 	Defaults to \"-i\".
@@ -31,10 +31,11 @@ Command line options:
 	-f is optional: If at least one option is provided without any --flags, file mode is implied.
 
 --safe|-s
-	Enable safe mode: disallows commands that interact with the OS (&, $, \\).
+	Safety flag, disables commands that interact with the OS (&, $, \\).
+	Allows for safe public exposure of a dc:im terminal without allowing RCE on the host.
 
 --help|-h
-	Ignores all other options and prints this help message.\
+	Print this help message and exit.\
 ";
 
 fn main() {

@@ -542,14 +542,14 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	}
 }
 
-///Combined IO streams
+///Bundle of generic IO streams, for brevity.
 pub struct IOTriple<'a> {
 	pub input: &'a mut dyn BufRead,
 	pub output: &'a mut dyn Write,
 	pub error: &'a mut dyn Write
 }
 #[macro_export]
-///IO triple from standard input, output and error
+///Default IO triple using stdin, stdout, stderr
 macro_rules! stdio {
 	() => {
 		::dcim::IOTriple {
@@ -560,9 +560,16 @@ macro_rules! stdio {
 	}
 }
 
-///Execute commands on given state, use provided input/output/error streams.
+///Executes commands on given state, uses provided input/output/error streams.
 ///
-///"safe" toggle disallows commands that interact with the OS.
+///The `safe` toggle disables commands that interact with the OS.
+///
+///Usage of the provided IO streams:
+///- input: Read by the command `?` one line at a time.
+///- output: Normal printing by the commands `pfnPF`.
+///- error: All dc:im error messages, syntactic or semantic.
+///
+///Returns early with `Err` if a write/read on an IO stream fails (don't worry about it).
 pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<()> {
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
@@ -1634,7 +1641,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					}
 				}
 				else {
-					writeln!(io.error, "! &: Not allowed in safe mode")?;
+					writeln!(io.error, "! &: Disabled by --safe flag")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1653,7 +1660,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					}
 				}
 				else {
-					writeln!(io.error, "! $: Not allowed in safe mode")?;
+					writeln!(io.error, "! $: Disabled by --safe flag")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1684,7 +1691,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					}
 				}
 				else {
-					writeln!(io.error, "! \\: Not allowed in safe mode")?;
+					writeln!(io.error, "! \\: Disabled by --safe flag")?;
 					st.mstk.push(a);
 				}
 			},
