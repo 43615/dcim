@@ -560,7 +560,9 @@ macro_rules! stdio {
 	}
 }
 
-///Execute commands on given state, use provided input/output/error streams
+///Execute commands on given state, use provided input/output/error streams.
+///
+///"safe" toggle disallows commands that interact with the OS.
 pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<()> {
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
