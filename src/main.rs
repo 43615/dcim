@@ -12,6 +12,7 @@ const HELPMSG: &str = "\
 
 dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language
 Core principles of GNU dc are preserved, full documentation at https://github.com/43615/dcim/wiki
+This console-based implementation is optional. The inner workings may be used as a library and adapted to a different IO wrapper.
 
 Command line options:
 (order/position/repetition of --flags doesn't matter)
@@ -31,8 +32,8 @@ Command line options:
 	-f is optional: If at least one option is provided without any --flags, file mode is implied.
 
 --safe|-s
-	Safety flag, disables commands that interact with the OS (&, $, \\).
-	Allows for safe public exposure of a dc:im terminal without allowing RCE on the host.
+	Safety flag, disables commands that interact with the OS (&, $, \\) as well as terminating pseudoconstants (abort, crash, panic).
+	Allows for safe public exposure of a dc:im terminal without compromising the host (though infinite loops are still possible!).
 
 --help|-h
 	Print this help message and exit.\
@@ -117,8 +118,10 @@ fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
 	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	let mut io = stdio!();
 	loop {
-		#[allow(unused_must_use)]
-		{exec(st, &mut io, safe, &inputter.get());}
+		match exec(st, &mut io, safe, &inputter.get()) {
+			Ok(Some(i)) => {std::process::exit(i.to_i32_wrapping());}	//'q' called, exit
+			Ok(None) | Err(_) => {} //cmds finished or io error, proceed
+		}
 	}
 }
 
@@ -130,8 +133,10 @@ fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool, safe: bool) {
 	else {
 		let mut io = stdio!();
 		for expr in exprs {
-			#[allow(unused_must_use)]
-			{exec(st, &mut io, safe, &expr);}
+			match exec(st, &mut io, safe, &expr) {
+				Ok(Some(i)) => {std::process::exit(i.to_i32_wrapping());}
+				Ok(None) | Err(_) => {}
+			}
 		}
 	}
 	if inter {
@@ -154,8 +159,10 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
 						script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 						script_nc.push('\n');
 					}
-					#[allow(unused_must_use)]
-					{exec(st, &mut io, safe, &script_nc);}
+					match exec(st, &mut io, safe, &script_nc) {
+						Ok(Some(i)) => {std::process::exit(i.to_i32_wrapping());}
+						Ok(None) | Err(_) => {}
+					}
 				},
 				Err(error) => {
 					eprintln!("! Unable to read file \"{file}\": {error}");

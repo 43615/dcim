@@ -397,7 +397,9 @@ lazy_static! {
 
 #[inline(always)]
 ///calculate value with given precision, apply scale prefix and power suffix
-fn get_constant(prec: u32, query: &str) -> Option<Float> {
+///
+///`safe` toggle disables terminating queries
+fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 	let mut q = query.to_string();
 	let mut scale = String::new();
 	while q.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
@@ -420,9 +422,9 @@ fn get_constant(prec: u32, query: &str) -> Option<Float> {
 		match q.as_str() {	//non-constants and terminators are here to avoid execution by lazy_static::initialize
 			"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs()))}
 			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()))}
-			"abort" => {std::process::abort();}
-			"crash" => {get_constant(prec, "crash")}	//stack go brrrrr
-			"panic" => {std::panic::panic_any("Expected, [panic]\" was executed");}
+			"abort" if !safe => {std::process::abort();}
+			"crash" if !safe => {get_constant(prec, "crash", false)}	//stack go brrrrr
+			"panic" if !safe => {std::panic::panic_any("Expected, [panic]\" was executed");}
 			_ => None
 		}
 	}
@@ -562,15 +564,21 @@ macro_rules! stdio {
 
 ///Executes commands on given state, uses provided input/output/error streams.
 ///
-///The `safe` toggle disables commands that interact with the OS.
+///The `safe` toggle disables commands that interact with the OS, as well as terminating pseudoconstants.
+///Be aware that this toggle does not prevent infinite loops (`[lax]salax`).
 ///
 ///Usage of the provided IO streams:
 ///- input: Read by the command `?` one line at a time.
 ///- output: Normal printing by the commands `pfnPF`.
 ///- error: All dc:im error messages, syntactic or semantic.
 ///
-///Returns early with `Err` if a write/read on an IO stream fails (don't worry about it).
-pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<()> {
+///If all commands run to completion, `Ok(None)` is returned.
+///
+///`Ok(Some(Integer))` indicates an early exit request (`q` command). The current `State` should be discarded.
+///If the register pointer is set, its value is returned as the "exit code" (0 otherwise).
+///
+///Terminates with `Err` only if a write/read on an IO stream fails.
+pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<Option<Integer>> {
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
 
@@ -1186,7 +1194,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 				else {
 					match sa.matches(' ').count() {
 						0 => {	//normal lookup
-							if let Some(res) = get_constant(st.w, sa) {
+							if let Some(res) = get_constant(st.w, sa, safe) {
 								st.mstk.push(Num(res));
 							}
 							else {
@@ -1196,7 +1204,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						},
 						1 => {	//conversion shorthand, left divided by right
 							let (sl, sr) = sa.split_once(' ').unwrap();
-							if let (Some(nl), Some(nr)) = (get_constant(st.w, sl), get_constant(st.w, sr)) {
+							if let (Some(nl), Some(nr)) = (get_constant(st.w, sl, safe), get_constant(st.w, sr, safe)) {
 								st.mstk.push(Num(nl/nr));
 							}
 							else {
@@ -1585,12 +1593,9 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 				}
 			},
 
-			//quit dcim
+			//request to quit
 			'q' => {
-				std::process::exit(
-					if let Some(i) = &st.rptr {i.to_i32_wrapping()}
-					else {0}
-				);
+				return Ok(Some(st.rptr.clone().unwrap_or_default()));	//rptr as exit code, always wrap in Some
 			},
 
 			//quit a macro calls
@@ -1713,5 +1718,5 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			else{break;}
 		}
 	}
-	Ok(())
+	Ok(None)
 }
