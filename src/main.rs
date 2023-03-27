@@ -1,4 +1,4 @@
-use dcim::*;
+use dcim::{*, ExecDone::*};
 use read_input::prelude::*;
 
 const HELPMSG: &str = "\
@@ -119,8 +119,8 @@ fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
 	let mut io = stdio!();
 	loop {
 		match exec(st, &mut io, safe, &inputter.get()) {
-			Ok(Some(i)) => {std::process::exit(i.to_i32_wrapping());}	//'q' called, exit
-			Ok(None) | Err(_) => {} //cmds finished or io error, proceed
+			Ok(Quit(i)) => {std::process::exit(i);}	//'q' called, exit
+			Ok(Finished) | Err(_) => {} //cmds finished or io error, proceed
 		}
 	}
 }
@@ -134,8 +134,8 @@ fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool, safe: bool) {
 		let mut io = stdio!();
 		for expr in exprs {
 			match exec(st, &mut io, safe, &expr) {
-				Ok(Some(i)) => {std::process::exit(i.to_i32_wrapping());}
-				Ok(None) | Err(_) => {}
+				Ok(Quit(i)) => {std::process::exit(i);}
+				Ok(Finished) | Err(_) => {}
 			}
 		}
 	}
@@ -160,8 +160,8 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
 						script_nc.push('\n');
 					}
 					match exec(st, &mut io, safe, &script_nc) {
-						Ok(Some(i)) => {std::process::exit(i.to_i32_wrapping());}
-						Ok(None) | Err(_) => {}
+						Ok(Quit(i)) => {std::process::exit(i);}
+						Ok(Finished) | Err(_) => {}
 					}
 				},
 				Err(error) => {

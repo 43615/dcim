@@ -22,6 +22,7 @@ struct RegObj {
 	o: Obj,			//principal object
 	a: Vec<Obj>,	//associated array
 }
+type Register = Vec<RegObj>;
 
 ///all existing command argument signatures
 #[derive(Clone, Copy)]
@@ -41,13 +42,13 @@ use CmdSig::*;
 impl CmdSig {
 	#[inline(always)]
 	///english plural ending
-	fn plural(&self) -> &str {
+	const fn plural(&self) -> &str {
 		if matches!(self, Ax|An|As) {""} else {"s"}
 	}
 
 	#[inline(always)]
 	///correction messages
-	fn correct(&self) -> &str {
+	const fn correct(&self) -> &str {
 		match self {
 			Nil|Ax => "",
 			An => "must be a number",
@@ -65,9 +66,9 @@ impl CmdSig {
 struct ParamStk(Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
 	#[inline(always)]
-	///switch to new param context with defaults (-1,10,10)
+	///switch to new param context with defaults (0,10,10)
 	fn create(&mut self) {
-		self.0.push((Integer::from(-1), Integer::from(10), Integer::from(10)));
+		self.0.push((Integer::from(0), Integer::from(10), Integer::from(10)));
 	}
 	#[inline(always)]
 	///revert to previous context, reset to defaults if nonexistent
@@ -79,11 +80,11 @@ impl ParamStk {
 	#[inline(always)]
 	///checked edit of current output precision
 	fn set_k(&mut self, n: Integer) -> Result<(), &'static str> {
-		if n>=-1 {
+		if n>=0 {
 			self.0.last_mut().unwrap().0 = n;
 			Ok(())
 		}
-		else {Err("! k: Output precision must be at least -1")}
+		else {Err("! k: Output precision must be at least 0")}
 	}
 	#[inline(always)]
 	///checked edit of current input base
@@ -115,14 +116,14 @@ impl ParamStk {
 }
 
 ///default register, const required for array init
-const REG_DEF: Vec<RegObj> = Vec::new();
+const REG_DEF: Register = Vec::new();
 
 ///Bundled state storage for one instance of dc:im
 pub struct State<'a> {
 	///main stack
 	mstk: Vec<Obj>,
 	///hashmap of arbitrarily-numbered registers
-	regs: HashMap<Integer, Vec<RegObj>>,
+	regs: HashMap<Integer, Register>,
 	///RegObj buffer
 	ro_buf: RegObj,
 	///manual register pointer
@@ -137,8 +138,8 @@ pub struct State<'a> {
 impl Default for State<'_> {
 	///Arbitrary initial values one might want to change:
 	///- RNG: Mersenne twister seeded with 1024 bits of OS randomness
-	///- Parameter stack: one entry, (K, I, O) = (-1, 10, 10)
-	///- Working precision: 256 bits
+	///- Parameter stack: one entry, (K, I, O) = (0, 10, 10)
+	///- Working precision: 64 bits
 	fn default() -> Self {
 		Self {
 			mstk: Vec::new(),
@@ -158,23 +159,23 @@ impl Default for State<'_> {
 				p.create();
 				p
 			},
-			w: 256
+			w: 64
 		}
 	}
 }
 impl<'a> State<'a> {
 	///replace RNG with custom one
-	pub fn custom_rng(mut self, r: RandState<'a>) -> Self {
+	#[must_use] pub fn custom_rng(mut self, r: RandState<'a>) -> Self {
 		self.rng = r;
 		self
 	}
 	///custom initial (K, I, O) entry, cleaner than exec
-	pub fn custom_params(mut self, k: Integer, i: Integer, o: Integer) -> Self {
+	#[must_use] pub fn custom_params(mut self, k: Integer, i: Integer, o: Integer) -> Self {
 		self.par = ParamStk(vec![(k, i, o)]);
 		self
 	}
 	///custom initial W, cleaner than exec
-	pub fn custom_w(mut self, w: u32) -> Self {
+	#[must_use] pub const fn custom_w(mut self, w: u32) -> Self {
 		self.w = w;
 		self
 	}
@@ -229,7 +230,7 @@ fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static 
 		man += di;	//add new digit
 	}
 
-	if mneg {man *= -1;}
+	if mneg {man *= -1_i8;}
 
 	Ok(
 		Float::with_val(prec, man) / scale * exp
@@ -305,13 +306,13 @@ lazy_static! {
 		/*------------------------
 			PHYSICAL CONSTANTS
 		------------------------*/
-		m.insert("c", FltGen::val(299792458_u32));
-		m.insert("hbar", FltGen(Box::new(|prec| FltGen::sci(662607015_u32, -42_i8).0(prec) / FltGen::rec("pi", &|n| n*2_u8).0(prec))));
+		m.insert("c", FltGen::val(299_792_458_u32));
+		m.insert("hbar", FltGen(Box::new(|prec| FltGen::sci(662_607_015_u32, -42_i8).0(prec) / FltGen::rec("pi", &|n| n*2_u8).0(prec))));
 		m.insert("G", FltGen::sci(6674_u16, -3_i8));
-		m.insert("qe", FltGen::sci(1602176634_u32, -28_i8));
-		m.insert("NA", FltGen::sci(602214076_u32, 31_u8));
-		m.insert("kB", FltGen::sci(1380649_u32, -29_i8));
-		m.insert("u", FltGen::sci(1660539066_u32, -36_i8));
+		m.insert("qe", FltGen::sci(1_602_176_634_u32, -28_i8));
+		m.insert("NA", FltGen::sci(602_214_076_u32, 31_u8));
+		m.insert("kB", FltGen::sci(1_380_649_u32, -29_i8));
+		m.insert("u", FltGen::sci(1_660_539_066_u32, -36_i8));
 		m.insert("lp", FltGen::sci(16162_u16, -39_i8));
 		m.insert("tp", FltGen::sci(5391_u16, -47_i8));
 		m.insert("mp", FltGen::sci(21764_u16, -12_i8));
@@ -326,21 +327,21 @@ lazy_static! {
 		m.insert("fur", FltGen::rec("ft", &|n| n*660_u16));
 		m.insert("mi", FltGen::rec("ft", &|n| n*5280_u16));
 		m.insert("nmi", FltGen::val(1852_u16));
-		m.insert("AU", FltGen::val(149597870700_u64));
-		m.insert("ly", FltGen::val(9460730472580800_u64));
-		m.insert("pc", FltGen(Box::new(|prec| Float::with_val(prec, 96939420213600000_u64)/Float::with_val(prec, Constant::Pi))));
+		m.insert("AU", FltGen::val(149_597_870_700_u64));
+		m.insert("ly", FltGen::val(9_460_730_472_580_800_u64));
+		m.insert("pc", FltGen(Box::new(|prec| Float::with_val(prec, 96_939_420_213_600_000_u64)/Float::with_val(prec, Constant::Pi))));
 		/*-------------------------------
 			AREA & VOLUME UNITS
 			with no length equivalent
 		-------------------------------*/
-		for q in ["ac","acre"] {m.insert(q, FltGen::sci(40468564224_u64, -7_i8));}
+		for q in ["ac","acre"] {m.insert(q, FltGen::sci(40_468_564_224_u64, -7_i8));}
 		m.insert("l", FltGen::sci(1_u8, -3_i8));
-		m.insert("ifloz", FltGen::sci(284130625_u32, -13_i8));
+		m.insert("ifloz", FltGen::sci(284_130_625_u32, -13_i8));
 		m.insert("ipt", FltGen::rec("ifloz", &|n| n*20_u8));
 		m.insert("iqt", FltGen::rec("ifloz", &|n| n*40_u8));
 		m.insert("igal", FltGen::rec("ifloz", &|n| n*160_u8));
 		for q in ["ibu","ibsh"] {m.insert(q, FltGen::rec("ifloz", &|n| n*1280_u16));}
-		m.insert("ufldr", FltGen::sci(36966911953125_u64, -19_i8));
+		m.insert("ufldr", FltGen::sci(36_966_911_953_125_u64, -19_i8));
 		m.insert("tsp", FltGen::rec("ufldr", &|n| n/3_u8*4_u8));
 		m.insert("tbsp", FltGen::rec("ufldr", &|n| n*4_u8));
 		m.insert("ufloz", FltGen::rec("ufldr", &|n| n*8_u8));
@@ -348,16 +349,16 @@ lazy_static! {
 		m.insert("uqt", FltGen::rec("ufloz", &|n| n*32_u8));
 		m.insert("ugal", FltGen::rec("ufloz", &|n| n*128_u8));
 		m.insert("bbl", FltGen::rec("ugal", &|n| n*42_u8));
-		m.insert("udpt", FltGen::sci(5506104713575_u64, -16_i8));
+		m.insert("udpt", FltGen::sci(5_506_104_713_575_u64, -16_i8));
 		m.insert("udqt", FltGen::rec("udpt", &|n| n*2_u8));
 		m.insert("udgal", FltGen::rec("udpt", &|n| n*8_u8));
 		for q in ["ubu","ubsh"] {m.insert(q, FltGen::rec("udpt", &|n| n*64_u8));}
-		m.insert("dbbl", FltGen::sci(115627123584_i64, -12_i8));
+		m.insert("dbbl", FltGen::sci(115_627_123_584_i64, -12_i8));
 		/*----------------
 			MASS UNITS
 		----------------*/
 		m.insert("ct", FltGen::sci(2_u8, -4_i8));
-		m.insert("oz", FltGen::sci(28349523125_u64, -12_i8));
+		m.insert("oz", FltGen::sci(28_349_523_125_u64, -12_i8));
 		m.insert("lb", FltGen::rec("oz", &|n| n*16_u8));
 		m.insert("kg", FltGen::val(1_u8));
 		m.insert("st", FltGen::rec("lb", &|n| n*14_u8));
@@ -373,15 +374,15 @@ lazy_static! {
 		m.insert("mo", FltGen::rec("d", &|n| n*30_u8));
 		m.insert("a", FltGen::rec("d", &|n| n*365_u16));
 		m.insert("aj", FltGen::rec("d", &|n| n*36525_u16/100_u8));
-		m.insert("ag", FltGen::rec("d", &|n| n*3652425_u32/10000_u16));
+		m.insert("ag", FltGen::rec("d", &|n| n*3_652_425_u32/10000_u16));
 		/*-----------------
 			OTHER UNITS
 		-----------------*/
 		m.insert("J", FltGen::val(1_u8));
 		m.insert("cal", FltGen::sci(4184_u16, -3_i8));
 		m.insert("Pa", FltGen::val(1_u8));
-		m.insert("atm", FltGen::val(101325_u32));
-		m.insert("psi", FltGen::sci(6894757293168_u64, -9_i8));
+		m.insert("atm", FltGen::val(101_325_u32));
+		m.insert("psi", FltGen::sci(6_894_757_293_168_u64, -9_i8));
 		m.insert("torr", FltGen::rec("atm", &|n| n/760_u16));
 		/*------------------------------
 			SPECIAL VALUES/FUNCTIONS
@@ -395,7 +396,6 @@ lazy_static! {
 	};
 }
 
-#[inline(always)]
 ///calculate value with given precision, apply scale prefix and power suffix
 ///
 ///`safe` toggle disables terminating queries
@@ -431,37 +431,42 @@ fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 }
 
 #[inline(always)]
+///trim trailing 0s and .
+fn trim_0s(v: &mut Vec<u8>) {
+	while v.last()==Some(&b'0') {v.pop();}
+	if v.last()==Some(&b'.') {v.pop();}
+}
+
+#[inline(always)]
 ///custom number printing function:
 ///if output base is over 36, prints in custom "any-base" notation,
-///otherwise, applies precision like dc and converts from exponential notation if not too small
+///otherwise, applies precision and converts from exponential notation if not too small
 fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
+	//handle special cases
 	if !num.is_normal() {
-		if num.is_zero() {
-			return String::from(if obase>36 {"(0)"} else {"0"});	//causes issues, always "0" regardless of parameters
-		}
-		let mut ret = String::from(if num.is_sign_negative() {"-"} else {""});
-		if num.is_infinite() {
-			ret += "∞";
-			return ret;
-		}
-		if num.is_nan() {
-			ret += "NaN";
-			return ret;
-		}
+		let mut ret = String::new();
+
+		if num.is_sign_negative() {ret.push('-');}
+
+		if num.is_zero() {ret.push('0');}
+		else if num.is_infinite() {ret.push('∞');}
+		else {ret.push_str("NaN");}	//only remaining case
+
+		return ret;
 	}
 
-	if obase>36 {	//any-base printing (original base conversion algorithm out of necessity, limited precision possible)
-		let mut outstr = String::from(if num<0 {"(-"} else {"("});	//apply negative sign
+	if obase>36_u8 {	//any-base printing (original base conversion algorithm out of necessity, limited precision possible)
+		let mut outstr = String::from(if num<0_u8 {"(-"} else {"("});	//apply negative sign
 		num = num.abs();
 		let mut scale: usize = 0;	//amount to shift fractional separator in output
-		while !num.is_integer()&&(oprec<0||scale<oprec) {	//turn into integer scaled by power of obase, apply output precision if enabled
+		while !num.is_integer()&&(oprec<0_u8||scale<oprec) {	//turn into integer scaled by power of obase, apply output precision if enabled
 			let temp = num.clone() * &obase;	//preview scale-up
 			if temp.is_infinite() {	//possible with high precision due to Float's exponent limitation
 				num /= &obase;	//prevent overflow in later "extra precision" part
 				break;	//disregard further precision
 			}
 			num = temp;	//if ok, commit to scale-up
-			scale +=1;
+			scale += 1;
 		}
 		num *= &obase;	//get extra precision for last digit
 		let mut int = num.to_integer().unwrap();	//convert to Integer
@@ -476,7 +481,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 			outstr.push_str(&quot.to_string());	//print amount of current digit
 			outstr.push(' ');
 			int = rem;	//switch to remainder
-			if dig==1 {break;}	//stop when all digits done
+			if dig==1_u8 {break;}	//stop when all digits done
 			dig /= &obase;	//switch to next lower digit
 		}
 		if scale>0 {
@@ -492,55 +497,61 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		outstr
 	}
 	else {	//normal printing
-		let mut outstr = num.to_string_radix(
-			obase.to_i32().unwrap(),
-			if oprec<0 {
-				None
-			}
-			else {
-				(oprec + Integer::from(
-					num.to_integer_round(Round::Zero).unwrap().0	//integer part of num
-						.to_string_radix(obase.to_i32().unwrap())	//...to string
-						.trim_start_matches('-').len())).to_usize() 	//...length without negative sign, print exactly if too large
-			}
-		);
-		if obase <= 10 {	//unify exponent symbol without searching the whole string
-			let im = outstr.len()-1;	//max index
-			unsafe {
-				let bytes = outstr.as_bytes_mut();
-				for ir in 0..=im {	//right offset
-					if ir>10 {break;}	//exponents cannot have more digits, longest is @-323228496
-					if bytes[im-ir]==b'e' {
-						bytes[im-ir] = b'@';	//replace
-						break;
+		//raw string from rug, byte vec of nonzero size
+		let mut ret = num.to_string_radix(
+			obase.to_i32().unwrap(),	//range already checked
+			oprec.to_usize()	//None = too large anyway, print all
+		).as_bytes().to_owned();
+
+		//ARBITRARY DECISIONS AHEAD
+		//that's what the fuss is about
+
+		let mut mneg = false;	//useful later
+		if ret[0]==b'-' {mneg=true; ret[0]=b'_';}	//negative sign of mantissa
+
+		if let Some(elen) =	//check if in scientific notation and get length of exp part
+			ret.iter().rev().take(12)	//only consider the last 12 chars, longest possible exponent is @-1073741824
+			.position(|c| *c==if obase<=10_u8 {b'e'} else {b'@'})	//rug prints with 'e' if O<=10
+		{
+			let mut epart = ret.split_off(ret.len()-elen);	//exponent part
+			ret.pop();	//remove exponent symbol
+
+			if epart[0]==b'-' {	//negative exponent
+				epart[0]=b'_';	//unify negative sign
+				if elen==2 {	//exponent above -10, convert to normal notation
+					let eint = String::from_utf8(epart).unwrap()[1..].parse::<usize>().unwrap();	//numerical value of epart / total # of 0s
+					let mut buf = vec![b'0', b'.'];	//start with fixed 0.
+					buf.resize(eint + 1, b'0');	//0s before mantissa
+					buf.push(ret[mneg as usize]);	//digit before original .
+					buf.extend(ret.split_off(2 + mneg as usize));	//remaining digits
+					ret = if mneg {
+						vec![b'_']
 					}
+					else {
+						vec![]
+					};
+					ret.append(&mut buf);
+					trim_0s(&mut ret);
+				}
+				else {	//reassemble scientific notation
+					trim_0s(&mut ret);
+					ret.push(b'@');    //add unified exponent symbol
+					ret.append(&mut epart);    //and exponent itself
 				}
 			}
-		}
-		if outstr.starts_with('-') {
-			outstr = outstr.replacen('-', "_", 1);	//replace negative sign
-		}
-		if outstr[outstr.len().saturating_sub(11)..].contains('@') {	//efficiently check if in exponential notation
-			let (mut mpart, epart) = outstr.rsplit_once('@').unwrap();
-			mpart = mpart.trim_end_matches('0').trim_end_matches('.');	//remove trailing zeros from mantissa
-			let eint = epart.parse::<i32>().unwrap();	//isolate exponential part
-			if eint<0 && eint>-10 {
-				outstr = "0.".to_string() + &"0".repeat(eint.unsigned_abs() as usize -1) + &mpart.replacen('.', "", 1);	//convert from exponential notation if not too small
-				if num<0 {
-					let (ipart, fpart) = outstr.split_once('_').unwrap();
-					outstr = "_".to_string() + ipart + fpart;	//move negative sign to front
-				}
-			}
-			else {
-				outstr = mpart.to_string() + "@" + &epart.replacen('-', "_", 1);	//reassemble, replace negative sign in exponent
+			else {	//just reassemble
+				trim_0s(&mut ret);
+				ret.push(b'@');    //add unified exponent symbol
+				ret.append(&mut epart);    //and exponent itself
 			}
 		}
-		else {	//if in normal notation
-			if let Some((ipart, fpart)) = outstr.split_once('.') {
-				outstr = ipart.to_string() + "." + fpart.trim_end_matches('0');	//trim trailing zeros
+		else {	//in normal notation
+			if ret.iter().any(|x| *x==b'.') {	//. present, safe to trim end
+				trim_0s(&mut ret);
 			}
 		}
-		outstr.trim_end_matches('.').to_string()	//remove fractional separator
+
+		String::from_utf8(ret).unwrap()	//won't panic, only dealing with ascii
 	}
 }
 
@@ -562,23 +573,46 @@ macro_rules! stdio {
 	}
 }
 
-///Executes commands on given state, uses provided input/output/error streams.
-///
-///The `safe` toggle disables commands that interact with the OS, as well as terminating pseudoconstants.
-///Be aware that this toggle does not prevent infinite loops (`[lax]salax`).
-///
-///Usage of the provided IO streams:
-///- input: Read by the command `?` one line at a time.
-///- output: Normal printing by the commands `pfnPF`.
-///- error: All dc:im error messages, syntactic or semantic.
-///
-///If all commands run to completion, `Ok(None)` is returned.
-///
-///`Ok(Some(Integer))` indicates an early exit request (`q` command). The current `State` should be discarded.
-///If the register pointer is set, its value is returned as the "exit code" (0 otherwise).
-///
-///Terminates with `Err` only if a write/read on an IO stream fails.
-pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<Option<Integer>> {
+///Happy results of [`exec()`]
+pub enum ExecDone {
+	///Commands ran to completion, state should probably be kept
+	Finished,
+	///Exit request by `q` with exit code, state should probably be discarded
+	Quit(i32)
+}
+use ExecDone::*;
+
+/**
+*CORE LANGUAGE IMPLEMENTATION*
+
+# Parameters
+
+## `st`
+Reference to the state storage to work on, modified in-place
+
+## `io`
+Bundled reference to IO streams, fields are used as follows:
+- input: Read by the command `?` one line at a time
+- output: Normal printing by the commands `pfnPF`
+- error: Receives dc:im error messages, one per line
+
+## `safe`
+Safety toggle: Disables commands that interact with the OS, as well as terminating pseudoconstants.
+Be aware that this does not prevent infinite loops (`[lax]salax`).
+
+## `cmds`
+dc:im commands to execute
+
+# Returns
+See [`ExecDone`]
+
+# Errors
+Only if a write/read on an IO stream fails
+
+# Panics
+Probably never™
+*/
+pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
 
@@ -590,9 +624,9 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
 
-		let mut cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');	//get next command
+		let mut cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or_default();	//get next command
 
-		let (reg, rnum): (&mut Vec<RegObj>, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
+		let (reg, rnum): (&mut Register, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
 			let i = if let Some(i) = st.rptr.take() {i}	//take index from reg ptr
 			else if let Some(c) = cmdstk.last_mut().unwrap().pop_front() {Integer::from(c as u32)}	//steal next command char as index
 			else {
@@ -617,7 +651,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			continue;
 		}
 
-		let (c, b, a) = match adi {	//pop required amount from stack
+		let (c, b, a) = match adi {	//pop required objects from stack
 			1 => (DUMMY, DUMMY, st.mstk.pop().unwrap()),
 			2 => (DUMMY, st.mstk.pop().unwrap(), st.mstk.pop().unwrap()),
 			3 => (st.mstk.pop().unwrap(), st.mstk.pop().unwrap(), st.mstk.pop().unwrap()),
@@ -724,7 +758,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			------------------*/
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
-				if st.par.i()>36 {
+				if st.par.i()>36_u8 {
 					writeln!(io.error, "! Any-base input must be used for input bases over 36")?;
 				}
 				else {
@@ -740,13 +774,13 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					loop {
 						//numbers, periods and exponential notation
 						if cmd.is_ascii_digit()||cmd == '.'||cmd == '@' {
-							if cmd == '.' { if frac { break; } else { frac = true; } } //break on encountering second '.'
+							if cmd == '.' { if frac { break; } frac = true; } //break on encountering second '.'
 							if cmd == '@' { neg = false; }	//allow for second negative sign in exponent
 							numstr.push(cmd);
 						}
 						//'_' needs to be replaced with '-'
 						else if cmd == '_' {
-							if neg { break; } else { neg = true; } //break on encountering second '_'
+							if neg { break; } neg = true;	//break on encountering second '_'
 							numstr.push('-');
 						}
 						//parse letters if number is prefixed with quote
@@ -810,7 +844,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						writeln!(io.error, "! Unable to parse string \"[{res}\": missing closing bracket")?;
 						break;
 					}
-					else {cmd = cmdstk.last_mut().unwrap().pop_front().unwrap();}
+					cmd = cmdstk.last_mut().unwrap().pop_front().unwrap();
 				}
 			},
 			/*--------------
@@ -846,7 +880,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 				}
 				else {
 					write!(io.output, "{sa}")?;
-					io.output.flush().unwrap()
+					io.output.flush().unwrap();
 				}
 			},
 
@@ -864,13 +898,11 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 							Num(n) => {writeln!(io.output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
 							Str(s) => {writeln!(io.output, "[{s}]")?;},
 						}
-						if !reg[i].a.is_empty() {
-							let width = (reg[i].a.len()-1).to_string().len();	//length of longest index number
-							for ai in 0..reg[i].a.len() {
-								match &reg[i].a[ai] {
-									Num(n) => {writeln!(io.output, "\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
-									Str(s) => {writeln!(io.output, "\t{ai:>width$}: [{s}]")?;},
-								}
+						let width = (reg[i].a.len()-1).to_string().len();	//length of longest index number
+						for (ai, o) in reg[i].a.iter().enumerate() {
+							match o {
+								Num(n) => {writeln!(io.output, "\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+								Str(s) => {writeln!(io.output, "\t{ai:>width$}: [{s}]")?;},
 							}
 						}
 					}
@@ -982,7 +1014,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					let ib = round(nb);
 					if let Some(n) = ib.to_usize() {
 						if let Some(c) = sa.chars().nth(n) {
-							st.mstk.push(Str(c.into()))
+							st.mstk.push(Str(c.into()));
 						}
 						else {
 							writeln!(io.error, "! %: String is too short for index {n}")?;
@@ -1003,7 +1035,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 				if !strv {
 					let ia = round(na);
 					let ib = round(nb);
-					if ib==0 {
+					if ib==0_u8 {
 						writeln!(io.error, "! ~: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
@@ -1031,7 +1063,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//exponentiation or find in string
 			'^' => {
 				if !strv {
-					if *na<0 && nb.clone().abs()<1{
+					if *na<0_u8 && nb.clone().abs()<1_u8{
 						writeln!(io.error, "! ^: Root of negative number")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
@@ -1045,7 +1077,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					st.mstk.push(Num(Float::with_val(st.w, cidx)));
 				}
 				else {
-					st.mstk.push(Num(Float::with_val(st.w, -1)));	//not found, silent error
+					st.mstk.push(Num(Float::with_val(st.w, -1_i8)));	//not found, silent error
 				}
 			},
 
@@ -1055,7 +1087,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					let ia = round(na);
 					let ib = round(nb);
 					let ic = round(nc);
-					if ic==0 {
+					if ic==0_u8 {
 						writeln!(io.error, "! |: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
@@ -1078,7 +1110,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//square root
 			'v' => {
-				if *na<0 {
+				if *na<0_u8 {
 					writeln!(io.error, "! v: Root of negative number")?;
 					st.mstk.push(a);
 				}
@@ -1089,7 +1121,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//bth root
 			'V' => {
-				if *na<0 && nb.clone().abs()>1{
+				if *na<0_u8 && nb.clone().abs()>1{
 					writeln!(io.error, "! V: Root of negative number")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
@@ -1102,7 +1134,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//length of string or natural logarithm
 			'g' => {
 				if !strv {
-					if *na<=0 {
+					if *na<=0_u8 {
 						writeln!(io.error, "! g: Logarithm of non-positive number")?;
 						st.mstk.push(a);
 					}
@@ -1117,12 +1149,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//base b logarithm
 			'G' => {
-				if *na<=0 {
+				if *na<=0_u8 {
 					writeln!(io.error, "! G: Logarithm of non-positive number")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
-				else if *nb==1||*nb<=0{
+				else if *nb==1_u8||*nb<=0_u8{
 					writeln!(io.error, "! G: Logarithm with base ≤0 or =1")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
@@ -1149,7 +1181,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//arc-sine
 			'U' => {
-				if na.clone().abs()>1 {
+				if na.clone().abs()>1_u8 {
 					writeln!(io.error, "! U: Arc-sine of value outside [-1,1]")?;
 					st.mstk.push(a);
 				}
@@ -1160,7 +1192,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//arc-cosine
 			'Y' => {
-				if na.clone().abs()>1 {
+				if na.clone().abs()>1_u8 {
 					writeln!(io.error, "! Y: Arc-cosine of value outside [-1,1]")?;
 					st.mstk.push(a);
 				}
@@ -1177,7 +1209,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//random integer [0;a)
 			'N' => {
 				let int = round(na);
-				if int<=0 {
+				if int<=0_u8 {
 					writeln!(io.error, "! N: Upper bound for random value must be above 0")?;
 					st.mstk.push(a);
 				}
@@ -1288,12 +1320,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//rotate top a objects
 			'R' => {
 				let mut int = round(na);
-				if int==0 { int = Integer::from(1); }	//replace 0 with effective no-op
+				if int==0_u8 { int = Integer::from(1_u8); }	//replace 0 with effective no-op
 				if let Some(num) = int.clone().abs().to_usize() {
 					let len = st.mstk.len();
 					if num<=len {
 						let sl = st.mstk.as_mut_slice();
-						if int<0 {
+						if int<0_u8 {
 							sl[len-num..].rotate_left(1);	//if negative, rotate left/down
 						}
 						else {
@@ -1595,7 +1627,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//request to quit
 			'q' => {
-				return Ok(Some(st.rptr.clone().unwrap_or_default()));	//rptr as exit code, always wrap in Some
+				return Ok(Quit(st.rptr.clone().unwrap_or_default().to_i32().unwrap_or_default()));	//rptr as exit code
 			},
 
 			//quit a macro calls
@@ -1718,5 +1750,5 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			else{break;}
 		}
 	}
-	Ok(None)
+	Ok(Finished)
 }

@@ -61,5 +61,5 @@ use dcim::*;
 let mut state = State::default()  //create state storage
     .custom_w(1_000_000_000);   //precision to 1 billion bits
 let mut io = stdio!();    //will print to console
-let _ = exec(&mut state, &mut io, true, "[pi]\"p").unwrap();  //calculate π, print
+let _ = exec(&mut state, &mut io, true, "[pi]\"p");  //calculate π, print
 ```
