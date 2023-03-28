@@ -501,57 +501,53 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		let mut ret = num.to_string_radix(
 			obase.to_i32().unwrap(),	//range already checked
 			oprec.to_usize()	//None = too large anyway, print all
-		).as_bytes().to_owned();
+		);
+		let bytes = unsafe {ret.as_mut_vec()};	//only dealing with ascii, chillax
 
-		//ARBITRARY DECISIONS AHEAD
-		//that's what the fuss is about
-
-		let mut mneg = false;	//useful later
-		if ret[0]==b'-' {mneg=true; ret[0]=b'_';}	//negative sign of mantissa
+		let mneg = bytes[0]==b'-';	//mantissa negative?
 
 		if let Some(elen) =	//check if in scientific notation and get length of exp part
-			ret.iter().rev().take(12)	//only consider the last 12 chars, longest possible exponent is @-1073741824
+			bytes.iter().rev().take(12)	//only consider the last 12 chars, longest possible exponent is @-1073741824
 			.position(|c| *c==if obase<=10_u8 {b'e'} else {b'@'})	//rug prints with 'e' if O<=10
 		{
-			let mut epart = ret.split_off(ret.len()-elen);	//exponent part
-			ret.pop();	//remove exponent symbol
+			let mut epart = bytes.split_off(bytes.len()-elen);	//isolate exponent
+			bytes.pop();	//remove exponent symbol
 
 			if epart[0]==b'-' {	//negative exponent
-				epart[0]=b'_';	//unify negative sign
 				if elen==2 {	//exponent above -10, convert to normal notation
-					let eint = String::from_utf8(epart).unwrap()[1..].parse::<usize>().unwrap();	//numerical value of epart / total # of 0s
+					let eint = unsafe {String::from_utf8_unchecked(epart)[1..].parse::<usize>().unwrap()};	//numerical value of epart / total # of 0s
 					let mut buf = vec![b'0', b'.'];	//start with fixed 0.
 					buf.resize(eint + 1, b'0');	//0s before mantissa
-					buf.push(ret[mneg as usize]);	//digit before original .
-					buf.extend(ret.split_off(2 + mneg as usize));	//remaining digits
-					ret = if mneg {
-						vec![b'_']
-					}
-					else {
-						vec![]
-					};
-					ret.append(&mut buf);
-					trim_0s(&mut ret);
+					buf.push(bytes[mneg as usize]);	//digit before original .
+					buf.extend(bytes.split_off(2 + mneg as usize));	//remaining digits
+					bytes.clear();	//start fresh
+					if mneg {bytes.push(b'_');}	//negative sign
+					bytes.append(&mut buf);
+					trim_0s(bytes);
 				}
 				else {	//reassemble scientific notation
-					trim_0s(&mut ret);
-					ret.push(b'@');    //add unified exponent symbol
-					ret.append(&mut epart);    //and exponent itself
+					if mneg {bytes[0] = b'_';}	//negative sign
+					trim_0s(bytes);
+					bytes.push(b'@');    //add unified exponent symbol
+					epart[0]=b'_';
+					bytes.append(&mut epart);    //and exponent itself
 				}
 			}
 			else {	//just reassemble
-				trim_0s(&mut ret);
-				ret.push(b'@');    //add unified exponent symbol
-				ret.append(&mut epart);    //and exponent itself
+				if mneg {bytes[0] = b'_';}	//negative sign
+				trim_0s(bytes);
+				bytes.push(b'@');    //add unified exponent symbol
+				bytes.append(&mut epart);    //and exponent itself
 			}
 		}
 		else {	//in normal notation
-			if ret.iter().any(|x| *x==b'.') {	//. present, safe to trim end
-				trim_0s(&mut ret);
+			if mneg {bytes[0] = b'_';}	//negative sign
+			if bytes.iter().any(|x| *x==b'.') {	//. present, safe to trim end
+				trim_0s(bytes);
 			}
 		}
 
-		String::from_utf8(ret).unwrap()	//won't panic, only dealing with ascii
+		ret
 	}
 }
 
