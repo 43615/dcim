@@ -1674,9 +1674,9 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				}
 				else {
 					let handle = reg.th.take().unwrap();
-					let timeout = Instant::now() + Duration::from_micros(round(na).to_u64().unwrap_or(u64::MAX));
+					let timeout = Instant::now() + Duration::from_millis(round(na).to_u64().unwrap_or(u64::MAX));
 					loop {
-						th::sleep(Duration::from_micros(1));
+						th::sleep(Duration::from_millis(1));
 						if handle.is_finished() {
 							for o in handle.join().unwrap() {	//put results into register
 								reg.v.push(RegObj {
