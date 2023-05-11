@@ -31,7 +31,7 @@ Command line options:
 	For each line in the file(s), comments (following the first #) are removed before execution.
 	-f is optional: If at least one option is provided without any --flags, file mode is implied.
 
---safe|-s
+[--safe|-s]
 	Safety flag, disables commands that interact with the OS (&, $, \\) as well as terminating pseudoconstants (abort, crash, panic).
 	Allows for safe public exposure of a dc:im terminal without compromising the host (though infinite loops are still possible!).
 
@@ -118,7 +118,7 @@ fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
 	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	let mut io = stdio!();
 	loop {
-		match exec(st, &mut io, safe, &inputter.get()) {
+		match exec(st, Some(&mut io), safe, &inputter.get()) {
 			Ok(Quit(i)) => {std::process::exit(i);}	//'q' called, exit
 			Ok(Finished) | Err(_) => {} //cmds finished or io error, proceed
 		}
@@ -133,7 +133,7 @@ fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool, safe: bool) {
 	else {
 		let mut io = stdio!();
 		for expr in exprs {
-			match exec(st, &mut io, safe, &expr) {
+			match exec(st, Some(&mut io), safe, &expr) {
 				Ok(Quit(i)) => {std::process::exit(i);}
 				Ok(Finished) | Err(_) => {}
 			}
@@ -159,7 +159,7 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
 						script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 						script_nc.push('\n');
 					}
-					match exec(st, &mut io, safe, &script_nc) {
+					match exec(st, Some(&mut io), safe, &script_nc) {
 						Ok(Quit(i)) => {std::process::exit(i);}
 						Ok(Finished) | Err(_) => {}
 					}

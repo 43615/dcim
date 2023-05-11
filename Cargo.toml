@@ -1,6 +1,6 @@
 [package]
 name = "dcim"
-version = "1.7.1"
+version = "2.0.0"
 edition = "2021"
 authors = ["43615"]
 description = "dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language"
@@ -12,6 +12,6 @@ license-file = "LICENSE"
 
 [dependencies]
 rand = "=0.8.5"
-rug = "=1.19.0"
+rug = "=1.19.2"
 read_input = "=0.8.6"
 lazy_static = "=1.4.0"

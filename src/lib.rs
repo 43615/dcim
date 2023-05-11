@@ -1,5 +1,6 @@
 use std::io::{Write, BufRead};
-use std::time::{SystemTime, Duration};
+use std::time::{SystemTime, Duration, Instant};
+use std::thread as th;
 use std::collections::{VecDeque, HashSet, HashMap};
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
 use rand::{RngCore, rngs::OsRng};
@@ -8,7 +9,7 @@ extern crate lazy_static;
 
 ///basic object: either number or string
 #[derive(Clone)]
-enum Obj {
+pub enum Obj {
 	Num(Float),
 	Str(String)
 }
@@ -18,11 +19,14 @@ const DUMMY: Obj = Str(String::new());
 
 ///register object, may have a dynamic array
 #[derive(Clone)]
-struct RegObj {
+pub struct RegObj {
 	o: Obj,			//principal object
-	a: Vec<Obj>,	//associated array
+	a: Vec<Obj>	//associated array
 }
-type Register = Vec<RegObj>;
+pub struct Register {
+	v: Vec<RegObj>,
+	th: Option<th::JoinHandle<Vec<Obj>>>
+}
 
 ///all existing command argument signatures
 #[derive(Clone, Copy)]
@@ -63,7 +67,8 @@ impl CmdSig {
 }
 
 ///stack for (K,I,O) tuples, with methods for checked editing
-struct ParamStk(Vec<(Integer, Integer, Integer)>);
+#[derive(Clone)]
+pub struct ParamStk(Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
 	#[inline(always)]
 	///switch to new param context with defaults (0,10,10)
@@ -116,24 +121,27 @@ impl ParamStk {
 }
 
 ///default register, const required for array init
-const REG_DEF: Register = Vec::new();
+const REG_DEF: Register = Register {
+	v: Vec::new(),
+	th: None
+};
 
 ///Bundled state storage for one instance of dc:im
 pub struct State<'a> {
 	///main stack
-	mstk: Vec<Obj>,
+	pub mstk: Vec<Obj>,
 	///hashmap of arbitrarily-numbered registers
-	regs: HashMap<Integer, Register>,
+	pub regs: HashMap<Integer, Register>,
 	///RegObj buffer
-	ro_buf: RegObj,
+	pub ro_buf: RegObj,
 	///manual register pointer
-	rptr: Option<Integer>,
+	pub rptr: Option<Integer>,
 	///random number generator
-	rng: RandState<'a>,
+	pub rng: RandState<'a>,
 	///parameters K,I,O
-	par: ParamStk,
+	pub par: ParamStk,
 	///working precision W
-	w: u32
+	pub w: u32
 }
 impl Default for State<'_> {
 	///Arbitrary initial values one might want to change:
@@ -161,23 +169,6 @@ impl Default for State<'_> {
 			},
 			w: 64
 		}
-	}
-}
-impl<'a> State<'a> {
-	///replace RNG with custom one
-	#[must_use] pub fn custom_rng(mut self, r: RandState<'a>) -> Self {
-		self.rng = r;
-		self
-	}
-	///custom initial (K, I, O) entry, cleaner than exec
-	#[must_use] pub fn custom_params(mut self, k: Integer, i: Integer, o: Integer) -> Self {
-		self.par = ParamStk(vec![(k, i, o)]);
-		self
-	}
-	///custom initial W, cleaner than exec
-	#[must_use] pub const fn custom_w(mut self, w: u32) -> Self {
-		self.w = w;
-		self
 	}
 }
 
@@ -266,7 +257,7 @@ lazy_static! {
 	///all commands that use a register
 	static ref USES_REG: HashSet<char> = {
 		let mut s = HashSet::new();
-		for c in "FsSlL:;bBZ<=>".chars() {s.insert(c);}
+		for c in "FsSlL:;bBZ<=>mM".chars() {s.insert(c);}
 		s
 	};
 	///command signatures and adicities
@@ -279,13 +270,13 @@ lazy_static! {
 
 		for c in "-*/%~:".chars() {m.insert(c, (AxBn, 2));}
 
-		for c in "&$\\".chars() {m.insert(c, (As, 1));}
+		for c in "m&$\\".chars() {m.insert(c, (As, 1));}
 
 		for c in "nPaA\"xgsS,".chars() {m.insert(c, (Ax, 1));}
 
 		m.insert('X', (AsBn, 2));
 
-		for c in "v°uytUYTNCDRkiow;Q".chars() {m.insert(c, (An, 1));}
+		for c in "v°uytUYTNCDRkiow;QM".chars() {m.insert(c, (An, 1));}
 
 		for c in "VG<=>".chars() {m.insert(c, (AnBn, 2));}
 
@@ -587,10 +578,11 @@ use ExecDone::*;
 Reference to the state storage to work on, modified in-place
 
 ## `io`
-Bundled reference to IO streams, fields are used as follows:
+Optional bundle of IO streams, fields are used as follows:
 - input: Read by the command `?` one line at a time
 - output: Normal printing by the commands `pfnPF`
 - error: Receives dc:im error messages, one per line
+If `None` is given, IO is disabled and the resulting `State` must be read manually to get useful results.
 
 ## `safe`
 Safety toggle: Disables commands that interact with the OS, as well as terminating pseudoconstants.
@@ -608,7 +600,18 @@ Only if a write/read on an IO stream fails
 # Panics
 Probably never™
 */
-pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
+pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
+	let no_io = IOTriple {
+		input: &mut std::io::BufReader::new(std::io::empty()),
+		output: &mut std::io::sink(),
+		error: &mut std::io::sink()
+	};
+	let (input, output, error): (&mut dyn BufRead, &mut dyn Write, &mut dyn Write) = if let Some(tri) = io {
+		(tri.input, tri.output, tri.error)
+	}
+	else {
+		(no_io.input, no_io.output, no_io.error)
+	};
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//invert next comparison
 
@@ -626,7 +629,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			let i = if let Some(i) = st.rptr.take() {i}	//take index from reg ptr
 			else if let Some(c) = cmdstk.last_mut().unwrap().pop_front() {Integer::from(c as u32)}	//steal next command char as index
 			else {
-				writeln!(io.error, "! Command '{cmd}' needs a register number")?;
+				writeln!(error, "! Command '{cmd}' needs a register number")?;
 				continue;
 			};
 			(
@@ -643,7 +646,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 		let (sig, adi) = CMD_SIGS.get(&cmd).unwrap_or(&(Nil, 0));	//get correct command signature
 
 		if st.mstk.len() < *adi as usize {	//check stack depth
-			writeln!(io.error, "! Command '{cmd}' needs {} argument{}", adi, sig.plural())?;
+			writeln!(error, "! Command '{cmd}' needs {} argument{}", adi, sig.plural())?;
 			continue;
 		}
 
@@ -738,7 +741,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			},
 		}
 		{
-			writeln!(io.error, "! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct())?;
+			writeln!(error, "! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct())?;
 			match adi {	//push Objs back
 				1 => {st.mstk.push(a);},
 				2 => {st.mstk.push(a); st.mstk.push(b);},
@@ -755,7 +758,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
 				if st.par.i()>36_u8 {
-					writeln!(io.error, "! Any-base input must be used for input bases over 36")?;
+					writeln!(error, "! Any-base input must be used for input bases over 36")?;
 				}
 				else {
 					let mut numstr = String::new();	//gets filled with number to be parsed later
@@ -802,7 +805,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 							st.mstk.push(Num(Float::with_val(st.w, res)));
 						},
 						Err(err) => {
-							writeln!(io.error, "! Unable to parse number \"{numstr}\": {err}")?;
+							writeln!(error, "! Unable to parse number \"{numstr}\": {err}")?;
 						},
 					}
 				}
@@ -818,7 +821,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 				}
 				match parse_abnum(to_parse, st.par.i(), st.w) {
 					Ok(n) => {st.mstk.push(Num(n));}
-					Err(e) => {writeln!(io.error, "! Unable to parse any-base number: {e}")?;}
+					Err(e) => {writeln!(error, "! Unable to parse any-base number: {e}")?;}
 				}
 			},
 
@@ -837,7 +840,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						break;
 					}
 					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
-						writeln!(io.error, "! Unable to parse string \"[{res}\": missing closing bracket")?;
+						writeln!(error, "! Unable to parse string \"[{res}\": missing closing bracket")?;
 						break;
 					}
 					cmd = cmdstk.last_mut().unwrap().pop_front().unwrap();
@@ -850,8 +853,8 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			'p' => {
 				if !st.mstk.is_empty() {
 					match st.mstk.last().unwrap() {
-						Num(n) => {writeln!(io.output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
-						Str(s) => {writeln!(io.output, "[{s}]")?;},
+						Num(n) => {writeln!(output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+						Str(s) => {writeln!(output, "[{s}]")?;},
 					}
 				}
 			},
@@ -861,8 +864,8 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 				if !st.mstk.is_empty() {
 					for i in (0..st.mstk.len()).rev() {
 						match &st.mstk[i] {
-							Num(n) => {writeln!(io.output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
-							Str(s) => {writeln!(io.output, "[{s}]")?;},
+							Num(n) => {writeln!(output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+							Str(s) => {writeln!(output, "[{s}]")?;},
 						}
 					}
 				}
@@ -871,34 +874,34 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//pop and print without newline
 			'n' => {
 				if !strv {
-					write!(io.output, "{}", flt_to_str(na.clone(), st.par.o(), st.par.k()))?;
-					io.output.flush().unwrap();
+					write!(output, "{}", flt_to_str(na.clone(), st.par.o(), st.par.k()))?;
+					output.flush().unwrap();
 				}
 				else {
-					write!(io.output, "{sa}")?;
-					io.output.flush().unwrap();
+					write!(output, "{sa}")?;
+					output.flush().unwrap();
 				}
 			},
 
 			//pop and print with newline
 			'P' => {
-				if !strv {writeln!(io.output, "{}", flt_to_str(na.clone(), st.par.o(), st.par.k()))?;}
-				else {writeln!(io.output, "{sa}")?;}
+				if !strv {writeln!(output, "{}", flt_to_str(na.clone(), st.par.o(), st.par.k()))?;}
+				else {writeln!(output, "{sa}")?;}
 			},
 
 			//print register
 			'F' => {
-				if !reg.is_empty(){
-					for i in (0..reg.len()).rev() {
-						match &reg[i].o {
-							Num(n) => {writeln!(io.output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
-							Str(s) => {writeln!(io.output, "[{s}]")?;},
+				if !reg.v.is_empty(){
+					for i in (0..reg.v.len()).rev() {
+						match &reg.v[i].o {
+							Num(n) => {writeln!(output, "{}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+							Str(s) => {writeln!(output, "[{s}]")?;},
 						}
-						let width = (reg[i].a.len()-1).to_string().len();	//length of longest index number
-						for (ai, o) in reg[i].a.iter().enumerate() {
+						let width = (reg.v[i].a.len()-1).to_string().len();	//length of longest index number
+						for (ai, o) in reg.v[i].a.iter().enumerate() {
 							match o {
-								Num(n) => {writeln!(io.output, "\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
-								Str(s) => {writeln!(io.output, "\t{ai:>width$}: [{s}]")?;},
+								Num(n) => {writeln!(output, "\t{ai:>width$}: {}", flt_to_str(n.clone(), st.par.o(), st.par.k()))?;},
+								Str(s) => {writeln!(output, "\t{ai:>width$}: [{s}]")?;},
 							}
 						}
 					}
@@ -930,7 +933,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						));
 					}
 					else {
-						writeln!(io.error, "! -: Cannot possibly remove {ib} characters from a string")?;
+						writeln!(error, "! -: Cannot possibly remove {ib} characters from a string")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -953,7 +956,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						));
 					}
 					else {
-						writeln!(io.error, "! *: Cannot possibly repeat a string {ib} times")?;
+						writeln!(error, "! *: Cannot possibly repeat a string {ib} times")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -964,7 +967,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			'/' => {
 				if !strv {
 					if nb.is_zero() {
-						writeln!(io.error, "! /: Division by zero")?;
+						writeln!(error, "! /: Division by zero")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -985,7 +988,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						));
 					}
 					else {
-						writeln!(io.error, "! /: Cannot possibly shorten a string to {ib} characters")?;
+						writeln!(error, "! /: Cannot possibly shorten a string to {ib} characters")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -998,7 +1001,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					let ia = round(na);
 					let ib = round(nb);
 					if ib==0 {
-						writeln!(io.error, "! %: Reduction mod 0")?;
+						writeln!(error, "! %: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -1013,13 +1016,13 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 							st.mstk.push(Str(c.into()));
 						}
 						else {
-							writeln!(io.error, "! %: String is too short for index {n}")?;
+							writeln!(error, "! %: String is too short for index {n}")?;
 							st.mstk.push(a);
 							st.mstk.push(b);
 						}
 					}
 					else {
-						writeln!(io.error, "! %: Cannot possibly extract character at index {ib}")?;
+						writeln!(error, "! %: Cannot possibly extract character at index {ib}")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -1032,7 +1035,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					let ia = round(na);
 					let ib = round(nb);
 					if ib==0_u8 {
-						writeln!(io.error, "! ~: Reduction mod 0")?;
+						writeln!(error, "! ~: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -1049,7 +1052,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						st.mstk.push(Str(sa.chars().skip(n).collect()));
 					}
 					else {
-						writeln!(io.error, "! ~: Cannot possibly split a string at character {ib}")?;
+						writeln!(error, "! ~: Cannot possibly split a string at character {ib}")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -1060,7 +1063,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			'^' => {
 				if !strv {
 					if *na<0_u8 && nb.clone().abs()<1_u8{
-						writeln!(io.error, "! ^: Root of negative number")?;
+						writeln!(error, "! ^: Root of negative number")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 					}
@@ -1084,7 +1087,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					let ib = round(nb);
 					let ic = round(nc);
 					if ic==0_u8 {
-						writeln!(io.error, "! |: Reduction mod 0")?;
+						writeln!(error, "! |: Reduction mod 0")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 						st.mstk.push(c);
@@ -1093,7 +1096,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						st.mstk.push(Num(Float::with_val(st.w, res)));
 					}
 					else {
-						writeln!(io.error, "! |: {ia} doesn't have an inverse mod {ic}")?;
+						writeln!(error, "! |: {ia} doesn't have an inverse mod {ic}")?;
 						st.mstk.push(a);
 						st.mstk.push(b);
 						st.mstk.push(c);
@@ -1107,7 +1110,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//square root
 			'v' => {
 				if *na<0_u8 {
-					writeln!(io.error, "! v: Root of negative number")?;
+					writeln!(error, "! v: Root of negative number")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1118,7 +1121,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//bth root
 			'V' => {
 				if *na<0_u8 && nb.clone().abs()>1{
-					writeln!(io.error, "! V: Root of negative number")?;
+					writeln!(error, "! V: Root of negative number")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
@@ -1131,7 +1134,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			'g' => {
 				if !strv {
 					if *na<=0_u8 {
-						writeln!(io.error, "! g: Logarithm of non-positive number")?;
+						writeln!(error, "! g: Logarithm of non-positive number")?;
 						st.mstk.push(a);
 					}
 					else {
@@ -1146,12 +1149,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//base b logarithm
 			'G' => {
 				if *na<=0_u8 {
-					writeln!(io.error, "! G: Logarithm of non-positive number")?;
+					writeln!(error, "! G: Logarithm of non-positive number")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
 				else if *nb==1_u8||*nb<=0_u8{
-					writeln!(io.error, "! G: Logarithm with base ≤0 or =1")?;
+					writeln!(error, "! G: Logarithm with base ≤0 or =1")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
@@ -1178,7 +1181,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//arc-sine
 			'U' => {
 				if na.clone().abs()>1_u8 {
-					writeln!(io.error, "! U: Arc-sine of value outside [-1,1]")?;
+					writeln!(error, "! U: Arc-sine of value outside [-1,1]")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1189,7 +1192,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//arc-cosine
 			'Y' => {
 				if na.clone().abs()>1_u8 {
-					writeln!(io.error, "! Y: Arc-cosine of value outside [-1,1]")?;
+					writeln!(error, "! Y: Arc-cosine of value outside [-1,1]")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1206,7 +1209,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			'N' => {
 				let int = round(na);
 				if int<=0_u8 {
-					writeln!(io.error, "! N: Upper bound for random value must be above 0")?;
+					writeln!(error, "! N: Upper bound for random value must be above 0")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1226,7 +1229,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 								st.mstk.push(Num(res));
 							}
 							else {
-								writeln!(io.error, "! \": Constant/conversion factor not found")?;
+								writeln!(error, "! \": Constant/conversion factor not found")?;
 								st.mstk.push(a);
 							}
 						},
@@ -1236,12 +1239,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 								st.mstk.push(Num(nl/nr));
 							}
 							else {
-								writeln!(io.error, "! \": Constant/conversion factor not found")?;
+								writeln!(error, "! \": Constant/conversion factor not found")?;
 								st.mstk.push(a);
 							}
 						},
 						_ => {
-							writeln!(io.error, "! \": Too many spaces in constant/conversion query")?;
+							writeln!(error, "! \": Too many spaces in constant/conversion query")?;
 							st.mstk.push(a);
 						},
 					}
@@ -1269,7 +1272,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					st.mstk.truncate(len-num);
 				}
 				else {
-					writeln!(io.error, "! C: Cannot possibly remove {int} objects from the main stack")?;
+					writeln!(error, "! C: Cannot possibly remove {int} objects from the main stack")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1277,7 +1280,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//duplicate top of stack
 			'd' => {
 				if st.mstk.is_empty() {
-					writeln!(io.error, "! d: Nothing to duplicate")?;
+					writeln!(error, "! d: Nothing to duplicate")?;
 				}
 				else {
 					st.mstk.extend_from_within(st.mstk.len()-1..);
@@ -1292,12 +1295,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						st.mstk.extend_from_within(st.mstk.len()-num..);
 					}
 					else {
-						writeln!(io.error, "! D: Not enough objects to duplicate")?;
+						writeln!(error, "! D: Not enough objects to duplicate")?;
 						st.mstk.push(a);
 					}
 				}
 				else {
-					writeln!(io.error, "! D: Cannot possibly duplicate {int} objects")?;
+					writeln!(error, "! D: Cannot possibly duplicate {int} objects")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1309,7 +1312,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					st.mstk.swap(len-2, len-1);
 				}
 				else {
-					writeln!(io.error, "! r: Not enough objects to swap")?;
+					writeln!(error, "! r: Not enough objects to swap")?;
 				}
 			},
 
@@ -1330,12 +1333,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						st.mstk = sl.to_vec();
 					}
 					else {
-						writeln!(io.error, "! R: Not enough objects to rotate")?;
+						writeln!(error, "! R: Not enough objects to rotate")?;
 						st.mstk.push(a);
 					}
 				}
 				else {
-					writeln!(io.error, "! R: Cannot possibly rotate {} objects", int.abs())?;
+					writeln!(error, "! R: Cannot possibly rotate {} objects", int.abs())?;
 					st.mstk.push(a);
 				}
 			},
@@ -1350,7 +1353,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//set output precision
 			'k' => {
 				if let Err(e) = st.par.set_k(round(na)) {
-					writeln!(io.error, "{e}")?;
+					writeln!(error, "{e}")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1358,7 +1361,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//set input base
 			'i' => {
 				if let Err(e) = st.par.set_i(round(na)) {
-					writeln!(io.error, "{e}")?;
+					writeln!(error, "{e}")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1366,7 +1369,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//set output base
 			'o' => {
 				if let Err(e) = st.par.set_o(round(na)) {
-					writeln!(io.error, "{e}")?;
+					writeln!(error, "{e}")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1378,7 +1381,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					st.w = u;
 				}
 				else {
-					writeln!(io.error, "! w: Working precision must be in range 1 ≤ W ≤ {}", u32::MAX)?;
+					writeln!(error, "! w: Working precision must be in range 1 ≤ W ≤ {}", u32::MAX)?;
 					st.mstk.push(a);
 				}
 			},
@@ -1417,56 +1420,56 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			---------------*/
 			//save to top of register
 			's' => {
-				if reg.is_empty() {
-					reg.push(RegObj{o: a, a: Vec::new()});
+				if reg.v.is_empty() {
+					reg.v.push(RegObj{o: a, a: Vec::new()});
 				}
 				else {
-					reg.last_mut().unwrap().o = a;
+					reg.v.last_mut().unwrap().o = a;
 				}
 			},
 
 			//push to top of register
 			'S' => {
-				reg.push(RegObj{o: a, a: Vec::new()});
+				reg.v.push(RegObj{o: a, a: Vec::new()});
 			},
 
 			//load from top of register
 			'l' => {
-				if let Some(ro) = reg.last() {
+				if let Some(ro) = reg.v.last() {
 					st.mstk.push(ro.o.clone());
 				}
 				else {
-					writeln!(io.error, "! l: Register # {rnum} is empty")?;
+					writeln!(error, "! l: Register # {rnum} is empty")?;
 				}
 			},
 
 			//pop from top of register
 			'L' => {
-				if let Some(ro) = reg.pop() {
+				if let Some(ro) = reg.v.pop() {
 					st.mstk.push(ro.o);
 				}
 				else {
-					writeln!(io.error, "! L: Register # {rnum} is empty")?;
+					writeln!(error, "! L: Register # {rnum} is empty")?;
 				}
 			},
 
 			//save to top-of-register's array
 			':' => {
-				if reg.is_empty() {
-					reg.push(RegObj {
+				if reg.v.is_empty() {
+					reg.v.push(RegObj {
 						o: DUMMY,	//create default register object if empty
 						a: Vec::new()
 					});
 				}
 				let int = round(nb);
 				if let Some(rai) = int.to_usize() {
-					if rai>=reg.last().unwrap().a.len() {
-						reg.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+					if rai>=reg.v.last().unwrap().a.len() {
+						reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
 					}
-					reg.last_mut().unwrap().a[rai] = a;
+					reg.v.last_mut().unwrap().a[rai] = a;
 				}
 				else {
-					writeln!(io.error, "! :: Cannot possibly save to array index {int}")?;
+					writeln!(error, "! :: Cannot possibly save to array index {int}")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
 				}
@@ -1474,43 +1477,43 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//load from top-of-register's array
 			';' => {
-				if reg.is_empty() {
-					reg.push(RegObj {
+				if reg.v.is_empty() {
+					reg.v.push(RegObj {
 						o: DUMMY,	//create default register object if empty
 						a: Vec::new()
 					});
 				}
 				let int = round(na);
 				if let Some(rai) = int.to_usize() {
-					if rai>=reg.last().unwrap().a.len() {
-						reg.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+					if rai>=reg.v.last().unwrap().a.len() {
+						reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
 					}
-					st.mstk.push(reg.last().unwrap().a[rai].clone());
+					st.mstk.push(reg.v.last().unwrap().a[rai].clone());
 				}
 				else {
-					writeln!(io.error, "! ;: Cannot possibly load from array index {int}")?;
+					writeln!(error, "! ;: Cannot possibly load from array index {int}")?;
 					st.mstk.push(a);
 				}
 			},
 
 			//pop top-of-reg into buffer
 			'b' => {
-				if let Some(ro) = reg.pop() {
+				if let Some(ro) = reg.v.pop() {
 					st.ro_buf = ro;
 				}
 				else {
-					writeln!(io.error, "! b: Register # {rnum} is empty")?;
+					writeln!(error, "! b: Register # {rnum} is empty")?;
 				}
 			},
 
 			//push buffer to register
 			'B' => {
-				reg.push(st.ro_buf.clone());
+				reg.v.push(st.ro_buf.clone());
 			},
 
 			//push register depth
 			'Z' => {
-				st.mstk.push(Num(Float::with_val(st.w, reg.len())));
+				st.mstk.push(Num(Float::with_val(st.w, reg.v.len())));
 			},
 
 			//specify manual register pointer
@@ -1535,12 +1538,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						st.mstk.push(Str(res.to_string()));
 					}
 					else {
-						writeln!(io.error, "! a: Unable to convert number {ia} to character: not a valid Unicode value")?;
+						writeln!(error, "! a: Unable to convert number {ia} to character: not a valid Unicode value")?;
 						st.mstk.push(a);
 					}
 				}
 				else if sa.is_empty() {
-					writeln!(io.error, "! a: Cannot convert empty string to number")?;
+					writeln!(error, "! a: Cannot convert empty string to number")?;
 					st.mstk.push(a);
 				}
 				else {
@@ -1555,7 +1558,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 						st.mstk.push(Str(res));
 					}
 					else {
-						writeln!(io.error, "! A: Unable to convert number {} to string: not a valid UTF-8 sequence", round(na))?;
+						writeln!(error, "! A: Unable to convert number {} to string: not a valid UTF-8 sequence", round(na))?;
 						st.mstk.push(a);
 					}
 				}
@@ -1576,17 +1579,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 				}
 			},
 
-			//invert next conditional
-			'!' => {
-				inv = !inv;
-			},
-
 			//conditionally execute macro
 			'<'|'='|'>' => {
-				if reg.is_empty() {
-					writeln!(io.error, "! <=>: Register # {rnum} is empty")?;
+				if reg.v.is_empty() {
+					writeln!(error, "! <=>: Register # {rnum} is empty")?;
 				}
-				else if let Str(mac) = &reg.last().unwrap().o {
+				else if let Str(mac) = &reg.v.last().unwrap().o {
 					if inv != match cmd {
 						'<' => { nb < na },	//reverse order, GNU dc convention
 						'=' => { nb == na },
@@ -1600,9 +1598,8 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					}
 				}
 				else {
-					writeln!(io.error, "! <=>: Top of register # {rnum} is not a string")?;
+					writeln!(error, "! <=>: Top of register # {rnum} is not a string")?;
 				}
-				inv = false;	//always reset inversion
 			},
 
 			//auto-macro
@@ -1615,9 +1612,85 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					cmdstk.resize(cmdstk.len()+reps, sa.chars().collect());
 				}
 				else {
-					writeln!(io.error, "! X: Cannot possibly repeat a macro {int} times")?;
+					writeln!(error, "! X: Cannot possibly repeat a macro {int} times")?;
 					st.mstk.push(a);
 					st.mstk.push(b);
+				}
+			},
+
+			//run macro in child thread
+			'm' => {
+				if reg.th.is_some() {
+					writeln!(error, "! m: Register # {rnum} is already occupied by a thread")?;
+					st.mstk.push(a);
+				}
+				else {
+					//snapshot of current state
+					let snap = State {
+						mstk: st.mstk.clone(),
+						ro_buf: st.ro_buf.clone(),
+						rptr: st.rptr.clone(),
+						rng: st.rng.clone(),
+						par: st.par.clone(),
+						w: st.w,
+						regs: {    //processing to remove JoinHandles
+							let mut m: HashMap<Integer, Register> = HashMap::new();
+							for curr in st.regs.iter() {
+								m.insert(curr.0.clone(), Register {
+									v: curr.1.v.clone(),
+									th: None
+								});
+							}
+							m
+						}
+					};
+
+					let cmds = sa.clone();
+
+					//start thread
+					let handle = th::spawn(move || {
+						let mut subst = State {	//sub-state
+							mstk: snap.mstk,
+							ro_buf: snap.ro_buf,
+							rptr: snap.rptr,
+							par: snap.par,
+							w: snap.w,
+							regs: snap.regs,
+							.. Default::default()
+						};
+						let _ = exec(&mut subst, None, safe, &cmds);
+						subst.mstk
+					});
+
+					//lock register
+					st.regs.get_mut(&rnum).unwrap().th = Some(handle);
+				}
+			},
+
+			//wait for macro to finish
+			'M' => {
+				if reg.th.is_none() {
+					writeln!(error, "! M: Register # {rnum} is not occupied by a thread")?;
+				}
+				else {
+					let handle = reg.th.take().unwrap();
+					let timeout = Instant::now() + Duration::from_micros(round(na).to_u64().unwrap_or(u64::MAX));
+					loop {
+						th::sleep(Duration::from_micros(1));
+						if handle.is_finished() {
+							for o in handle.join().unwrap() {	//put results into register
+								reg.v.push(RegObj {
+									a: Vec::new(),
+									o
+								});
+							}
+							break;
+						}
+						else if Instant::now()>=timeout {	//not finished
+							reg.th = Some(handle);	//put handle back
+							break;
+						}
+					}
 				}
 			},
 
@@ -1638,7 +1711,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					}
 				}
 				else {
-					writeln!(io.error, "! Q: Cannot possibly quit {int} levels")?;
+					writeln!(error, "! Q: Cannot possibly quit {int} levels")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1646,7 +1719,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 			//prompt and execute
 			'?' => {
 				let mut prompt_in = String::new();
-				io.input.read_line(&mut prompt_in)?;
+				input.read_line(&mut prompt_in)?;
 				if cmdstk.last().unwrap().is_empty() {
 					cmdstk.pop();	//optimize tail call
 				}
@@ -1668,13 +1741,13 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 							cmdstk.push(script_nc.chars().collect());
 						},
 						Err(err) => {
-							writeln!(io.error, "! &: Unable to read file \"{sa}\": {err}")?;
+							writeln!(error, "! &: Unable to read file \"{sa}\": {err}")?;
 							st.mstk.push(a);
 						},
 					}
 				}
 				else {
-					writeln!(io.error, "! &: Disabled by --safe flag")?;
+					writeln!(error, "! &: Disabled by --safe flag")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1687,13 +1760,13 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 							st.mstk.push(Str(val));
 						},
 						Err(err) => {
-							writeln!(io.error, "! $: Unable to get value of ${sa}: {err}")?;
+							writeln!(error, "! $: Unable to get value of ${sa}: {err}")?;
 							st.mstk.push(a);
 						},
 					}
 				}
 				else {
-					writeln!(io.error, "! $: Disabled by --safe flag")?;
+					writeln!(error, "! $: Disabled by --safe flag")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1711,12 +1784,12 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 								Ok(mut child) => {
 									if let Ok(stat) = child.wait() {
 										if let Some(code) = stat.code() {
-											if code!=0 {writeln!(io.error, "! \\: OS command \"{oscmd}\" exited with code {code}")?;}
+											if code!=0 {writeln!(error, "! \\: OS command \"{oscmd}\" exited with code {code}")?;}
 										}
 									}
 								},
 								Err(err) => {
-									writeln!(io.error, "! \\: Unable to execute OS command \"{oscmd}\": {err}")?;
+									writeln!(error, "! \\: Unable to execute OS command \"{oscmd}\": {err}")?;
 									st.mstk.push(a.clone());
 								},
 							}
@@ -1724,7 +1797,7 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 					}
 				}
 				else {
-					writeln!(io.error, "! \\: Disabled by --safe flag")?;
+					writeln!(error, "! \\: Disabled by --safe flag")?;
 					st.mstk.push(a);
 				}
 			},
@@ -1736,12 +1809,15 @@ pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::i
 
 			//notify on invalid command, keep going
 			_ => {
-				if !cmd.is_whitespace()&&cmd!='\0' { writeln!(io.error, "! Invalid command: {cmd} (U+{:04X})", cmd as u32)?; }
+				if !cmd.is_whitespace()&&cmd!='\0'&&cmd!='!' { writeln!(error, "! Invalid command: {cmd} (U+{:04X})", cmd as u32)?; }
 			},
 		}
+		inv = false;	//reset inversion
+		if cmd=='!' {inv = true;}	//invert next command
 		while let Some(ptr) = cmdstk.last() {	//clean up empty command strings
 			if ptr.is_empty() {
 				cmdstk.pop();
+				inv = false;	//reset inversion
 			}
 			else{break;}
 		}
