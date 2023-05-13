@@ -1671,12 +1671,12 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			'M' => {
 				if reg.th.is_none() {
 					writeln!(error, "! M: Register # {rnum} is not occupied by a thread")?;
+					st.mstk.push(a);
 				}
 				else {
 					let handle = reg.th.take().unwrap();
 					let timeout = Instant::now() + Duration::from_millis(round(na).to_u64().unwrap_or(u64::MAX));
 					loop {
-						th::sleep(Duration::from_millis(1));
 						if handle.is_finished() {
 							for o in handle.join().unwrap() {	//put results into register
 								reg.v.push(RegObj {
@@ -1690,6 +1690,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 							reg.th = Some(handle);	//put handle back
 							break;
 						}
+						th::sleep(Duration::from_millis(1));
 					}
 				}
 			},
