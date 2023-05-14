@@ -450,7 +450,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		let mut outstr = String::from(if num<0_u8 {"(-"} else {"("});	//apply negative sign
 		num = num.abs();
 		let mut scale: usize = 0;	//amount to shift fractional separator in output
-		while !num.is_integer()&&(oprec<0_u8||scale<oprec) {	//turn into integer scaled by power of obase, apply output precision if enabled
+		while !num.is_integer()&&(oprec==0_u8||scale<oprec) {	//turn into integer scaled by power of obase, apply output precision if enabled
 			let temp = num.clone() * &obase;	//preview scale-up
 			if temp.is_infinite() {	//possible with high precision due to Float's exponent limitation
 				num /= &obase;	//prevent overflow in later "extra precision" part
