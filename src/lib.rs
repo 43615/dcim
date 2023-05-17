@@ -1,11 +1,12 @@
 use std::io::{Write, BufRead};
 use std::time::{SystemTime, Duration, Instant};
 use std::thread as th;
-use std::collections::{VecDeque, HashSet, HashMap};
+use std::collections::{VecDeque, HashMap};
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
 use rand::{RngCore, rngs::OsRng};
 #[macro_use]
 extern crate lazy_static;
+use phf::{phf_set, phf_map};
 
 ///basic object: either number or string
 #[derive(Clone)]
@@ -73,7 +74,7 @@ impl ParamStk {
 	#[inline(always)]
 	///switch to new param context with defaults (0,10,10)
 	fn create(&mut self) {
-		self.0.push((Integer::from(0), Integer::from(10), Integer::from(10)));
+		self.0.push((Integer::from(0_u8), Integer::from(10_u8), Integer::from(10_u8)));
 	}
 	#[inline(always)]
 	///revert to previous context, reset to defaults if nonexistent
@@ -198,8 +199,8 @@ fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static 
 	}
 	else {return Err("invalid exponential part");};
 
-	let mut man = Integer::from(0);	//resulting mantissa
-	let mut scale = Integer::from(1);	//scale to divide by
+	let mut man = Integer::from(0_u8);	//resulting mantissa
+	let mut scale = Integer::from(1_u8);	//scale to divide by
 	let mut frac = false;	//. has occurred
 
 	for mut dig in mstr.split_inclusive([' ', '.']) {	//split into digits, scan from the left:
@@ -253,35 +254,71 @@ impl FltGen {
 	}
 }
 
+///all commands that use a register
+static USES_REG: phf::Set<char> = phf_set! {
+	'F','s','S','l','L',':',';','b','B','Z','<','=','>','m','M'
+};
+
+///command signatures and adicities
+static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
+	'+' => (AxBx, 2),
+	'^' => (AxBx, 2),
+
+	'|' => (AxBxCx, 3),
+
+	'-' => (AxBn, 2),
+	'*' => (AxBn, 2),
+	'/' => (AxBn, 2),
+	'%' => (AxBn, 2),
+	'~' => (AxBn, 2),
+	':' => (AxBn, 2),
+
+	'm' => (As, 1),
+	'&' => (As, 1),
+	'$' => (As, 1),
+	'\\' => (As, 1),
+
+	'n' => (Ax, 1),
+	'P' => (Ax, 1),
+	'a' => (Ax, 1),
+	'A' => (Ax, 1),
+	'"' => (Ax, 1),
+	'x' => (Ax, 1),
+	'g' => (Ax, 1),
+	's' => (Ax, 1),
+	'S' => (Ax, 1),
+	',' => (Ax, 1),
+
+	'X' => (AsBn, 2),
+
+	'v' => (An, 1),
+	'°' => (An, 1),
+	'u' => (An, 1),
+	'y' => (An, 1),
+	't' => (An, 1),
+	'U' => (An, 1),
+	'Y' => (An, 1),
+	'T' => (An, 1),
+	'N' => (An, 1),
+	'C' => (An, 1),
+	'D' => (An, 1),
+	'R' => (An, 1),
+	'k' => (An, 1),
+	'i' => (An, 1),
+	'o' => (An, 1),
+	'w' => (An, 1),
+	';' => (An, 1),
+	'Q' => (An, 1),
+	'M' => (An, 1),
+
+	'V' => (AnBn, 2),
+	'G' => (AnBn, 2),
+	'<' => (AnBn, 2),
+	'=' => (AnBn, 2),
+	'>' => (AnBn, 2),
+};
+
 lazy_static! {
-	///all commands that use a register
-	static ref USES_REG: HashSet<char> = {
-		let mut s = HashSet::new();
-		for c in "FsSlL:;bBZ<=>mM".chars() {s.insert(c);}
-		s
-	};
-	///command signatures and adicities
-	static ref CMD_SIGS: HashMap<char, (CmdSig, u8)> = {
-		let mut m = HashMap::new();
-
-		for c in ['+','^'] {m.insert(c, (AxBx, 2));}
-
-		m.insert('|', (AxBxCx, 3));
-
-		for c in "-*/%~:".chars() {m.insert(c, (AxBn, 2));}
-
-		for c in "m&$\\".chars() {m.insert(c, (As, 1));}
-
-		for c in "nPaA\"xgsS,".chars() {m.insert(c, (Ax, 1));}
-
-		m.insert('X', (AsBn, 2));
-
-		for c in "v°uytUYTNCDRkiow;QM".chars() {m.insert(c, (An, 1));}
-
-		for c in "VG<=>".chars() {m.insert(c, (AnBn, 2));}
-
-		m
-	};
 	///library of constants/conversion factors
 	static ref CONSTANTS: HashMap<&'static str, FltGen> = {
 		let mut m = HashMap::new();
@@ -447,9 +484,9 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	}
 
 	if obase>36_u8 {	//any-base printing (original base conversion algorithm out of necessity, limited precision possible)
-		let mut outstr = String::from(if num<0_u8 {"(-"} else {"("});	//apply negative sign
-		num = num.abs();
-		let mut scale: usize = 0;	//amount to shift fractional separator in output
+		let mut outstr = String::from(if num.is_sign_negative() {"(-"} else {"("});	//apply negative sign
+		num.abs_mut();
+		let mut scale = 0;	//amount to shift fractional separator in output
 		while !num.is_integer()&&(oprec==0_u8||scale<oprec) {	//turn into integer scaled by power of obase, apply output precision if enabled
 			let temp = num.clone() * &obase;	//preview scale-up
 			if temp.is_infinite() {	//possible with high precision due to Float's exponent limitation
@@ -462,7 +499,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 		num *= &obase;	//get extra precision for last digit
 		let mut int = num.to_integer().unwrap();	//convert to Integer
 		int /= &obase;	//undo extra precision
-		let mut dig = Integer::from(1);	//current digit value
+		let mut dig = Integer::from(1_u8);	//current digit value
 		while dig<=int {
 			dig *= &obase;	//get highest required digit value
 		}
