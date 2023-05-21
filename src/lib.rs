@@ -293,11 +293,6 @@ static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 
 	'v' => (An, 1),
 	'°' => (An, 1),
-	'u' => (An, 1),
-	'y' => (An, 1),
-	't' => (An, 1),
-	'U' => (An, 1),
-	'Y' => (An, 1),
 	'T' => (An, 1),
 	'N' => (An, 1),
 	'C' => (An, 1),
@@ -313,6 +308,7 @@ static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 
 	'V' => (AnBn, 2),
 	'G' => (AnBn, 2),
+	't' => (AnBn, 2),
 	'<' => (AnBn, 2),
 	'=' => (AnBn, 2),
 	'>' => (AnBn, 2),
@@ -1200,46 +1196,85 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				}
 			},
 
-			//sine
-			'u' => {
-				st.mstk.push(Num(Float::with_val(st.w, na.clone().sin())));
-			},
-
-			//cosine
-			'y' => {
-				st.mstk.push(Num(Float::with_val(st.w, na.clone().cos())));
-			},
-
-			//tangent
+			//trig functions
 			't' => {
-				st.mstk.push(Num(Float::with_val(st.w, na.clone().tan())));
+				let int = round(nb);
+				match match int.to_i8() {
+					Some(i) if (-6..=6).contains(&i) => {
+						match i {
+							//deg -> rad
+							0 => Ok(na * Float::with_val(st.w, Constant::Pi) / 180_u8),
+
+							//trig
+							1 => Ok(Float::with_val(st.w, na.sin_ref())),
+							2 => Ok(Float::with_val(st.w, na.cos_ref())),
+							3 => Ok(Float::with_val(st.w, na.tan_ref())),
+
+							//hyper
+							4 => Ok(Float::with_val(st.w, na.sinh_ref())),
+							5 => Ok(Float::with_val(st.w, na.cosh_ref())),
+							6 => Ok(Float::with_val(st.w, na.tanh_ref())),
+
+							//inv trig
+							-1 => if na.clone().abs()<=1_u8 {
+								Ok(Float::with_val(st.w, na.asin_ref()))
+							}
+							else {
+								Err("Inverse sine of value outside [-1,1]")
+							},
+							-2 => if na.clone().abs()<=1_u8 {
+								Ok(Float::with_val(st.w, na.acos_ref()))
+							}
+							else {
+								Err("Inverse cosine of value outside [-1,1]")
+							},
+							-3 => Ok(Float::with_val(st.w, na.atan_ref())),
+
+							//inv hyper
+							-4 => Ok(Float::with_val(st.w, na.asinh_ref())),
+							-5 => if na>=&1_u8 {
+								Ok(Float::with_val(st.w, na.acosh_ref()))
+							}
+							else {
+								Err("Inverse hyperbolic cosine of value below 1")
+							},
+							-6 => if na.clone().abs()<1_u8 {
+								Ok(Float::with_val(st.w, na.atanh_ref()))
+							}
+							else {
+								Err("Inverse hyperbolic tangent of value outside (-1,1)")
+							},
+
+							//impossible
+							_ => Err("")
+						}
+					}.map_err(|e| e.into()),
+					_ => {
+						Err(format!("Function # {int} doesn't exist"))
+					}
+				}
+				{
+					Ok(n) => {
+						st.mstk.push(Num(n));
+					}
+					Err(e) => {
+						writeln!(error, "! t: {e}")?;
+						st.mstk.push(a);
+						st.mstk.push(b);
+					}
+				}
 			},
 
-			//arc-sine
-			'U' => {
-				if na.clone().abs()>1_u8 {
-					writeln!(error, "! U: Arc-sine of value outside [-1,1]")?;
-					st.mstk.push(a);
-				}
-				else {
-					st.mstk.push(Num(Float::with_val(st.w, na.clone().asin())));
-				}
-			},
-
-			//arc-cosine
-			'Y' => {
-				if na.clone().abs()>1_u8 {
-					writeln!(error, "! Y: Arc-cosine of value outside [-1,1]")?;
-					st.mstk.push(a);
-				}
-				else {
-					st.mstk.push(Num(Float::with_val(st.w, na.clone().acos())));
-				}
-			},
-
-			//arc-tangent
+			//delay
 			'T' => {
-				st.mstk.push(Num(Float::with_val(st.w, na.clone().atan())));
+				let int = round(na);
+				if let Some(u) = int.to_u64() {
+					th::sleep(Duration::from_millis(u));
+				}
+				else {
+					writeln!(error, "! T: Cannot possibly wait {int} milliseconds")?;
+					st.mstk.push(a);
+				}
 			},
 
 			//random integer [0;a)
@@ -1288,10 +1323,6 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				}
 			},
 
-			//deg -> rad shorthand
-			'°' => {
-				st.mstk.push(Num(na * Float::with_val(st.w, Constant::Pi) / 180));
-			},
 			/*------------------------
 				STACK MANIPULATION
 			------------------------*/
