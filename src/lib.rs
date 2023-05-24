@@ -292,7 +292,6 @@ static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 	'X' => (AsBn, 2),
 
 	'v' => (An, 1),
-	'°' => (An, 1),
 	'T' => (An, 1),
 	'N' => (An, 1),
 	'C' => (An, 1),
@@ -1794,10 +1793,16 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			'?' => {
 				let mut prompt_in = String::new();
 				input.read_line(&mut prompt_in)?;
-				if cmdstk.last().unwrap().is_empty() {
-					cmdstk.pop();	//optimize tail call
+				if inv {
+					st.mstk.push(Str(prompt_in.trim_end_matches('\n').into()));
 				}
-				cmdstk.push(prompt_in.chars().collect());
+				else {
+					if cmdstk.last().unwrap().is_empty() {
+						cmdstk.pop();    //optimize tail call
+					}
+					cmdstk.push(prompt_in.chars().collect());
+
+				}
 				None
 			},
 			/*----------
