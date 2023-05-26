@@ -1793,15 +1793,15 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			'?' => {
 				let mut prompt_in = String::new();
 				input.read_line(&mut prompt_in)?;
+				prompt_in = prompt_in.trim_end_matches(['\n','\r']).into();
 				if inv {
-					st.mstk.push(Str(prompt_in.trim_end_matches('\n').into()));
+					st.mstk.push(Str(prompt_in));
 				}
 				else {
 					if cmdstk.last().unwrap().is_empty() {
 						cmdstk.pop();    //optimize tail call
 					}
 					cmdstk.push(prompt_in.chars().collect());
-
 				}
 				None
 			},
