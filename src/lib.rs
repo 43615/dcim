@@ -263,6 +263,9 @@ static USES_REG: phf::Set<char> = phf_set! {
 static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 	'+' => (AxBx, 2),
 	'^' => (AxBx, 2),
+	'<' => (AxBx, 2),
+	'=' => (AxBx, 2),
+	'>' => (AxBx, 2),
 
 	'|' => (AxBxCx, 3),
 
@@ -308,9 +311,6 @@ static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 	'V' => (AnBn, 2),
 	'G' => (AnBn, 2),
 	't' => (AnBn, 2),
-	'<' => (AnBn, 2),
-	'=' => (AnBn, 2),
-	'>' => (AnBn, 2),
 };
 
 lazy_static! {
@@ -782,15 +782,16 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			}
 			continue;
 		}
-
-		if let Some(cmderr) = match cmd {
+		//COMMAND LOGIC BELOW
+		//semantic errors returned as Option<String>, faulty command is mentioned unless prepended with NUL
+		if let Some(semerr) = match cmd {
 			/*------------------
 				OBJECT INPUT
 			------------------*/
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
 				if st.par.i()>36_u8 {
-					Some("! Any-base input must be used for input bases over 36".into())
+					Some("\0Any-base input must be used for input bases over 36".into())
 				}
 				else {
 					let mut numstr = String::new();	//gets filled with number to be parsed later
@@ -838,7 +839,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 							None
 						},
 						Err(err) => {
-							Some(format!("! Unable to parse number \"{numstr}\": {err}"))
+							Some(format!("\0Unable to parse number \"{numstr}\": {err}"))
 						},
 					}
 				}
@@ -854,7 +855,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				}
 				match parse_abnum(to_parse, st.par.i(), st.w) {
 					Ok(n) => {st.mstk.push(Num(n)); None}
-					Err(e) => {Some(format!("! Unable to parse any-base number: {e}"))}
+					Err(e) => {Some(format!("\0Unable to parse any-base number: {e}"))}
 				}
 			},
 
@@ -873,7 +874,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						break None;
 					}
 					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
-						break Some(format!("! Unable to parse string \"[{res}\": missing closing bracket"));
+						break Some(format!("\0Unable to parse string \"[{res}\": missing closing bracket"));
 					}
 					cmd = cmdstk.last_mut().unwrap().pop_front().unwrap();
 				}
@@ -1290,7 +1291,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 								None
 							}
 							else {
-								Some("! \": Constant/conversion factor not found".into())
+								Some("Constant/conversion factor not found".into())
 							}
 						},
 						1 => {	//conversion shorthand, left divided by right
@@ -1300,11 +1301,11 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 								None
 							}
 							else {
-								Some("! \": Constant/conversion factor not found".into())
+								Some("Constant/conversion factor not found".into())
 							}
 						},
 						_ => {
-							Some("! \": Too many spaces in constant/conversion query".into())
+							Some("Too many spaces in constant/conversion query".into())
 						},
 					}
 				}
@@ -1653,25 +1654,49 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 
 			//conditionally execute macro
 			'<'|'='|'>' => {
-				if reg.v.is_empty() {
-					Some(format!("! <=>: Register # {rnum} is empty"))
-				}
-				else if let Str(mac) = &reg.v.last().unwrap().o {
-					if inv != match cmd {
-						'<' => { nb < na },	//reverse order, GNU dc convention
-						'=' => { nb == na },
-						'>' => { nb > na },
-						_ => {false},}
-					{
-						if cmdstk.last().unwrap().is_empty() {
-							cmdstk.pop();	//optimize tail call
+				match reg.v.last() {
+					Some(RegObj{o: Str(mac), ..}) => {
+						if inv != match (cmd, strv) {
+							//arguments are swapped, GNU dc convention
+
+							//number comparison
+							('<', false) => { nb < na },
+							('=', false) => { nb == na },
+							('>', false) => { nb > na },
+
+							//string comparison
+							('<', true) => {
+								let lb = sb.chars().count();
+								let la = sa.chars().count();
+								lb < la ||	//b is shorter
+								//or same length, but b's chars are numerically smaller
+								(lb == la && sb.chars().zip(sa.chars()).any(|(cb, ca)| cb < ca))
+							},
+							('=', true) => { sa == sb },
+							('>', true) => {
+								let lb = sb.chars().count();
+								let la = sa.chars().count();
+								lb > la ||	//b is longer
+								//or same length, but b's chars are numerically greater
+								(lb == la && sb.chars().zip(sa.chars()).any(|(cb, ca)| cb > ca))
+							},
+
+							_ => {false}	//impossible
 						}
-						cmdstk.push(mac.chars().collect());
+						{
+							if cmdstk.last().unwrap().is_empty() {
+								cmdstk.pop();	//optimize tail call
+							}
+							cmdstk.push(mac.chars().collect());
+						}
+						None
+					},
+					Some(_) => {
+						Some(format!("Top of register # {rnum} is not a string"))
+					},
+					None => {
+						Some(format!("Register # {rnum} is empty"))
 					}
-					None
-				}
-				else {
-					Some(format!("! <=>: Top of register # {rnum} is not a string"))
 				}
 			},
 
@@ -1886,12 +1911,18 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 
 			//notify on invalid command, keep going
 			_ => {
-				if !cmd.is_whitespace()&&cmd!='\0'&&cmd!='!' { Some(format!("Invalid command (U+{:04X})", cmd as u32)) }
-				else {None}
+				if cmd.is_whitespace() || cmd=='\0' || cmd=='!' {None}	//ignore these
+				else {Some(format!("\0Invalid command: {cmd} (U+{:04X})", cmd as u32))}
 			},
 		}
 		{
-			writeln!(error, "! {cmd}: {cmderr}")?;	//print command error
+			//print semantic error
+			if let Some(e) = semerr.strip_prefix('\0') {
+				writeln!(error, "! {e}")?;	//NUL prefix, omit responsible command
+			}
+			else {
+				writeln!(error, "! {cmd}: {semerr}")?;	//include responsible command
+			}
 			match adi {	//return arguments to stack
 				1 => {st.mstk.push(a);},
 				2 => {st.mstk.push(a); st.mstk.push(b);},
