@@ -645,7 +645,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 		(no_io.input, no_io.output, no_io.error)
 	};
 	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
-	let mut inv = false;	//invert next comparison
+	let mut inv = false;	//negates comparisons or switches to alternative behavior
 
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
 
@@ -1336,12 +1336,12 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 
 			//duplicate top of stack
 			'd' => {
-				if st.mstk.is_empty() {
-					Some("Nothing to duplicate".into())
+				if let Some(o) = st.mstk.last() {
+					st.mstk.push(o.clone());
+					None
 				}
 				else {
-					st.mstk.extend_from_within(st.mstk.len()-1..);
-					None
+					Some("Nothing to duplicate".into())
 				}
 			},
 
@@ -1721,23 +1721,27 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					Some(format!("Register # {rnum} is already occupied by a thread"))
 				}
 				else {
-					//snapshot of current state
-					let snap = State {
-						mstk: st.mstk.clone(),
-						ro_buf: st.ro_buf.clone(),
-						rptr: st.rptr.clone(),
-						rng: st.rng.clone(),
-						par: st.par.clone(),
-						w: st.w,
-						regs: {    //processing to remove JoinHandles
-							let mut m: HashMap<Integer, Register> = HashMap::new();
-							for curr in st.regs.iter() {
-								m.insert(curr.0.clone(), Register {
-									v: curr.1.v.clone(),
-									th: None
-								});
-							}
-							m
+					let mut snap = if inv {
+						State::default()	//blank state
+					}
+					else {
+						State {	//snapshot of current state
+							mstk: st.mstk.clone(),
+							ro_buf: st.ro_buf.clone(),
+							rptr: None,    //always unset at this point anyway
+							par: st.par.clone(),
+							w: st.w,
+							regs: {    //processing to remove JoinHandles (aren't Clone nor would it make sense)
+								let mut m: HashMap<Integer, Register> = HashMap::new();
+								for (ri, r) in st.regs.iter() {
+									m.insert(ri.clone(), Register {
+										v: r.v.clone(),
+										th: None
+									});
+								}
+								m
+							},
+							.. Default::default()    //rng needs to be new
 						}
 					};
 
@@ -1745,17 +1749,8 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 
 					//start thread
 					let handle = th::spawn(move || {
-						let mut subst = State {	//sub-state
-							mstk: snap.mstk,
-							ro_buf: snap.ro_buf,
-							rptr: snap.rptr,
-							par: snap.par,
-							w: snap.w,
-							regs: snap.regs,
-							.. Default::default()
-						};
-						let _ = exec(&mut subst, None, safe, &cmds);
-						subst.mstk
+						let _ = exec(&mut snap, None, safe, &cmds);
+						snap.mstk
 					});
 
 					//lock register
@@ -1764,7 +1759,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				}
 			},
 
-			//wait for macro to finish
+			//wait for macro to finish, save results to reg
 			'M' => {
 				if reg.th.is_none() {
 					Some(format!("Register # {rnum} is not occupied by a thread"))
