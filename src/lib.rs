@@ -1,7 +1,7 @@
 use std::io::{Write, BufRead};
 use std::time::{SystemTime, Duration, Instant};
 use std::thread as th;
-use std::collections::{VecDeque, HashMap};
+use std::collections::HashMap;
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
 use rand::{RngCore, rngs::OsRng};
 #[macro_use]
@@ -574,6 +574,44 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	}
 }
 
+///owned iterator with repetitions
+#[derive(Clone, Default)]
+struct Macro {
+	v: Vec<char>,
+	i: usize,
+	reps: Integer
+}
+impl Iterator for Macro {
+	type Item = char;
+
+	#[inline(always)] fn next(&mut self) -> Option<Self::Item> {
+		self.v.get(self.i).map(|c|{self.i+=1; *c})
+	}
+}
+impl<T: ToString> From<T> for Macro {
+	#[inline(always)] fn from(value: T) -> Self {
+		Self {
+			v: value.to_string().chars().collect(),
+			i: 0,
+			reps: Integer::ZERO
+		}
+	}
+}
+impl Macro {
+	#[inline(always)] fn at_end(&self) -> bool {
+		self.v.get(self.i).is_none()
+	}
+
+	#[inline(always)] fn is_done(&self) -> bool {
+		self.at_end() && self.reps==0_u8
+	}
+
+	#[inline(always)] fn repeat(&mut self) {
+		self.i = 0;
+		self.reps -= 1_u8;
+	}
+}
+
 ///Bundle of generic IO streams, for brevity.
 pub struct IOTriple<'a> {
 	pub input: &'a mut dyn BufRead,
@@ -644,7 +682,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 	else {
 		(no_io.input, no_io.output, no_io.error)
 	};
-	let mut cmdstk: Vec<VecDeque<char>> = vec!(cmds.chars().collect());	//stack of command strings to execute, enables pseudorecursive macro calls
+	let mut cmdstk: Vec<Macro> = vec!(cmds.into());	//stack of macros to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//negates comparisons or switches to alternative behavior
 
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
@@ -653,13 +691,13 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 	let sx_dummy = String::new();
 	let nx_dummy = Float::new(1);
 
-	while !cmdstk.is_empty() {	//last().unwrap() is guaranteed to not panic within
+	while !cmdstk.is_empty() {	//main parsing loop, last().unwrap() is safe
 
-		let mut cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or_default();	//get next command
+		let mut cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();	//get next command
 
 		let (reg, rnum): (&mut Register, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
 			let i = if let Some(i) = st.rptr.take() {i}	//take index from reg ptr
-			else if let Some(c) = cmdstk.last_mut().unwrap().pop_front() {Integer::from(c as u32)}	//steal next command char as index
+			else if let Some(c) = cmdstk.last_mut().unwrap().next() {Integer::from(c as u32)}	//steal next command char as index
 			else {
 				writeln!(error, "! Command '{cmd}' needs a register number")?;
 				continue;
@@ -794,52 +832,51 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					Some("\0Any-base input must be used for input bases over 36".into())
 				}
 				else {
-					let mut numstr = String::new();	//gets filled with number to be parsed later
-					let mut frac = false;	//'.' has already occurred
-					let mut neg = false;	//'_' has already occurred
-					let mut alpha = false;	//letters are used
+					let mut frac = false;	//'.' has occurred
+					let mut neg = false;	//'_' has occurred
+					let alpha =	//letters are used
 					if cmd == '\'' {
-						alpha = true;
-						cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');
+						cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();	//advance to next char
+						true
 					}
-					//keep adding to numstr until number is finished
-					loop {
-						//numbers, periods and exponential notation
-						if cmd.is_ascii_digit()||cmd == '.'||cmd == '@' {
-							if cmd == '.' { if frac { break; } frac = true; } //break on encountering second '.'
-							if cmd == '@' { neg = false; }	//allow for second negative sign in exponent
-							numstr.push(cmd);
+					else {false};
+
+					let mut buf = String::from(if cmd=='_' {'-'} else {cmd});	//start with first matched char (known good)
+					loop {	//keep adding to buf until number is finished, rules against . and _ duplication
+						cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();
+						match cmd {
+							'0'..='9' => {buf.push(cmd);},
+							'.' => {
+								if frac {break;}
+								frac = true;
+								buf.push(cmd);
+							},
+							'_' => {
+								if neg {break;}
+								neg = true;
+								buf.push('-');	//replace underscore
+							},
+							'@' => {
+								neg = false;	//allow negative sign in exponent
+								buf.push(cmd);
+							},
+							'a'..='z'|'A'..='Z' if alpha => {
+								buf.push(cmd);
+							},
+							_ => {break;}
 						}
-						//'_' needs to be replaced with '-'
-						else if cmd == '_' {
-							if neg { break; } neg = true;	//break on encountering second '_'
-							numstr.push('-');
-						}
-						//parse letters if number is prefixed with quote
-						else if cmd.is_ascii_alphabetic() {
-							if alpha {
-								numstr.push(cmd);
-							}
-							else {
-								break;
-							}
-						}
-						else {
-							break;
-						}
-						cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');
 					}
-					cmdstk.last_mut().unwrap().push_front(cmd);	//restore first char that isn't part of the number
-					if numstr.starts_with('@') { numstr.insert(0, '1') }	//add implied 1 before exponential marker
-					if numstr.starts_with('.')||numstr.starts_with("-.") { numstr = numstr.replace('.', "0."); }	//add implied zero before fractional separator
-					if numstr.ends_with('.')||numstr.ends_with('-')||numstr.is_empty() { numstr.push('0'); }	//add implied zero at end
-					match Float::parse_radix(numstr.clone(), st.par.i().to_i32().unwrap()) {
+					if cmd!='\0' {cmdstk.last_mut().unwrap().i -= 1;}	//restore next non-number char unless at end
+					if buf.starts_with('@') { buf.insert(0, '1') }	//add implied 1 before exponential marker
+					if buf.starts_with('.')|| buf.starts_with("-.") { buf = buf.replacen('.', "0.", 1); }	//add implied zero before fractional separator
+					if buf.ends_with('.')|| buf.ends_with('-')|| buf.is_empty() { buf.push('0'); }	//add implied zero at end
+					match Float::parse_radix(buf.clone(), st.par.i().to_i32().unwrap()) {
 						Ok(res) => {
 							st.mstk.push(Num(Float::with_val(st.w, res)));
 							None
 						},
 						Err(err) => {
-							Some(format!("\0Unable to parse number \"{numstr}\": {err}"))
+							Some(format!("\0Unable to parse number \"{buf}\": {err}"))
 						},
 					}
 				}
@@ -848,10 +885,10 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//any-base number input
 			'(' => {
 				let mut to_parse = String::new();
-				cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or(')');	//overwrite opening parenthesis, close if nothing left
+				cmd = cmdstk.last_mut().unwrap().next().unwrap_or(')');	//overwrite opening parenthesis, close if nothing left
 				while cmd != ')' {
 					to_parse.push(cmd);
-					cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or(')');
+					cmd = cmdstk.last_mut().unwrap().next().unwrap_or(')');
 				}
 				match parse_abnum(to_parse, st.par.i(), st.w) {
 					Ok(n) => {st.mstk.push(Num(n)); None}
@@ -863,7 +900,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			'[' => {
 				let mut res = String::new();	//result string
 				let mut nest: usize = 1;	//nesting level
-				cmd = cmdstk.last_mut().unwrap().pop_front().unwrap_or('\0');	//overwrite opening bracket, null if nothing left
+				cmd = cmdstk.last_mut().unwrap().next().unwrap_or('\0');	//overwrite opening bracket, null if nothing left
 				loop {
 					res.push(cmd);
 					if cmd == '[' { nest+=1; }
@@ -873,10 +910,10 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						st.mstk.push(Str(res));
 						break None;
 					}
-					if cmdstk.last().unwrap().is_empty() {	//only reached on improper string
+					if cmdstk.last().unwrap().at_end() {	//only reached on improper string
 						break Some(format!("\0Unable to parse string \"[{res}\": missing closing bracket"));
 					}
-					cmd = cmdstk.last_mut().unwrap().pop_front().unwrap();
+					cmd = cmdstk.last_mut().unwrap().next().unwrap();
 				}
 			},
 			/*--------------
@@ -1642,10 +1679,10 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//execute string as macro
 			'x' => {
 				if strv {
-					if cmdstk.last().unwrap().is_empty() {
+					if cmdstk.last().unwrap().is_done() {
 						cmdstk.pop();	//optimize tail call
 					}
-					cmdstk.push(sa.chars().collect());
+					cmdstk.push(sa.into());
 				} else {
 					st.mstk.push(a.clone());
 				}
@@ -1684,10 +1721,10 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 							_ => {false}	//impossible
 						}
 						{
-							if cmdstk.last().unwrap().is_empty() {
+							if cmdstk.last().unwrap().is_done() {
 								cmdstk.pop();	//optimize tail call
 							}
-							cmdstk.push(mac.chars().collect());
+							cmdstk.push(mac.into());
 						}
 						None
 					},
@@ -1703,11 +1740,20 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//auto-macro
 			'X' => {
 				let int = round(nb);
-				if let Some(reps) = int.to_usize() {
-					if cmdstk.last().unwrap().is_empty() {
-						cmdstk.pop();	//optimize tail call
+				if int>=0_u8 {
+					if cmdstk.last().unwrap().is_done() {
+						cmdstk.pop();    //optimize tail call
 					}
-					cmdstk.resize(cmdstk.len()+reps, sa.chars().collect());
+					if int > 0_u8 {
+						cmdstk.push(Macro {
+							v: sa.chars().collect(),
+							i: 0,
+							reps: int-1_u8
+						});
+					}
+					else if cmdstk.is_empty() {
+						break;	//leave parsing loop
+					}
 					None
 				}
 				else {
@@ -1800,7 +1846,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					if num>len {num=len;}
 					cmdstk.truncate(len-num);
 					if cmdstk.is_empty() {
-						cmdstk.push(VecDeque::new());	//guarantee at least one object
+						break;	//leave parsing loop
 					}
 					None
 				}
@@ -1818,10 +1864,10 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					st.mstk.push(Str(prompt_in));
 				}
 				else {
-					if cmdstk.last().unwrap().is_empty() {
+					if cmdstk.last().unwrap().is_done() {
 						cmdstk.pop();    //optimize tail call
 					}
-					cmdstk.push(prompt_in.chars().collect());
+					cmdstk.push(prompt_in.into());
 				}
 				None
 			},
@@ -1838,7 +1884,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 								script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 								script_nc.push('\n');
 							}
-							cmdstk.push(script_nc.chars().collect());
+							cmdstk.push(script_nc.into());
 							None
 						},
 						Err(err) => {
@@ -1900,7 +1946,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 
 			//stop on beginning of #comment
 			'#' => {
-				cmdstk.last_mut().unwrap().clear();
+				cmdstk.last_mut().unwrap().v.clear();
 				None
 			},
 
@@ -1927,12 +1973,15 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 		}
 		inv = false;	//reset inversion
 		if cmd=='!' {inv = true;}	//invert next command
-		while let Some(ptr) = cmdstk.last() {	//clean up empty command strings
-			if ptr.is_empty() {
-				cmdstk.pop();
-				inv = false;	//reset inversion
+
+		if cmdstk.last().unwrap().at_end() {	//end of current rep
+			if cmdstk.last().unwrap().is_done() {	//no more reps
+				cmdstk.pop();	//return to parent
 			}
-			else{break;}
+			else {
+				cmdstk.last_mut().unwrap().repeat();	//start next rep
+			}
+			inv = false;	//don't carry over to other macros
 		}
 	}
 	Ok(Finished)
