@@ -469,7 +469,7 @@ fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	if !num.is_normal() {
 		let mut ret = String::new();
 
-		if num.is_sign_negative() {ret.push('-');}
+		if num.is_sign_negative() {ret.push('_');}
 
 		if num.is_zero() {ret.push('0');}
 		else if num.is_infinite() {ret.push('∞');}
@@ -1368,10 +1368,8 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//remove top a objects from stack
 			'C' => {
 				let int = round(na);
-				if let Some(mut num) = int.to_usize() {
-					let len = st.mstk.len();
-					if num>len { num = len; }	//limit clear count
-					st.mstk.truncate(len-num);
+				if let Some(num) = int.to_usize() {
+					st.mstk.truncate(st.mstk.len().saturating_sub(num));
 					None
 				}
 				else {
@@ -1849,10 +1847,8 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//quit a macro calls
 			'Q' => {
 				let int = round(na);
-				if let Some(mut num) = int.to_usize() {
-					let len = cmdstk.len();
-					if num>len {num=len;}
-					cmdstk.truncate(len-num);
+				if let Some(num) = int.to_usize() {
+					cmdstk.truncate(cmdstk.len().saturating_sub(num));
 					if cmdstk.is_empty() {
 						break;	//leave parsing loop
 					}
