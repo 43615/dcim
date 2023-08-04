@@ -443,8 +443,8 @@ fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 	}
 	else {
 		match q.as_str() {	//non-constants and terminators are here to avoid execution by lazy_static::initialize
-			"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs()))}
-			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()))}
+			"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs()))}
+			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos()))}
 			"abort" if !safe => {std::process::abort();}
 			"crash" if !safe => {get_constant(prec, "crash", false)}	//stack go brrrrr
 			"panic" if !safe => {std::panic::panic_any("Expected, [panic]\" was executed");}
@@ -829,21 +829,27 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
 				if st.par.i()>36_u8 {
-					Some("\0Any-base input must be used for input bases over 36".into())
+					Some("\0Any-base number input must be used for I > 36".into())
 				}
 				else {
 					let mut frac = false;	//'.' has occurred
 					let mut neg = false;	//'_' has occurred
 					let alpha =	//letters are used
 					if cmd == '\'' {
-						cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();	//advance to next char
+						cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();	//advance
 						true
 					}
 					else {false};
 
-					let mut buf = String::from(if cmd=='_' {'-'} else {cmd});	//start with first matched char (known good)
-					loop {	//keep adding to buf until number is finished, rules against . and _ duplication
-						cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();
+					let mut buf = String::new();
+					let mut first = true;
+
+					loop {	//keep adding to buf until number is finished
+						//non-number chars as well as duplicate . or _ start a new number, add some omittable defaults
+						//duplicate @ is not allowed to avoid confusion with (unsupported) stacked exponent notation (123e1e10)
+						if !first {cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();}	//first char is already in cmd from main match
+						//keeping the Option<char> would be icky for perf
+						first = false;
 						match cmd {
 							'0'..='9' => {buf.push(cmd);},
 							'.' => {
@@ -857,26 +863,31 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 								buf.push('-');	//replace underscore
 							},
 							'@' => {
+								if buf.is_empty()||buf=="-" {
+									buf.push('1');	//empty mantissa, add implied 1
+								}
+								if buf=="."||buf=="-." {
+									buf.push('0');	//implied 0 after .
+								}
 								neg = false;	//allow negative sign in exponent
 								buf.push(cmd);
 							},
-							'a'..='z'|'A'..='Z' if alpha => {
+							'a'..='z'|'A'..='Z' if alpha => {	//higher digits
 								buf.push(cmd);
 							},
 							_ => {break;}
 						}
 					}
-					if cmd!='\0' {cmdstk.last_mut().unwrap().i -= 1;}	//restore next non-number char unless at end
-					if buf.starts_with('@') { buf.insert(0, '1') }	//add implied 1 before exponential marker
-					if buf.starts_with('.')|| buf.starts_with("-.") { buf = buf.replacen('.', "0.", 1); }	//add implied zero before fractional separator
-					if buf.ends_with('.')|| buf.ends_with('-')|| buf.is_empty() { buf.push('0'); }	//add implied zero at end
+					if cmd!='\0' {cmdstk.last_mut().unwrap().i -= 1;}	//step back unless end of macro was reached, parsing loop advances by itself
+					//legitimate NUL is ignored but that doesn't affect anything
+					if buf.ends_with(['.','-','@']) || buf.is_empty() { buf.push('0'); }	//add implied 0
 					match Float::parse_radix(buf.clone(), st.par.i().to_i32().unwrap()) {
 						Ok(res) => {
 							st.mstk.push(Num(Float::with_val(st.w, res)));
 							None
 						},
 						Err(err) => {
-							Some(format!("\0Unable to parse number \"{buf}\": {err}"))
+							Some(format!("\0Unable to parse number \"{buf}\": {err}"))	//out-of-place chars and digits>=I
 						},
 					}
 				}
@@ -886,9 +897,9 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			'(' => {
 				let mut to_parse = String::new();
 				cmd = cmdstk.last_mut().unwrap().next().unwrap_or(')');	//overwrite opening parenthesis, close if nothing left
-				while cmd != ')' {
+				while cmd != ')' {	//consume chars until closed
 					to_parse.push(cmd);
-					cmd = cmdstk.last_mut().unwrap().next().unwrap_or(')');
+					cmd = cmdstk.last_mut().unwrap().next().unwrap_or(')');	//closing parenthesis may be omitted
 				}
 				match parse_abnum(to_parse, st.par.i(), st.w) {
 					Ok(n) => {st.mstk.push(Num(n)); None}
@@ -900,8 +911,8 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			'[' => {
 				let mut res = String::new();	//result string
 				let mut nest: usize = 1;	//nesting level
-				cmd = cmdstk.last_mut().unwrap().next().unwrap_or('\0');	//overwrite opening bracket, null if nothing left
-				loop {
+				cmd = cmdstk.last_mut().unwrap().next().unwrap_or(']');	//overwrite opening bracket, close if nothing left
+				loop {	//consume chars until closed
 					res.push(cmd);
 					if cmd == '[' { nest+=1; }
 					if cmd == ']' { nest-=1; }
@@ -910,10 +921,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						st.mstk.push(Str(res));
 						break None;
 					}
-					if cmdstk.last().unwrap().at_end() {	//only reached on improper string
-						break Some(format!("\0Unable to parse string \"[{res}\": missing closing bracket"));
-					}
-					cmd = cmdstk.last_mut().unwrap().next().unwrap();
+					cmd = cmdstk.last_mut().unwrap().next().unwrap_or(']');	//closing bracket(s) may be omitted
 				}
 			},
 			/*--------------
