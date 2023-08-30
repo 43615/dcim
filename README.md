@@ -43,8 +43,7 @@ The current version of GNU MPFR fails one inconsequential test (no idea why), us
 - Error messages are much more helpful and differentiated, and are always prefixed with `! `.
 - When type/semantic errors occur, all used objects are returned to the stack.
 - Commands for multithreaded macro execution.
-- Numbers are binary floats with user-changeable precision (`W`). The parameter `K` only applies to output.
-- Commands that need integers round numbers towards zero (discarding the fractional part).
+- Numbers are binary floats with arbitrary precision (parameter `W`). The parameter `K` only applies to output.
 - Strings have full Unicode support (stored in UTF-8).
 - Several new arithmetic and string manipulation commands.
 - Niladic (non-popping) printing commands print brackets around strings for clarity.

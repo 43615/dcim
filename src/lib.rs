@@ -2,10 +2,8 @@ use std::io::{Write, BufRead};
 use std::time::{SystemTime, Duration, Instant};
 use std::thread as th;
 use std::collections::HashMap;
-use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState, Assign};
+use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState};
 use rand::{RngCore, rngs::OsRng};
-#[macro_use]
-extern crate lazy_static;
 use phf::{phf_set, phf_map};
 
 ///basic object: either number or string
@@ -229,31 +227,6 @@ fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static 
 	)
 }
 
-///Float generator for library of constants (known value, variable precision)
-struct FltGen(Box<dyn Fn(u32) -> Float>);
-unsafe impl Sync for FltGen {}
-impl FltGen {
-	#[inline(always)]
-	///simple value
-	fn val<T: 'static + Copy>(val: T) -> Self
-		where Float: Assign<T> {
-		Self(Box::new(move |prec: u32| Float::with_val(prec, val)))
-	}
-
-	#[inline(always)]
-	///scientific notation
-	fn sci<T: 'static + Copy, U: 'static + Copy>(man :T, exp: U) -> Self
-		where Float: Assign<T> + Assign<U> {
-		Self(Box::new(move |prec: u32| Float::with_val(prec, man)*Float::with_val(prec, exp).exp10()))
-	}
-
-	#[inline(always)]
-	///recursive (apply function to existing unit)
-	fn rec(que: &'static str, fun: &'static dyn Fn(Float) -> Float) -> Self {
-		Self(Box::new(move |prec: u32| fun(CONSTANTS.get(que).unwrap().0(prec))))
-	}
-}
-
 ///all commands that use a register
 static USES_REG: phf::Set<char> = phf_set! {
 	'F','s','S','l','L',':',';','b','B','Z','<','=','>','m','M'
@@ -313,111 +286,133 @@ static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 	't' => (AnBn, 2),
 };
 
-lazy_static! {
-	///library of constants/conversion factors
-	static ref CONSTANTS: HashMap<&'static str, FltGen> = {
-		let mut m = HashMap::new();
-		/*----------------------------
-			MATHEMATICAL CONSTANTS
-		----------------------------*/
-		m.insert("e", FltGen(Box::new(|prec| Float::with_val(prec, 1_u8).exp())));
-		m.insert("pi", FltGen::val(Constant::Pi));
-		m.insert("gamma", FltGen::val(Constant::Euler));
-		m.insert("phi", FltGen(Box::new(|prec| (Float::with_val(prec, 5_u8).sqrt()+1_u8)/2_u8)));
-		for q in ["deg","°"] {m.insert(q, FltGen::rec("pi", &|n| n/180_u8));}
-		for q in ["gon","grad"] {m.insert(q, FltGen::rec("pi", &|n| n/200_u8));}
-		/*------------------------
-			PHYSICAL CONSTANTS
-		------------------------*/
-		m.insert("c", FltGen::val(299_792_458_u32));
-		m.insert("hbar", FltGen(Box::new(|prec| FltGen::sci(662_607_015_u32, -42_i8).0(prec) / FltGen::rec("pi", &|n| n*2_u8).0(prec))));
-		m.insert("G", FltGen::sci(6674_u16, -3_i8));
-		m.insert("qe", FltGen::sci(1_602_176_634_u32, -28_i8));
-		m.insert("NA", FltGen::sci(602_214_076_u32, 31_u8));
-		m.insert("kB", FltGen::sci(1_380_649_u32, -29_i8));
-		m.insert("u", FltGen::sci(1_660_539_066_u32, -36_i8));
-		m.insert("lp", FltGen::sci(16162_u16, -39_i8));
-		m.insert("tp", FltGen::sci(5391_u16, -47_i8));
-		m.insert("mp", FltGen::sci(21764_u16, -12_i8));
-		m.insert("Tp", FltGen::sci(14167_u16, 28_u8));
-		/*------------------
-			LENGTH UNITS
-		------------------*/
-		m.insert("in", FltGen::sci(254_u8, -4_i8));
-		m.insert("ft", FltGen::rec("in", &|n| n*12_u8));
-		m.insert("yd", FltGen::rec("ft", &|n| n*3_u8));
-		m.insert("m", FltGen::val(1_u8));
-		m.insert("fur", FltGen::rec("ft", &|n| n*660_u16));
-		m.insert("mi", FltGen::rec("ft", &|n| n*5280_u16));
-		m.insert("nmi", FltGen::val(1852_u16));
-		m.insert("AU", FltGen::val(149_597_870_700_u64));
-		m.insert("ly", FltGen::val(9_460_730_472_580_800_u64));
-		m.insert("pc", FltGen(Box::new(|prec| Float::with_val(prec, 96_939_420_213_600_000_u64)/Float::with_val(prec, Constant::Pi))));
-		/*-------------------------------
-			AREA & VOLUME UNITS
-			with no length equivalent
-		-------------------------------*/
-		for q in ["ac","acre"] {m.insert(q, FltGen::sci(40_468_564_224_u64, -7_i8));}
-		m.insert("l", FltGen::sci(1_u8, -3_i8));
-		m.insert("ifloz", FltGen::sci(284_130_625_u32, -13_i8));
-		m.insert("ipt", FltGen::rec("ifloz", &|n| n*20_u8));
-		m.insert("iqt", FltGen::rec("ifloz", &|n| n*40_u8));
-		m.insert("igal", FltGen::rec("ifloz", &|n| n*160_u8));
-		for q in ["ibu","ibsh"] {m.insert(q, FltGen::rec("ifloz", &|n| n*1280_u16));}
-		m.insert("ufldr", FltGen::sci(36_966_911_953_125_u64, -19_i8));
-		m.insert("tsp", FltGen::rec("ufldr", &|n| n/3_u8*4_u8));
-		m.insert("tbsp", FltGen::rec("ufldr", &|n| n*4_u8));
-		m.insert("ufloz", FltGen::rec("ufldr", &|n| n*8_u8));
-		m.insert("upt", FltGen::rec("ufloz", &|n| n*16_u8));
-		m.insert("uqt", FltGen::rec("ufloz", &|n| n*32_u8));
-		m.insert("ugal", FltGen::rec("ufloz", &|n| n*128_u8));
-		m.insert("bbl", FltGen::rec("ugal", &|n| n*42_u8));
-		m.insert("udpt", FltGen::sci(5_506_104_713_575_u64, -16_i8));
-		m.insert("udqt", FltGen::rec("udpt", &|n| n*2_u8));
-		m.insert("udgal", FltGen::rec("udpt", &|n| n*8_u8));
-		for q in ["ubu","ubsh"] {m.insert(q, FltGen::rec("udpt", &|n| n*64_u8));}
-		m.insert("dbbl", FltGen::sci(115_627_123_584_i64, -12_i8));
-		/*----------------
-			MASS UNITS
-		----------------*/
-		m.insert("ct", FltGen::sci(2_u8, -4_i8));
-		m.insert("oz", FltGen::sci(28_349_523_125_u64, -12_i8));
-		m.insert("lb", FltGen::rec("oz", &|n| n*16_u8));
-		m.insert("kg", FltGen::val(1_u8));
-		m.insert("st", FltGen::rec("lb", &|n| n*14_u8));
-		m.insert("t", FltGen::rec("lb", &|n| n*2240_u16));
-		/*----------------
-			TIME UNITS
-		----------------*/
-		m.insert("s", FltGen::val(1_u8));
-		m.insert("min", FltGen::val(60_u8));
-		m.insert("h", FltGen::rec("min", &|n| n*60_u8));
-		m.insert("d", FltGen::rec("h", &|n| n*24_u8));
-		m.insert("w", FltGen::rec("d", &|n| n*7_u8));
-		m.insert("mo", FltGen::rec("d", &|n| n*30_u8));
-		m.insert("a", FltGen::rec("d", &|n| n*365_u16));
-		m.insert("aj", FltGen::rec("d", &|n| n*36525_u16/100_u8));
-		m.insert("ag", FltGen::rec("d", &|n| n*3_652_425_u32/10000_u16));
-		/*-----------------
-			OTHER UNITS
-		-----------------*/
-		m.insert("J", FltGen::val(1_u8));
-		m.insert("cal", FltGen::sci(4184_u16, -3_i8));
-		m.insert("Pa", FltGen::val(1_u8));
-		m.insert("atm", FltGen::val(101_325_u32));
-		m.insert("psi", FltGen::sci(6_894_757_293_168_u64, -9_i8));
-		m.insert("torr", FltGen::rec("atm", &|n| n/760_u16));
-		/*------------------------------
-			SPECIAL VALUES/FUNCTIONS
-		------------------------------*/
-		m.insert("inf", FltGen::val(Special::Infinity));
-		m.insert("ninf", FltGen::val(Special::NegInfinity));
-		m.insert("nan", FltGen::val(Special::Nan));
-		m.insert("pid", FltGen::val(std::process::id()));
-		m.insert("author", FltGen::val(43615_u16));	//yay numerical nicknames!
-		m
+///simple value
+macro_rules! cval {
+	($val:expr) => {
+		|prec: u32| Float::with_val(prec, $val)
+	}
+}
+///scientific notation
+macro_rules! csci {
+	($man:expr, $exp:expr) => {
+		|prec: u32| Float::with_val(prec, $man) * Float::with_val(prec, $exp).exp10()
+	}
+}
+///recursive (based on other unit)
+macro_rules! crec {
+	($base:expr, $fun:expr) => {
+		|prec: u32| $fun(CONSTANTS.get($base).unwrap()(prec))
 	};
 }
+
+///library of constants/conversion factors
+///known value, variable precision
+///aliases are indented
+static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
+	/*----------------------------
+		MATHEMATICAL CONSTANTS
+	----------------------------*/
+	"e" => |prec| Float::with_val(prec, 1_u8).exp(),
+	"pi" => cval!(Constant::Pi),
+	"gamma" => cval!(Constant::Euler),
+	"phi" => |prec| (Float::with_val(prec, 5_u8).sqrt()+1_u8)/2_u8,
+	"deg" => crec!("pi", |n| n/180_u8),
+		"°" => crec!("pi", |n| n/180_u8),
+	"gon" => crec!("pi", |n| n/200_u8),
+		"grad" => crec!("pi", |n| n/200_u8),
+	/*------------------------
+		PHYSICAL CONSTANTS
+	------------------------*/
+	"c" => cval!(299_792_458_u32),
+	"hbar" => |prec| csci!(662_607_015_u32, -42_i8)(prec) / Float::with_val(prec, Constant::Pi) / 2_u8,
+	"G" => csci!(6674_u16, -3_i8),
+	"qe" => csci!(1_602_176_634_u32, -28_i8),
+	"NA" => csci!(602_214_076_u32, 31_u8),
+	"kB" => csci!(1_380_649_u32, -29_i8),
+	"u" => csci!(1_660_539_066_u32, -36_i8),
+	"lp" => csci!(16162_u16, -39_i8),
+	"tp" => csci!(5391_u16, -47_i8),
+	"mp" => csci!(21764_u16, -12_i8),
+	"Tp" => csci!(14167_u16, 28_u8),
+	/*------------------
+		LENGTH UNITS
+	------------------*/
+	"in" => csci!(254_u8, -4_i8),
+	"ft" => crec!("in", |n| n*12_u8),
+	"yd" => crec!("ft", |n| n*3_u8),
+	"m" => cval!(1_u8),
+	"fur" => crec!("ft", |n| n*660_u16),
+	"mi" => crec!("ft", |n| n*5280_u16),
+	"nmi" => cval!(1852_u16),
+	"AU" => cval!(149_597_870_700_u64),
+	"ly" => cval!(9_460_730_472_580_800_u64),
+	"pc" => |prec| Float::with_val(prec, 96_939_420_213_600_000_u64) / Float::with_val(prec, Constant::Pi),
+	/*-------------------------------
+		AREA & VOLUME UNITS
+		with no length equivalent
+	-------------------------------*/
+	"ac" => csci!(40_468_564_224_u64, -7_i8),
+		"acre" => csci!(40_468_564_224_u64, -7_i8),
+	"l" => csci!(1_u8, -3_i8),
+	"ifloz" => csci!(284_130_625_u32, -13_i8),
+	"ipt" => crec!("ifloz", |n| n*20_u8),
+	"iqt" => crec!("ifloz", |n| n*40_u8),
+	"igal" => crec!("ifloz", |n| n*160_u8),
+	"ibu" => crec!("ifloz", |n| n*1280_u16),
+		"ibsh" => crec!("ifloz", |n| n*1280_u16),
+	"ufldr" => csci!(36_966_911_953_125_u64, -19_i8),
+	"tsp" => crec!("ufldr", |n| n/3_u8*4_u8),
+	"tbsp" => crec!("ufldr", |n| n*4_u8),
+	"ufloz" => crec!("ufldr", |n| n*8_u8),
+	"upt" => crec!("ufloz", |n| n*16_u8),
+	"uqt" => crec!("ufloz", |n| n*32_u8),
+	"ugal" => crec!("ufloz", |n| n*128_u8),
+	"bbl" => crec!("ugal", |n| n*42_u8),
+	"udpt" => csci!(5_506_104_713_575_u64, -16_i8),
+	"udqt" => crec!("udpt", |n| n*2_u8),
+	"udgal" => crec!("udpt", |n| n*8_u8),
+	"ubu" => crec!("udpt", |n| n*64_u8),
+		"ubsh" => crec!("udpt", |n| n*64_u8),
+	"dbbl" => csci!(115_627_123_584_i64, -12_i8),
+	/*----------------
+		MASS UNITS
+	----------------*/
+	"ct" => csci!(2_u8, -4_i8),
+	"oz" => csci!(28_349_523_125_u64, -12_i8),
+	"lb" => crec!("oz", |n| n*16_u8),
+	"kg" => cval!(1_u8),
+	"st" => crec!("lb", |n| n*14_u8),
+	"t" => crec!("lb", |n| n*2240_u16),
+	/*----------------
+		TIME UNITS
+	----------------*/
+	"s" => cval!(1_u8),
+	"min" => cval!(60_u8),
+	"h" => crec!("min", |n| n*60_u8),
+	"d" => crec!("h", |n| n*24_u8),
+	"w" => crec!("d", |n| n*7_u8),
+	"mo" => crec!("d", |n| n*30_u8),
+	"a" => crec!("d", |n| n*365_u16),
+	"aj" => crec!("d", |n| n*36525_u16/100_u8),
+	"ag" => crec!("d", |n| n*3_652_425_u32/10000_u16),
+	/*-----------------
+		OTHER UNITS
+	-----------------*/
+	"J" => cval!(1_u8),
+	"cal" => csci!(4184_u16, -3_i8),
+	"Pa" => cval!(1_u8),
+	"atm" => cval!(101_325_u32),
+	"psi" => csci!(6_894_757_293_168_u64, -9_i8),
+	"torr" => crec!("atm", &|n| n/760_u16),
+	/*------------------------------
+		SPECIAL VALUES/FUNCTIONS
+	------------------------------*/
+	"inf" => cval!(Special::Infinity),
+	"ninf" => cval!(Special::NegInfinity),
+	"nan" => cval!(Special::Nan),
+	"pid" => cval!(std::process::id()),
+	"author" => cval!(43615_u16)
+};
 
 ///calculate value with given precision, apply scale prefix and power suffix
 ///
@@ -438,7 +433,7 @@ fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 	if power.is_empty() {power.push('1');}
 	let p = Float::with_val(prec, Integer::parse(power).unwrap().complete());
 
-	if let Some(n) = CONSTANTS.get(q.as_str()).map(|c| c.0(prec)) {
+	if let Some(n) = CONSTANTS.get(q.as_str()).map(|c| c(prec)) {
 		Some((s*n).pow(p))
 	}
 	else {
