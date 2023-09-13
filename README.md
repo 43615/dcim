@@ -45,7 +45,8 @@ The current version of GNU MPFR fails one inconsequential test (no idea why), us
 - Commands for multithreaded macro execution.
 - Numbers are binary floats with arbitrary precision (parameter `W`). The parameter `K` only applies to output.
 - Strings have full Unicode support (stored in UTF-8).
-- Several new arithmetic and string manipulation commands.
+- Improved and new arithmetic commands.
+- Full suite of string manipulation commands, including regex support.
 - Niladic (non-popping) printing commands print brackets around strings for clarity.
 - Number input/output bases are unlimited upwards, bases above 36 use a custom "any-base" notation.
 - The amount of available registers is unlimited.

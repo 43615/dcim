@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState};
 use rand::{RngCore, rngs::OsRng};
 use phf::{phf_set, phf_map};
+use regex::RegexBuilder;
 
 ///basic object: either number or string
 #[derive(Clone)]
@@ -437,7 +438,7 @@ fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 		Some((s*n).pow(p))
 	}
 	else {
-		match q.as_str() {	//non-constants and terminators are here to avoid execution by lazy_static::initialize
+		match q.as_str() {	//non-constants and terminators are here
 			"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs()))}
 			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos()))}
 			"abort" if !safe => {std::process::abort();}
@@ -1138,7 +1139,16 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						None
 					}
 				}
-				else if let Some(bidx) = sa.find(sb) {	//find byte index
+				else if let Some(bidx) = if inv {	//find by regex
+					if let Ok(re) = RegexBuilder::new(sb).size_limit(usize::MAX).build() {
+						re.find(sa).map(|m| m.start())
+					}
+					else {None}
+				}
+				else {
+					sa.find(sb)	//find by literal
+				}
+				{
 					let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
 					st.mstk.push(Num(Float::with_val(st.w, cidx)));
 					None
@@ -1166,7 +1176,13 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						Some(format!("{ia} doesn't have an inverse mod {ic}"))
 					}
 				}
-				else {
+				else if inv {	//replace by regex
+					if let Ok(re) = RegexBuilder::new(sb).size_limit(usize::MAX).build() {
+						st.mstk.push(Str(re.replace_all(sa, sc).into()));
+					}
+					None
+				}
+				else {	//replace by literal
 					st.mstk.push(Str(sa.replace(sb, sc)));
 					None
 				}
@@ -1356,8 +1372,19 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			------------------------*/
 			//clear stack
 			'c' => {
-				st.mstk.clear();
-				None
+				if inv {	//shrink all growables (except reg arrays)
+					st.mstk.shrink_to_fit();
+					st.regs = st.regs.drain().filter(|(_, reg)| !reg.v.is_empty()||reg.th.is_some()).collect();	//keep registers that are in use
+					for (_, reg) in st.regs.iter_mut() {
+						reg.v.shrink_to_fit();	//shrink register stacks
+					}
+					st.par.0.shrink_to_fit();
+					None
+				}
+				else {	//just clear stack
+					st.mstk.clear();
+					None
+				}
 			},
 
 			//remove top a objects from stack
@@ -1569,10 +1596,15 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				}
 				let int = round(nb);
 				if let Some(rai) = int.to_usize() {
-					if rai>=reg.v.last().unwrap().a.len() {
-						reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+					if inv {	//extend with given object
+						reg.v.last_mut().unwrap().a.resize(rai, a.clone());
 					}
-					reg.v.last_mut().unwrap().a[rai] = a.clone();
+					else {	//extend with empty strings, save object
+						if rai>=reg.v.last().unwrap().a.len() {
+							reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+						}
+						reg.v.last_mut().unwrap().a[rai] = a.clone();
+					}
 					None
 				}
 				else {
@@ -1590,10 +1622,16 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				}
 				let int = round(na);
 				if let Some(rai) = int.to_usize() {
-					if rai>=reg.v.last().unwrap().a.len() {
-						reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+					if inv {	//truncate and shrink
+						reg.v.last_mut().unwrap().a.truncate(rai);
+						reg.v.last_mut().unwrap().a.shrink_to_fit();
 					}
-					st.mstk.push(reg.v.last().unwrap().a[rai].clone());
+					else {	//load from array
+						if rai>=reg.v.last().unwrap().a.len() {
+							reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+						}
+						st.mstk.push(reg.v.last().unwrap().a[rai].clone());
+					}
 					None
 				}
 				else {
@@ -1618,9 +1656,16 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				None
 			},
 
-			//push register depth
+			//register depth
 			'Z' => {
-				st.mstk.push(Num(Float::with_val(st.w, reg.v.len())));
+				st.mstk.push(Num(Float::with_val(st.w,
+				if inv {	//length of top array
+					reg.v.last().map(|ro| ro.a.len()).unwrap_or_default()
+				}
+				else {	//amount of RegObjs
+					reg.v.len()
+				}
+				))); //:mirrored_extremely_sad_wink:
 				None
 			},
 
