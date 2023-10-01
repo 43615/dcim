@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState};
 use rand::{RngCore, rngs::OsRng};
 use phf::{phf_set, phf_map};
-use regex::RegexBuilder;
+use regex::{Regex, RegexBuilder};
 
 ///basic object: either number or string
 #[derive(Clone)]
@@ -295,14 +295,14 @@ macro_rules! cval {
 }
 ///scientific notation
 macro_rules! csci {
-	($man:expr, $exp:expr) => {
+	($man:literal, $exp:literal) => {
 		|prec: u32| Float::with_val(prec, $man) * Float::with_val(prec, $exp).exp10()
 	}
 }
-///recursive (based on other unit)
+///recursive (based on other unit, scaled by rational)
 macro_rules! crec {
-	($base:expr, $fun:expr) => {
-		|prec: u32| $fun(CONSTANTS.get($base).unwrap()(prec))
+	($base:literal, $numer:literal, $denom:literal) => {
+		|prec: u32| CONSTANTS.get($base).unwrap()(prec) * $numer / $denom
 	};
 }
 
@@ -317,15 +317,15 @@ static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	"pi" => cval!(Constant::Pi),
 	"gamma" => cval!(Constant::Euler),
 	"phi" => |prec| (Float::with_val(prec, 5_u8).sqrt()+1_u8)/2_u8,
-	"deg" => crec!("pi", |n| n/180_u8),
-		"°" => crec!("pi", |n| n/180_u8),
-	"gon" => crec!("pi", |n| n/200_u8),
-		"grad" => crec!("pi", |n| n/200_u8),
+	"deg" => crec!("pi", 1_u8, 180_u8),
+		"°" => crec!("pi", 1_u8, 180_u8),
+	"gon" => crec!("pi", 1_u8, 200_u8),
+		"grad" => crec!("pi", 1_u8, 200_u8),
 	/*------------------------
 		PHYSICAL CONSTANTS
 	------------------------*/
 	"c" => cval!(299_792_458_u32),
-	"hbar" => |prec| csci!(662_607_015_u32, -42_i8)(prec) / Float::with_val(prec, Constant::Pi) / 2_u8,
+	"hbar" => |prec| Float::with_val(prec, 662_607_015_u32) / Integer::from(10_u8).pow(42) / Float::with_val(prec, Constant::Pi) / 2_u8,
 	"G" => csci!(6674_u16, -3_i8),
 	"qe" => csci!(1_602_176_634_u32, -28_i8),
 	"NA" => csci!(602_214_076_u32, 31_u8),
@@ -339,11 +339,11 @@ static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 		LENGTH UNITS
 	------------------*/
 	"in" => csci!(254_u8, -4_i8),
-	"ft" => crec!("in", |n| n*12_u8),
-	"yd" => crec!("ft", |n| n*3_u8),
+	"ft" => crec!("in", 12_u8, 1_u8),
+	"yd" => crec!("ft", 3_u8, 1_u8),
 	"m" => cval!(1_u8),
-	"fur" => crec!("ft", |n| n*660_u16),
-	"mi" => crec!("ft", |n| n*5280_u16),
+	"fur" => crec!("ft", 660_u16, 1_u8),
+	"mi" => crec!("ft", 5280_u16, 1_u8),
 	"nmi" => cval!(1852_u16),
 	"AU" => cval!(149_597_870_700_u64),
 	"ly" => cval!(9_460_730_472_580_800_u64),
@@ -356,46 +356,46 @@ static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 		"acre" => csci!(40_468_564_224_u64, -7_i8),
 	"l" => csci!(1_u8, -3_i8),
 	"ifloz" => csci!(284_130_625_u32, -13_i8),
-	"ipt" => crec!("ifloz", |n| n*20_u8),
-	"iqt" => crec!("ifloz", |n| n*40_u8),
-	"igal" => crec!("ifloz", |n| n*160_u8),
-	"ibu" => crec!("ifloz", |n| n*1280_u16),
-		"ibsh" => crec!("ifloz", |n| n*1280_u16),
+	"ipt" => crec!("ifloz", 20_u8, 1_u8),
+	"iqt" => crec!("ifloz", 40_u8, 1_u8),
+	"igal" => crec!("ifloz", 160_u8, 1_u8),
+	"ibu" => crec!("ifloz", 1280_u16, 1_u8),
+		"ibsh" => crec!("ifloz", 1280_u16, 1_u8),
 	"ufldr" => csci!(36_966_911_953_125_u64, -19_i8),
-	"tsp" => crec!("ufldr", |n| n/3_u8*4_u8),
-	"tbsp" => crec!("ufldr", |n| n*4_u8),
-	"ufloz" => crec!("ufldr", |n| n*8_u8),
-	"upt" => crec!("ufloz", |n| n*16_u8),
-	"uqt" => crec!("ufloz", |n| n*32_u8),
-	"ugal" => crec!("ufloz", |n| n*128_u8),
-	"bbl" => crec!("ugal", |n| n*42_u8),
+	"tsp" => crec!("ufldr", 4_u8, 3_u8),
+	"tbsp" => crec!("ufldr", 4_u8, 1_u8),
+	"ufloz" => crec!("ufldr", 8_u8, 1_u8),
+	"upt" => crec!("ufloz", 16_u8, 1_u8),
+	"uqt" => crec!("ufloz", 32_u8, 1_u8),
+	"ugal" => crec!("ufloz", 128_u8, 1_u8),
+	"bbl" => crec!("ugal", 42_u8, 1_u8),
 	"udpt" => csci!(5_506_104_713_575_u64, -16_i8),
-	"udqt" => crec!("udpt", |n| n*2_u8),
-	"udgal" => crec!("udpt", |n| n*8_u8),
-	"ubu" => crec!("udpt", |n| n*64_u8),
-		"ubsh" => crec!("udpt", |n| n*64_u8),
+	"udqt" => crec!("udpt", 2_u8, 1_u8),
+	"udgal" => crec!("udpt", 8_u8, 1_u8),
+	"ubu" => crec!("udpt", 64_u8, 1_u8),
+		"ubsh" => crec!("udpt", 64_u8, 1_u8),
 	"dbbl" => csci!(115_627_123_584_i64, -12_i8),
 	/*----------------
 		MASS UNITS
 	----------------*/
 	"ct" => csci!(2_u8, -4_i8),
 	"oz" => csci!(28_349_523_125_u64, -12_i8),
-	"lb" => crec!("oz", |n| n*16_u8),
+	"lb" => crec!("oz", 16_u8, 1_u8),
 	"kg" => cval!(1_u8),
-	"st" => crec!("lb", |n| n*14_u8),
-	"t" => crec!("lb", |n| n*2240_u16),
+	"st" => crec!("lb", 14_u8, 1_u8),
+	"t" => crec!("lb", 2240_u16, 1_u8),
 	/*----------------
 		TIME UNITS
 	----------------*/
 	"s" => cval!(1_u8),
 	"min" => cval!(60_u8),
-	"h" => crec!("min", |n| n*60_u8),
-	"d" => crec!("h", |n| n*24_u8),
-	"w" => crec!("d", |n| n*7_u8),
-	"mo" => crec!("d", |n| n*30_u8),
-	"a" => crec!("d", |n| n*365_u16),
-	"aj" => crec!("d", |n| n*36525_u16/100_u8),
-	"ag" => crec!("d", |n| n*3_652_425_u32/10000_u16),
+	"h" => crec!("min", 60_u8, 1_u8),
+	"d" => crec!("h", 24_u8, 1_u8),
+	"w" => crec!("d", 7_u8, 1_u8),
+	"mo" => crec!("d", 30_u8, 1_u8),
+	"a" => crec!("d", 365_u16, 1_u8),
+	"aj" => crec!("d", 36525_u16, 100_u8),
+	"ag" => crec!("d", 3_652_425_u32, 10000_u16),
 	/*-----------------
 		OTHER UNITS
 	-----------------*/
@@ -404,7 +404,7 @@ static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	"Pa" => cval!(1_u8),
 	"atm" => cval!(101_325_u32),
 	"psi" => csci!(6_894_757_293_168_u64, -9_i8),
-	"torr" => crec!("atm", &|n| n/760_u16),
+	"torr" => crec!("atm", 1_u8, 760_u16),
 	/*------------------------------
 		SPECIAL VALUES/FUNCTIONS
 	------------------------------*/
@@ -678,8 +678,10 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 	else {
 		(no_io.input, no_io.output, no_io.error)
 	};
+	//temporary state
 	let mut cmdstk: Vec<Macro> = vec!(cmds.into());	//stack of macros to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//negates comparisons or switches to alternative behavior
+	let mut re_cache: HashMap<String, Regex> = HashMap::new();	//to avoid recompiling in repeated macros
 
 	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
 
@@ -1139,15 +1141,21 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						None
 					}
 				}
-				else if let Some(bidx) = if inv {	//find by regex
-					if let Ok(re) = RegexBuilder::new(sb).size_limit(usize::MAX).build() {
-						re.find(sa).map(|m| m.start())
+				else if let Some(bidx) =
+					if inv {	//find by regex
+						let mut re = re_cache.get(sb).cloned();
+						if re.is_none() {
+							if let Ok(new) = RegexBuilder::new(sb).size_limit(usize::MAX).build() {
+								re_cache.insert(sb.clone(), new.clone());
+								re = Some(new);
+							}
+						}
+						//invalid regex is None at this point, give same result as if no match was found
+						re.and_then(|re| re.find(sa).map(|m| m.start()))
 					}
-					else {None}
-				}
-				else {
-					sa.find(sb)	//find by literal
-				}
+					else {
+						sa.find(sb)	//find by literal
+					}
 				{
 					let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
 					st.mstk.push(Num(Float::with_val(st.w, cidx)));
@@ -1177,9 +1185,18 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					}
 				}
 				else if inv {	//replace by regex
-					if let Ok(re) = RegexBuilder::new(sb).size_limit(usize::MAX).build() {
-						st.mstk.push(Str(re.replace_all(sa, sc).into()));
+					let mut re = re_cache.get(sb).cloned();
+					if re.is_none() {
+						if let Ok(new) = RegexBuilder::new(sb).size_limit(usize::MAX).build() {
+							re_cache.insert(sb.clone(), new.clone());
+							re = Some(new);
+						}
 					}
+					//invalid regex is None at this point
+					st.mstk.push(Str(re.map(|re|
+							re.replace_all(sa, sc).into_owned()	//replace if valid regex
+						).unwrap_or_else(|| sa.clone())	//original string otherwise
+					));
 					None
 				}
 				else {	//replace by literal
@@ -1372,9 +1389,9 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			------------------------*/
 			//clear stack
 			'c' => {
-				if inv {	//shrink all growables (except reg arrays)
+				if inv {	//shrink all growables (except register arrays)
 					st.mstk.shrink_to_fit();
-					st.regs = st.regs.drain().filter(|(_, reg)| !reg.v.is_empty()||reg.th.is_some()).collect();	//keep registers that are in use
+					st.regs = st.regs.drain().filter(|(_, reg)| !reg.v.is_empty()||reg.th.is_some()).collect();	//keep registers that are in use, collect creates a new map
 					for (_, reg) in st.regs.iter_mut() {
 						reg.v.shrink_to_fit();	//shrink register stacks
 					}
