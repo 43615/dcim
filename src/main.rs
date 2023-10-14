@@ -35,8 +35,11 @@ Command line options:
 	Safety flag, disables commands that interact with the OS (&, $, \\) as well as terminating pseudoconstants (abort, crash, panic).
 	Allows for safe public exposure of a dc:im terminal without compromising the host (though infinite loops are still possible!).
 
+--version|-v
+	Display version of interpreter.
+
 --help|-h
-	Print this help message and exit.\
+	Display this help message.\
 ";
 
 fn main() {
@@ -57,6 +60,10 @@ fn main() {
 					println!("{HELPMSG}");
 					std::process::exit(0);
 				}
+				"version" => {
+					println!("dcim {}", env!("CARGO_PKG_VERSION"));
+					std::process::exit(0);
+				}
 				_ => {
 					eprintln!("! Unrecognized option: --{flag}, use -h for help");
 					std::process::exit(1);
@@ -74,7 +81,12 @@ fn main() {
 					's' => {s=true;}
 					'h' => {	//prioritized, always terminate
 						println!("{HELPMSG}");
-						std::process::exit(0);}
+						std::process::exit(0);
+					}
+					'v' => {
+						println!("dcim {}", env!("CARGO_PKG_VERSION"));
+						std::process::exit(0);
+					}
 					_ => {
 						eprintln!("! Unrecognized option: -{flag}, use -h for help");
 						std::process::exit(1);

@@ -14,18 +14,23 @@ pub enum Obj {
 	Str(String)
 }
 use Obj::*;
-///unused/default Obj
-const DUMMY: Obj = Str(String::new());
-
-///register object, may have a dynamic array
-#[derive(Clone)]
-pub struct RegObj {
-	o: Obj,			//principal object
-	a: Vec<Obj>	//associated array
+impl Default for Obj {
+	#[inline(always)] fn default() -> Self {
+		Str(String::new())
+	}
 }
+
+///register object, has a dynamic array
+#[derive(Clone, Default)]
+pub struct RegObj {
+	pub o: Obj,			//principal object
+	pub a: Vec<Obj>	//associated array
+}
+
+#[derive(Default)]
 pub struct Register {
-	v: Vec<RegObj>,
-	th: Option<th::JoinHandle<Vec<Obj>>>
+	pub v: Vec<RegObj>,
+	pub th: Option<th::JoinHandle<Vec<Obj>>>
 }
 
 ///all existing command argument signatures
@@ -67,8 +72,10 @@ impl CmdSig {
 }
 
 ///stack for (K,I,O) tuples, with methods for checked editing
+///
+///panics if empty
 #[derive(Clone)]
-pub struct ParamStk(Vec<(Integer, Integer, Integer)>);
+pub struct ParamStk(pub Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
 	#[inline(always)]
 	///switch to new param context with defaults (0,10,10)
@@ -119,14 +126,17 @@ impl ParamStk {
 	///current output base
 	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
 }
-
-///default register, const required for array init
-const REG_DEF: Register = Register {
-	v: Vec::new(),
-	th: None
-};
+impl Default for ParamStk {
+	#[inline(always)] fn default() -> Self {
+		let mut p = Self(Vec::new());
+		p.create();
+		p
+	}
+}
 
 ///Bundled state storage for one instance of dc:im
+///
+///Everything is `pub`, modify at your own risk
 pub struct State<'a> {
 	///main stack
 	pub mstk: Vec<Obj>,
@@ -152,7 +162,7 @@ impl Default for State<'_> {
 		Self {
 			mstk: Vec::new(),
 			regs: HashMap::new(),
-			ro_buf: RegObj {o: DUMMY, a: Vec::new()},
+			ro_buf: RegObj::default(),
 			rptr: None,
 			rng: {
 				//seed RNG with 1024 bits of OS randomness
@@ -162,11 +172,7 @@ impl Default for State<'_> {
 				r.seed(&Integer::from_digits(&seed, Order::Msf));
 				r
 			},
-			par: {
-				let mut p = ParamStk(Vec::new());
-				p.create();
-				p
-			},
+			par: ParamStk::default(),
 			w: 64
 		}
 	}
@@ -287,7 +293,8 @@ static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 	't' => (AnBn, 2),
 };
 
-///simple value
+//Float generator templates for CONSTANTS
+///basic value
 macro_rules! cval {
 	($val:expr) => {
 		|prec: u32| Float::with_val(prec, $val)
@@ -299,7 +306,7 @@ macro_rules! csci {
 		|prec: u32| Float::with_val(prec, $man) * Float::with_val(prec, $exp).exp10()
 	}
 }
-///recursive (based on other unit, scaled by rational)
+///recursive (base unit scaled by rational)
 macro_rules! crec {
 	($base:literal, $numer:literal, $denom:literal) => {
 		|prec: u32| CONSTANTS.get($base).unwrap()(prec) * $numer / $denom
@@ -307,7 +314,7 @@ macro_rules! crec {
 }
 
 ///library of constants/conversion factors
-///known value, variable precision
+///known value, precision passed on demand
 ///aliases are indented
 static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	/*----------------------------
@@ -648,6 +655,7 @@ Optional bundle of IO streams, fields are used as follows:
 - input: Read by the command `?` one line at a time
 - output: Normal printing by the commands `pfnPF`
 - error: Receives dc:im error messages, one per line
+
 If `None` is given, IO is disabled and the resulting `State` must be read manually to get useful results.
 
 ## `safe`
@@ -683,7 +691,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 	let mut inv = false;	//negates comparisons or switches to alternative behavior
 	let mut re_cache: HashMap<String, Regex> = HashMap::new();	//to avoid recompiling in repeated macros
 
-	let mut dummy_reg = REG_DEF;	//required for let syntax, never accessed
+	let mut dummy_reg = Register::default();	//required for let syntax, never accessed
 
 	//default contents of string/number slots
 	let sx_dummy = String::new();
@@ -703,7 +711,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			(
 				if let Some(r) = st.regs.get_mut(&i) {r}	//reg already exists?
 				else {
-					st.regs.insert(i.clone(), REG_DEF);	//else touch reg
+					st.regs.insert(i.clone(), Register::default());	//else touch reg
 					st.regs.get_mut(&i).unwrap()
 				},
 				i
@@ -719,10 +727,10 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 		}
 
 		let (c, b, a) = match adi {	//pop required objects from stack
-			1 => (DUMMY, DUMMY, st.mstk.pop().unwrap()),
-			2 => (DUMMY, st.mstk.pop().unwrap(), st.mstk.pop().unwrap()),
+			1 => (Obj::default(), Obj::default(), st.mstk.pop().unwrap()),
+			2 => (Obj::default(), st.mstk.pop().unwrap(), st.mstk.pop().unwrap()),
 			3 => (st.mstk.pop().unwrap(), st.mstk.pop().unwrap(), st.mstk.pop().unwrap()),
-			_ => (DUMMY, DUMMY, DUMMY)
+			_ => (Obj::default(), Obj::default(), Obj::default())
 		};
 
 		let (mut na, mut nb, mut nc) = (&nx_dummy, &nx_dummy, &nx_dummy);	//create number slots
@@ -952,12 +960,11 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			'n' => {
 				if !strv {
 					write!(output, "{}", flt_to_str(na.clone(), st.par.o(), st.par.k()))?;
-					output.flush().unwrap();
 				}
 				else {
 					write!(output, "{sa}")?;
-					output.flush().unwrap();
 				}
+				output.flush().unwrap();
 				None
 			},
 
@@ -1396,12 +1403,11 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						reg.v.shrink_to_fit();	//shrink register stacks
 					}
 					st.par.0.shrink_to_fit();
-					None
 				}
 				else {	//just clear stack
 					st.mstk.clear();
-					None
 				}
+				None
 			},
 
 			//remove top a objects from stack
@@ -1606,10 +1612,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//save to top-of-register's array
 			':' => {
 				if reg.v.is_empty() {
-					reg.v.push(RegObj {
-						o: DUMMY,	//create default register object if empty
-						a: Vec::new()
-					});
+					reg.v.push(RegObj::default());
 				}
 				let int = round(nb);
 				if let Some(rai) = int.to_usize() {
@@ -1618,7 +1621,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					}
 					else {	//extend with empty strings, save object
 						if rai>=reg.v.last().unwrap().a.len() {
-							reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+							reg.v.last_mut().unwrap().a.resize(rai+1, Obj::default());	//extend if required, initialize with default objects
 						}
 						reg.v.last_mut().unwrap().a[rai] = a.clone();
 					}
@@ -1632,10 +1635,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			//load from top-of-register's array
 			';' => {
 				if reg.v.is_empty() {
-					reg.v.push(RegObj {
-						o: DUMMY,	//create default register object if empty
-						a: Vec::new()
-					});
+					reg.v.push(RegObj::default());
 				}
 				let int = round(na);
 				if let Some(rai) = int.to_usize() {
@@ -1645,7 +1645,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					}
 					else {	//load from array
 						if rai>=reg.v.last().unwrap().a.len() {
-							reg.v.last_mut().unwrap().a.resize(rai+1, DUMMY);	//extend if required, initialize with default objects
+							reg.v.last_mut().unwrap().a.resize(rai+1, Obj::default());	//extend if required, initialize with default objects
 						}
 						st.mstk.push(reg.v.last().unwrap().a[rai].clone());
 					}
@@ -1772,7 +1772,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 								//or same length, but b's chars are numerically smaller
 								(lb == la && sb.chars().zip(sa.chars()).any(|(cb, ca)| cb < ca))
 							},
-							('=', true) => { sa == sb },
+							('=', true) => { sb == sa },
 							('>', true) => {
 								let lb = sb.chars().count();
 								let la = sa.chars().count();
@@ -1858,7 +1858,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 
 					//start thread
 					let handle = th::spawn(move || {
-						let _ = exec(&mut snap, None, safe, &cmds);
+						let _ = exec(&mut snap, None, true, &cmds);
 						snap.mstk
 					});
 
@@ -1994,7 +1994,6 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 								}
 							},
 							Err(err) => {
-								st.mstk.push(a.clone());
 								Some(format!("Unable to execute OS command \"{sa}\": {err}"))
 							},
 						}
