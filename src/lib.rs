@@ -1012,7 +1012,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
 						st.mstk.push(Str(
-							if ib<0 {	//remove from front
+							if ib.is_negative() {	//remove from front
 								sa.chars().skip(n).collect()
 							}
 							else {	//remove from back
@@ -1034,7 +1034,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
 						st.mstk.push(Str(
-							if ib<0 {	//repeat and reverse
+							if ib.is_negative() {	//repeat and reverse
 								sa.chars().rev().collect::<String>().repeat(n)
 							}
 							else {	//repeat
@@ -1064,7 +1064,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 					let ib = round(nb);
 					if let Some(n) = ib.clone().abs().to_usize() {
 						st.mstk.push(Str(
-							if ib<0 {	//discard from front
+							if ib.is_negative() {	//discard from front
 								sa.chars().skip(sa.chars().count().saturating_sub(n)).collect()
 							}
 							else {	//discard from back
@@ -1164,7 +1164,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 						sa.find(sb)	//find by literal
 					}
 				{
-					let cidx = sa.char_indices().position(|x| x.0==bidx).unwrap();	//corresp. char index
+					let cidx = sa.char_indices().position(|(cidx, _)| cidx==bidx).unwrap();	//corresp. char index
 					st.mstk.push(Num(Float::with_val(st.w, cidx)));
 					None
 				}
@@ -1945,7 +1945,15 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 								script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 								script_nc.push('\n');
 							}
-							cmdstk.push(script_nc.into());
+							if inv {
+								st.mstk.push(Str(script_nc));
+							}
+							else {
+								if cmdstk.last().unwrap().is_done() {
+									cmdstk.pop();	//optimize tail call
+								}
+								cmdstk.push(script_nc.into());
+							}
 							None
 						},
 						Err(err) => {

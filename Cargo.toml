@@ -1,6 +1,6 @@
 [package]
 name = "dcim"
-version = "2.2.8"
+version = "2.2.9"
 edition = "2021"
 authors = ["43615"]
 description = "dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language"
@@ -13,6 +13,5 @@ license-file = "LICENSE"
 [dependencies]
 rand = "=0.8.5"
 rug = "=1.22.0"
-read_input = "=0.8.6"
 phf = { version = "=0.11.2", features = ["macros"] }
-regex = "=1.10.0"
+regex = "=1.10.2"

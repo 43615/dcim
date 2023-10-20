@@ -1,5 +1,5 @@
+use std::io::{stdin, stdout, Write};
 use dcim::{*, ExecDone::*};
-use read_input::prelude::*;
 
 const HELPMSG: &str = "\
 ╭─────────────────────────╮
@@ -127,10 +127,14 @@ fn main() {
 
 ///infinite prompt-eval loop
 fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
-	let inputter = input::<String>().repeat_msg(prompt.unwrap_or_else(|| "> ".into()));
 	let mut io = stdio!();
+	let prompt = prompt.unwrap_or("> ".into());
 	loop {
-		match exec(st, Some(&mut io), safe, &inputter.get()) {
+		let mut buf = String::new();
+		print!("{prompt}");
+		stdout().flush().unwrap();
+		stdin().read_line(&mut buf).unwrap();
+		match exec(st, Some(&mut io), safe, buf.trim()) {
 			Ok(Quit(i)) => {std::process::exit(i);}	//'q' called, exit
 			Ok(Finished) | Err(_) => {} //cmds finished or io error, proceed
 		}
