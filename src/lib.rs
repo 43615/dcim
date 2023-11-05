@@ -7,7 +7,7 @@ use rand::{RngCore, rngs::OsRng};
 use phf::{phf_set, phf_map};
 use regex::{Regex, RegexBuilder};
 
-///basic object: either number or string
+///Basic object: either number or string
 #[derive(Clone)]
 pub enum Obj {
 	Num(Float),
@@ -20,13 +20,14 @@ impl Default for Obj {
 	}
 }
 
-///register object, has a dynamic array
+///Register object: normal object and array thereof
 #[derive(Clone, Default)]
 pub struct RegObj {
-	pub o: Obj,			//principal object
+	pub o: Obj,	//principal object
 	pub a: Vec<Obj>	//associated array
 }
 
+///Register storing [`RegObj`]s and an optional thread handle.
 #[derive(Default)]
 pub struct Register {
 	pub v: Vec<RegObj>,
@@ -71,10 +72,11 @@ impl CmdSig {
 	}
 }
 
-///stack for (K,I,O) tuples, with methods for checked editing
+///Stack for (K,I,O) tuples, with methods for checked editing.
 ///
-///panics if empty
+///Needs at least one entry to work, panics otherwise.
 #[derive(Clone)]
+#[repr(transparent)]
 pub struct ParamStk(pub Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
 	#[inline(always)]
@@ -134,9 +136,9 @@ impl Default for ParamStk {
 	}
 }
 
-///Bundled state storage for one instance of dc:im
+///Bundled state storage for one instance of dc:im.
 ///
-///Everything is `pub`, modify at your own risk
+///Everything is `pub` to enable manual extraction of results.
 pub struct State<'a> {
 	///main stack
 	pub mstk: Vec<Obj>,
@@ -313,10 +315,12 @@ macro_rules! crec {
 	};
 }
 
-///library of constants/conversion factors
-///known value, precision passed on demand
-///aliases are indented
-static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
+///Library of [`Float`] constants/conversion factors.
+///
+///Stores functions to allow on-demand value generation with variable precision.
+///
+///Aliases are indented.
+pub static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	/*----------------------------
 		MATHEMATICAL CONSTANTS
 	----------------------------*/
@@ -356,7 +360,7 @@ static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	"ly" => cval!(9_460_730_472_580_800_u64),
 	"pc" => |prec| Float::with_val(prec, 96_939_420_213_600_000_u64) / Float::with_val(prec, Constant::Pi),
 	/*-------------------------------
-		AREA & VOLUME UNITS
+		   AREA & VOLUME UNITS
 		with no length equivalent
 	-------------------------------*/
 	"ac" => csci!(40_468_564_224_u64, -7_i8),
@@ -403,6 +407,32 @@ static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	"a" => crec!("d", 365_u16, 1_u8),
 	"aj" => crec!("d", 36525_u16, 100_u8),
 	"ag" => crec!("d", 3_652_425_u32, 10000_u16),
+	/*-------------------------
+		 INFORMATION UNITS
+		no decimal prefixes
+	-------------------------*/
+	"b" => cval!(1_u8),
+	"Kib" => cval!(1_u16<<10_u8),
+	"Mib" => cval!(1_u32<<20_u8),
+	"Gib" => cval!(1_u32<<30_u8),
+	"Tib" => cval!(1_u64<<40_u8),
+	"Pib" => cval!(1_u64<<50_u8),
+	"Eib" => cval!(1_u64<<60_u8),
+	"Zib" => cval!(1_u128<<70_u8),
+	"Yib" => cval!(1_u128<<80_u8),
+	"Rib" => cval!(1_u128<<90_u8),
+	"Qib" => cval!(1_u128<<100_u8),
+	"B" => cval!(8_u8),
+	"KiB" => cval!(1_u16<<13_u8),
+	"MiB" => cval!(1_u32<<23_u8),
+	"GiB" => cval!(1_u64<<33_u8),
+	"TiB" => cval!(1_u64<<43_u8),
+	"PiB" => cval!(1_u64<<53_u8),
+	"EiB" => cval!(1_u64<<63_u8),
+	"ZiB" => cval!(1_u128<<73_u8),
+	"YiB" => cval!(1_u128<<83_u8),
+	"RiB" => cval!(1_u128<<93_u8),
+	"QiB" => cval!(1_u128<<103_u8),
 	/*-----------------
 		OTHER UNITS
 	-----------------*/
@@ -615,29 +645,39 @@ impl Macro {
 	}
 }
 
-///Bundle of generic IO streams, for brevity.
-pub struct IOTriple<'a> {
-	pub input: &'a mut dyn BufRead,
-	pub output: &'a mut dyn Write,
-	pub error: &'a mut dyn Write
-}
-#[macro_export]
-///Default IO triple using stdin, stdout, stderr
-macro_rules! stdio {
+///Bundle of generic IO streams (input, output, error), for brevity.
+pub type IOTriple = (
+	Box<dyn BufRead>,
+	Box<dyn Write>,
+	Box<dyn Write>
+);
+
+///Default IO triple using [`std::io::stdin`], [`std::io::stdout`], and [`std::io::stderr`].
+#[macro_export] macro_rules! std_io {
 	() => {
-		::dcim::IOTriple {
-			input: &mut ::std::io::BufReader::new(::std::io::stdin()),
-			output: &mut ::std::io::stdout(),
-			error: &mut ::std::io::stderr()
-		}
+		(
+			::std::boxed::Box::new(::std::io::BufReader::new(::std::io::stdin())),
+			::std::boxed::Box::new(::std::io::stdout()),
+			::std::boxed::Box::new(::std::io::stderr())
+		)
+	}
+}
+///Non-functional IO triple using [`std::io::empty`] and [`std::io::sink`].
+#[macro_export] macro_rules! no_io {
+	() => {
+		(
+			::std::boxed::Box::new(::std::io::BufReader::new(::std::io::empty())),
+			::std::boxed::Box::new(::std::io::sink()),
+			::std::boxed::Box::new(::std::io::sink())
+		)
 	}
 }
 
-///Happy results of [`exec()`]
+///Happy results of [`exec()`].
 pub enum ExecDone {
-	///Commands ran to completion, state should probably be kept
+	///Commands ran to completion, state should probably be kept.
 	Finished,
-	///Exit request by `q` with exit code, state should probably be discarded
+	///Exit request by `q` with exit code, state should probably be discarded.
 	Quit(i32)
 }
 use ExecDone::*;
@@ -651,16 +691,14 @@ use ExecDone::*;
 Reference to the state storage to work on, modified in-place
 
 ## `io`
-Optional bundle of IO streams, fields are used as follows:
-- input: Read by the command `?` one line at a time
-- output: Normal printing by the commands `pfnPF`
-- error: Receives dc:im error messages, one per line
-
-If `None` is given, IO is disabled and the resulting `State` must be read manually to get useful results.
+Bundle of IO streams, fields are used as follows:
+- 0: Read by the command `?` one line at a time
+- 1: Normal printing by the commands `pfnPF`
+- 2: Receives dc:im error messages, one per line
 
 ## `safe`
 Safety toggle: Disables commands that interact with the OS, as well as terminating pseudoconstants.
-Be aware that this does not prevent infinite loops (`[lax]salax`).
+Be aware that this does not prevent busy loops or thread bombs.
 
 ## `cmds`
 dc:im commands to execute
@@ -674,26 +712,15 @@ Only if a write/read on an IO stream fails
 # Panics
 Probably never™
 */
-pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
-	let no_io = IOTriple {
-		input: &mut std::io::BufReader::new(std::io::empty()),
-		output: &mut std::io::sink(),
-		error: &mut std::io::sink()
-	};
-	let (input, output, error): (&mut dyn BufRead, &mut dyn Write, &mut dyn Write) = if let Some(tri) = io {
-		(tri.input, tri.output, tri.error)
-	}
-	else {
-		(no_io.input, no_io.output, no_io.error)
-	};
+pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
+	let (mut input, mut output, mut error) = io;
 	//temporary state
 	let mut cmdstk: Vec<Macro> = vec!(cmds.into());	//stack of macros to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//negates comparisons or switches to alternative behavior
 	let mut re_cache: HashMap<String, Regex> = HashMap::new();	//to avoid recompiling in repeated macros
 
-	let mut dummy_reg = Register::default();	//required for let syntax, never accessed
-
-	//default contents of string/number slots
+	//non-null pointees to initialize pointers, never actually accessed
+	let mut reg_dummy = Register::default();
 	let sx_dummy = String::new();
 	let nx_dummy = Float::new(1);
 
@@ -717,7 +744,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 				i
 			)
 		}
-		else {(&mut dummy_reg, Integer::ZERO)};	//no register needed
+		else {(&mut reg_dummy, Integer::ZERO)};
 
 		let (sig, adi) = CMD_SIGS.get(&cmd).unwrap_or(&(Nil, 0));	//get correct command signature
 
@@ -733,8 +760,8 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 			_ => (Obj::default(), Obj::default(), Obj::default())
 		};
 
-		let (mut na, mut nb, mut nc) = (&nx_dummy, &nx_dummy, &nx_dummy);	//create number slots
-		let (mut sa, mut sb, mut sc) = (&sx_dummy, &sx_dummy, &sx_dummy);	//create string slots
+		let [mut na, mut nb, mut nc] = [&nx_dummy; 3];	//number pointers
+		let [mut sa, mut sb, mut sc] = [&sx_dummy; 3];	//string pointers
 		let mut strv = false;	//use string variant of overloaded command (not stridsvagn :/)
 
 		if
@@ -1858,7 +1885,7 @@ pub fn exec(st: &mut State, io: Option<&mut IOTriple>, safe: bool, cmds: &str) -
 
 					//start thread
 					let handle = th::spawn(move || {
-						let _ = exec(&mut snap, None, true, &cmds);
+						let _ = exec(&mut snap, no_io!(), true, &cmds);
 						snap.mstk
 					});
 

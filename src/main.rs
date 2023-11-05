@@ -33,7 +33,7 @@ Command line options:
 
 [--safe|-s]
 	Safety flag, disables commands that interact with the OS (&, $, \\) as well as terminating pseudoconstants (abort, crash, panic).
-	Allows for safe public exposure of a dc:im terminal without compromising the host (though infinite loops are still possible!).
+	Forbids code execution and data exfiltration if using untrusted input. Does nothing about busy loops or thread bombs.
 
 --version|-v
 	Display version of interpreter.
@@ -127,14 +127,13 @@ fn main() {
 
 ///infinite prompt-eval loop
 fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
-	let mut io = stdio!();
 	let prompt = prompt.unwrap_or("> ".into());
 	loop {
 		let mut buf = String::new();
 		print!("{prompt}");
 		stdout().flush().unwrap();
 		stdin().read_line(&mut buf).unwrap();
-		match exec(st, Some(&mut io), safe, buf.trim()) {
+		match exec(st, std_io!(), safe, buf.trim()) {
 			Ok(Quit(i)) => {std::process::exit(i);}	//'q' called, exit
 			Ok(Finished) | Err(_) => {} //cmds finished or io error, proceed
 		}
@@ -147,9 +146,8 @@ fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool, safe: bool) {
 		eprintln!("! No expression provided");
 	}
 	else {
-		let mut io = stdio!();
 		for expr in exprs {
-			match exec(st, Some(&mut io), safe, &expr) {
+			match exec(st, std_io!(), safe, &expr) {
 				Ok(Quit(i)) => {std::process::exit(i);}
 				Ok(Finished) | Err(_) => {}
 			}
@@ -166,7 +164,6 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
 		eprintln!("! No file name provided");
 	}
 	else {
-		let mut io = stdio!();
 		for file in files {
 			match std::fs::read_to_string(&file) {
 				Ok(script) => {
@@ -175,7 +172,7 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
 						script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 						script_nc.push('\n');
 					}
-					match exec(st, Some(&mut io), safe, &script_nc) {
+					match exec(st, std_io!(), safe, &script_nc) {
 						Ok(Quit(i)) => {std::process::exit(i);}
 						Ok(Finished) | Err(_) => {}
 					}
