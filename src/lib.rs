@@ -238,7 +238,7 @@ fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static 
 
 ///all commands that use a register
 static USES_REG: phf::Set<char> = phf_set! {
-	'F','s','S','l','L',':',';','b','B','Z','<','=','>','m','M'
+	'F','s','S','l','L',':',';','b','B','Z','<','=','>','m','M','y'
 };
 
 ///command signatures and adicities
@@ -273,6 +273,7 @@ static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 	's' => (Ax, 1),
 	'S' => (Ax, 1),
 	',' => (Ax, 1),
+	'y' => (Ax, 1),
 
 	'X' => (AsBn, 2),
 
@@ -1599,40 +1600,62 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 			---------------*/
 			//save to top of register
 			's' => {
-				if reg.v.is_empty() {
-					reg.v.push(RegObj{o: a.clone(), a: Vec::new()});
+				if !inv {	//single save
+					if let Some(ro) = reg.v.last_mut() {
+						ro.o = a.clone();
+					} else {
+						reg.v.push(RegObj { o: a.clone(), a: Vec::new() });
+					}
 				}
-				else {
-					reg.v.last_mut().unwrap().o = a.clone();
+				else {	//bulk save
+					reg.v = st.mstk.drain(..).chain(std::iter::once(a.clone()))
+						.map(|o| RegObj{o, a: Vec::new()}).collect();
 				}
 				None
 			},
 
 			//push to top of register
 			'S' => {
-				reg.v.push(RegObj{o: a.clone(), a: Vec::new()});
+				if !inv {	//single push
+					reg.v.push(RegObj { o: a.clone(), a: Vec::new() });
+				}
+				else {	//bulk push
+					st.mstk.drain(..).chain(std::iter::once(a.clone()))
+						.map(|o| RegObj{o, a: Vec::new()})
+						.for_each(|ro| reg.v.push(ro));
+				}
 				None
 			},
 
 			//load from top of register
 			'l' => {
-				if let Some(ro) = reg.v.last() {
-					st.mstk.push(ro.o.clone());
-					None
+				if !inv{	//single load
+					if let Some(ro) = reg.v.last() {
+						st.mstk.push(ro.o.clone());
+						None
+					} else {
+						Some(format!("Register # {rnum} is empty"))
+					}
 				}
-				else {
-					Some(format!("Register # {rnum} is empty"))
+				else {	//bulk load
+					reg.v.iter().for_each(|ro| st.mstk.push(ro.o.clone()));
+					None
 				}
 			},
 
 			//pop from top of register
 			'L' => {
-				if let Some(ro) = reg.v.pop() {
-					st.mstk.push(ro.o);
-					None
+				if !inv {	//single pop
+					if let Some(ro) = reg.v.pop() {
+						st.mstk.push(ro.o);
+						None
+					} else {
+						Some(format!("Register # {rnum} is empty"))
+					}
 				}
-				else {
-					Some(format!("Register # {rnum} is empty"))
+				else {	//bulk pop
+					reg.v.drain(..).for_each(|ro| st.mstk.push(ro.o));
+					None
 				}
 			},
 
@@ -1685,8 +1708,13 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 
 			//pop top-of-reg into buffer
 			'b' => {
-				if let Some(ro) = reg.v.pop() {
-					st.ro_buf = ro;
+				if let Some(mut ro) = reg.v.pop() {
+					if !inv {	//to buf
+						st.ro_buf = ro;
+					}
+					else {	//to stack
+						st.mstk.append(&mut ro.a);
+					}
 					None
 				}
 				else {
@@ -1696,7 +1724,13 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 
 			//push buffer to register
 			'B' => {
-				reg.v.push(st.ro_buf.clone());
+				if !inv {	//from buf
+					reg.v.push(st.ro_buf.clone());
+				}
+				else {	//from stack
+					if reg.v.is_empty() {reg.v.push(RegObj::default());}
+					reg.v.last_mut().unwrap().a.append(&mut st.mstk);
+				}
 				None
 			},
 
@@ -1811,6 +1845,27 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 							_ => {false}	//impossible
 						}
 						{
+							if cmdstk.last().unwrap().is_done() {
+								cmdstk.pop();	//optimize tail call
+							}
+							cmdstk.push(mac.into());
+						}
+						None
+					},
+					Some(_) => {
+						Some(format!("Top of register # {rnum} is not a string"))
+					},
+					None => {
+						Some(format!("Register # {rnum} is empty"))
+					}
+				}
+			},
+
+			//type check
+			'y' => {
+				match reg.v.last() {
+					Some(RegObj{o: Str(mac), ..}) => {
+						if inv != strv {
 							if cmdstk.last().unwrap().is_done() {
 								cmdstk.pop();	//optimize tail call
 							}

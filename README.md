@@ -39,16 +39,14 @@ The current version of GNU MPFR fails one inconsequential test (no idea why), us
 
 ## Most important changes compared to GNU dc
 - New commands for easier stack/register manipulation and macro execution.
-- Expanded shell argument syntax, run `dcim -h` to learn more.
-- Error messages are much more helpful and differentiated, and are always prefixed with `! `.
-- When type/semantic errors occur, all used objects are returned to the stack.
 - Numbers are binary floats with arbitrary precision (parameter `W`). The parameter `K` only applies to output.
 - Strings have full Unicode support (stored in UTF-8).
 - Improved and new arithmetic commands.
 - Full suite of string manipulation commands, including a regex engine.
-- Number input/output bases are unlimited upwards, bases above 36 use a custom "any-base" notation.
 - The amount of available registers is unlimited.
-- Arbitrary registers can be selected with a "register pointer" command.
+- Number input/output bases are unlimited upwards, bases above 36 use a custom "any-base" notation.
+- Expanded command line argument syntax, run `dcim -h` to learn more.
+- Error messages are much more helpful and differentiated, and are always prefixed with `! `.
 - Commands for multithreaded macro execution.
 - A library of various named constants and unit conversion factors.
 
