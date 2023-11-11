@@ -321,7 +321,7 @@ macro_rules! crec {
 ///Stores functions to allow on-demand value generation with variable precision.
 ///
 ///Aliases are indented.
-pub static CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
+pub const CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	/*----------------------------
 		MATHEMATICAL CONSTANTS
 	----------------------------*/
