@@ -237,12 +237,12 @@ fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static 
 }
 
 ///all commands that use a register
-static USES_REG: phf::Set<char> = phf_set! {
+const USES_REG: phf::Set<char> = phf_set! {
 	'F','s','S','l','L',':',';','b','B','Z','<','=','>','m','M','y'
 };
 
 ///command signatures and adicities
-static CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
+const CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
 	'+' => (AxBx, 2),
 	'^' => (AxBx, 2),
 	'<' => (AxBx, 2),
@@ -1490,21 +1490,22 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				}
 			},
 
-			//rotate top a objects
+			//rotate/flip top a objects
 			'R' => {
 				let mut int = round(na);
 				if int==0_u8 { int = Integer::from(1_u8); }	//replace 0 with effective no-op
 				if let Some(num) = int.clone().abs().to_usize() {
 					let len = st.mstk.len();
 					if num<=len {
-						let sl = st.mstk.as_mut_slice();
-						if int<0_u8 {
-							sl[len-num..].rotate_left(1);	//if negative, rotate left/down
+						if inv {
+							st.mstk[len-num..].reverse();	//if "inverted", reverse/flip
+						}
+						else if int<0_u8 {
+							st.mstk[len-num..].rotate_left(1);	//if negative, rotate left/down
 						}
 						else {
-							sl[len-num..].rotate_right(1);	//right/up otherwise
+							st.mstk[len-num..].rotate_right(1);	//right/up otherwise
 						}
-						st.mstk = sl.to_vec();
 						None
 					}
 					else {
