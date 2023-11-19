@@ -4,7 +4,7 @@ use std::thread as th;
 use std::collections::HashMap;
 use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState};
 use rand::{RngCore, rngs::OsRng};
-use phf::{phf_set, phf_map};
+use phf::phf_map;
 use regex::{Regex, RegexBuilder};
 
 ///Basic object: either number or string
@@ -34,43 +34,113 @@ pub struct Register {
 	pub th: Option<th::JoinHandle<Vec<Obj>>>
 }
 
-///all existing command argument signatures
-#[derive(Clone, Copy)]
-#[repr(u8)]
-enum CmdSig {
-	Nil,
-	Ax,
-	An,
-	As,
-	AxBx,
-	AxBn,
-	AnBn,
-	AsBn,
-	AxBxCx
-}
-use CmdSig::*;
-impl CmdSig {
-	#[inline(always)]
-	///english plural ending
-	const fn plural(&self) -> &str {
-		if matches!(self, Ax|An|As) {""} else {"s"}
-	}
+/*all existing command argument signatures, just u8 aliases
+    ┌┬┬┬─ adicity
+76543210
+│└┴┴───── variant
+└──────── uses register
+*/
+//const NIL: u8 = 0x00;
+const NIL_R: u8 = 0x80;
+const AX: u8 = 0x01;
+const AX_R: u8 = 0x81;
+const AN: u8 = 0x11;
+const AN_R: u8 = 0x91;
+const AS: u8 = 0x21;
+const AS_R: u8 = 0xa1;
+const AX_BX: u8 = 0x02;
+const AX_BX_R: u8 = 0x82;
+const AX_BN: u8 = 0x12;
+const AX_BN_R: u8 = 0x92;
+const AN_BN: u8 = 0x22;
+//const AN_BN_R: u8 = 0xa2;
+const AS_BN: u8 = 0x32;
+//const AS_BN_R: u8 = 0xb2;
+const AX_BX_CX: u8 = 0x03;
+//const AX_BX_CX_R: u8 = 0x83;
 
-	#[inline(always)]
-	///correction messages
-	const fn correct(&self) -> &str {
-		match self {
-			Nil|Ax => "",
-			An => "must be a number",
-			As => "must be a string",
-			AxBx => "must be two numbers or two strings",
-			AxBn => "2nd must be a number",
-			AnBn => "must be two numbers",
-			AsBn => "1st must be a string, 2nd must be a number",
-			AxBxCx => "must be three numbers or three strings",
-		}
+///english plural suffix (if multiple objects)
+///
+///`Nil` shouldn't be singular, but this function is never called in that case
+#[inline(always)] const fn plural(x: u8) -> &'static str {
+	if x & 0xf == 1 {""} else {"s"}
+}
+
+///correction messages
+#[inline(always)] const fn correct(x: u8) -> &'static str {
+	match x & 0x7f {	//ignore register usage
+		AN => "must be a number",
+		AS => "must be a string",
+		AX_BX => "must be two numbers or two strings",
+		AX_BN => "2nd must be a number",
+		AN_BN => "must be two numbers",
+		AS_BN => "1st must be a string, 2nd must be a number",
+		AX_BX_CX => "must be three numbers or three strings",
+		_ => ""
 	}
 }
+
+///all command signatures
+const CMD_SIGS: phf::Map<char, u8> = phf_map! {
+	'F' => NIL_R,
+	'l' => NIL_R,
+	'L' => NIL_R,
+	'b' => NIL_R,
+	'B' => NIL_R,
+	'Z' => NIL_R,
+
+	'+' => AX_BX,
+	'^' => AX_BX,
+	'<' => AX_BX_R,
+	'=' => AX_BX_R,
+	'>' => AX_BX_R,
+
+	'|' => AX_BX_CX,
+
+	'-' => AX_BN,
+	'*' => AX_BN,
+	'/' => AX_BN,
+	'%' => AX_BN,
+	'~' => AX_BN,
+	':' => AX_BN_R,
+
+	'm' => AS_R,
+	'&' => AS,
+	'$' => AS,
+	'\\' => AS,
+
+	'n' => AX,
+	'P' => AX,
+	'a' => AX,
+	'A' => AX,
+	'"' => AX,
+	'x' => AX,
+	'g' => AX,
+	's' => AX_R,
+	'S' => AX_R,
+	',' => AX,
+	'y' => AX_R,
+
+	'X' => AS_BN,
+
+	'v' => AN,
+	'T' => AN,
+	'N' => AN,
+	'C' => AN,
+	'D' => AN,
+	'R' => AN,
+	'k' => AN,
+	'i' => AN,
+	'o' => AN,
+	'w' => AN,
+	';' => AN_R,
+	'Q' => AN,
+	'M' => AN_R,
+
+	'V' => AN_BN,
+	'G' => AN_BN,
+	't' => AN_BN,
+};
 
 ///Stack for (K,I,O) tuples, with methods for checked editing.
 ///
@@ -79,54 +149,53 @@ impl CmdSig {
 #[repr(transparent)]
 pub struct ParamStk(pub Vec<(Integer, Integer, Integer)>);
 impl ParamStk {
-	#[inline(always)]
 	///switch to new param context with defaults (0,10,10)
-	fn create(&mut self) {
+	#[inline(always)] fn create(&mut self) {
 		self.0.push((Integer::from(0_u8), Integer::from(10_u8), Integer::from(10_u8)));
 	}
-	#[inline(always)]
+
 	///revert to previous context, reset to defaults if nonexistent
-	fn destroy(&mut self) {
+	#[inline(always)] fn destroy(&mut self) {
 		self.0.pop();
 		if self.0.is_empty() {self.create()}
 	}
 
-	#[inline(always)]
+
 	///checked edit of current output precision
-	fn set_k(&mut self, n: Integer) -> Result<(), &'static str> {
+	#[inline(always)] fn set_k(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=0 {
 			self.0.last_mut().unwrap().0 = n;
 			Ok(())
 		}
 		else {Err("Output precision must be at least 0")}
 	}
-	#[inline(always)]
+
 	///checked edit of current input base
-	fn set_i(&mut self, n: Integer) -> Result<(), &'static str> {
+	#[inline(always)] fn set_i(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=2 {
 			self.0.last_mut().unwrap().1 = n;
 			Ok(())
 		}
 		else {Err("Input base must be at least 2")}
 	}
-	#[inline(always)]
+
 	///checked edit of current output base
-	fn set_o(&mut self, n: Integer) -> Result<(), &'static str> {
+	#[inline(always)] fn set_o(&mut self, n: Integer) -> Result<(), &'static str> {
 		if n>=2 {
 			self.0.last_mut().unwrap().2 = n;
 			Ok(())
 		}
 		else {Err("Output base must be at least 2")}
 	}
-	#[inline(always)]
+
 	///current output precision
-	fn k(&self) -> Integer {self.0.last().unwrap().0.clone()}
-	#[inline(always)]
+	#[inline(always)] fn k(&self) -> Integer {self.0.last().unwrap().0.clone()}
+
 	///current input base
-	fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
-	#[inline(always)]
+	#[inline(always)] fn i(&self) -> Integer {self.0.last().unwrap().1.clone()}
+
 	///current output base
-	fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
+	#[inline(always)] fn o(&self) -> Integer {self.0.last().unwrap().2.clone()}
 }
 impl Default for ParamStk {
 	#[inline(always)] fn default() -> Self {
@@ -160,7 +229,7 @@ impl Default for State<'_> {
 	///- RNG: Mersenne twister seeded with 1024 bits of OS randomness
 	///- Parameter stack: one entry, (K, I, O) = (0, 10, 10)
 	///- Working precision: 64 bits
-	fn default() -> Self {
+	#[inline(always)] fn default() -> Self {
 		Self {
 			mstk: Vec::new(),
 			regs: HashMap::new(),
@@ -180,15 +249,13 @@ impl Default for State<'_> {
 	}
 }
 
-#[inline(always)]
 ///standard rounding function: discard fractional part if finite, default to 0 otherwise
-fn round(n: &Float) -> Integer {
+#[inline(always)] fn round(n: &Float) -> Integer {
 	if let Some((i, _)) = n.to_integer_round(Round::Zero) {i} else {Integer::ZERO}
 }
 
-#[inline(always)]
 ///parse any-base number
-fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static str> {
+#[inline(never)] fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static str> {
 	let (mut mstr, estr) = match src.split(['@', 'e', 'E']).collect::<Vec<&str>>()[..] {	//split at exponential symbol
 		[m] => (m, "0"),
 		[m, e] => (m, e),
@@ -235,66 +302,6 @@ fn parse_abnum(src: String, base: Integer, prec: u32) -> Result<Float, &'static 
 		Float::with_val(prec, man) / scale * exp
 	)
 }
-
-///all commands that use a register
-const USES_REG: phf::Set<char> = phf_set! {
-	'F','s','S','l','L',':',';','b','B','Z','<','=','>','m','M','y'
-};
-
-///command signatures and adicities
-const CMD_SIGS: phf::Map<char, (CmdSig, u8)> = phf_map! {
-	'+' => (AxBx, 2),
-	'^' => (AxBx, 2),
-	'<' => (AxBx, 2),
-	'=' => (AxBx, 2),
-	'>' => (AxBx, 2),
-
-	'|' => (AxBxCx, 3),
-
-	'-' => (AxBn, 2),
-	'*' => (AxBn, 2),
-	'/' => (AxBn, 2),
-	'%' => (AxBn, 2),
-	'~' => (AxBn, 2),
-	':' => (AxBn, 2),
-
-	'm' => (As, 1),
-	'&' => (As, 1),
-	'$' => (As, 1),
-	'\\' => (As, 1),
-
-	'n' => (Ax, 1),
-	'P' => (Ax, 1),
-	'a' => (Ax, 1),
-	'A' => (Ax, 1),
-	'"' => (Ax, 1),
-	'x' => (Ax, 1),
-	'g' => (Ax, 1),
-	's' => (Ax, 1),
-	'S' => (Ax, 1),
-	',' => (Ax, 1),
-	'y' => (Ax, 1),
-
-	'X' => (AsBn, 2),
-
-	'v' => (An, 1),
-	'T' => (An, 1),
-	'N' => (An, 1),
-	'C' => (An, 1),
-	'D' => (An, 1),
-	'R' => (An, 1),
-	'k' => (An, 1),
-	'i' => (An, 1),
-	'o' => (An, 1),
-	'w' => (An, 1),
-	';' => (An, 1),
-	'Q' => (An, 1),
-	'M' => (An, 1),
-
-	'V' => (AnBn, 2),
-	'G' => (AnBn, 2),
-	't' => (AnBn, 2),
-};
 
 //Float generator templates for CONSTANTS
 ///basic value
@@ -443,12 +450,14 @@ pub const CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	"atm" => cval!(101_325_u32),
 	"psi" => csci!(6_894_757_293_168_u64, -9_i8),
 	"torr" => crec!("atm", 1_u8, 760_u16),
-	/*------------------------------
-		SPECIAL VALUES/FUNCTIONS
-	------------------------------*/
+	/*----------------------------------
+		SPECIAL VALUES/NON-CONSTANTS
+	----------------------------------*/
 	"inf" => cval!(Special::Infinity),
 	"ninf" => cval!(Special::NegInfinity),
 	"nan" => cval!(Special::Nan),
+	"time" => cval!(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs()),
+	"timens" => cval!(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos()),
 	"pid" => cval!(std::process::id()),
 	"author" => cval!(43615_u16)
 };
@@ -456,7 +465,7 @@ pub const CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 ///calculate value with given precision, apply scale prefix and power suffix
 ///
 ///`safe` toggle disables terminating queries
-fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
+#[inline(never)] fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 	let mut q = query.to_string();
 	let mut scale = String::new();
 	while q.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
@@ -475,30 +484,29 @@ fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 	if let Some(n) = CONSTANTS.get(q.as_str()).map(|c| c(prec)) {
 		Some((s*n).pow(p))
 	}
-	else {
-		match q.as_str() {	//non-constants and terminators are here
-			"time" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs()))}
-			"timens" => {Some(Float::with_val(prec, SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos()))}
-			"abort" if !safe => {std::process::abort();}
-			"crash" if !safe => {get_constant(prec, "crash", false)}	//stack go brrrrr
-			"panic" if !safe => {std::panic::panic_any("Expected, [panic]\" was executed");}
+	else if !safe {
+		match q.as_str() {	//terminators are here
+			"abort" => {std::process::abort();}
+			"crash" => {get_constant(prec, "crash", false)}	//stack go brrrrr
+			"panic" => {std::panic::panic_any("Expected, [panic]\" was executed");}
 			_ => None
 		}
 	}
+	else {None}
 }
 
-#[inline(always)]
+
 ///trim trailing 0s and .
-fn trim_0s(v: &mut Vec<u8>) {
+#[inline(always)] fn trim_0s(v: &mut Vec<u8>) {
 	while v.last()==Some(&b'0') {v.pop();}
 	if v.last()==Some(&b'.') {v.pop();}
 }
 
-#[inline(always)]
+
 ///custom number printing function:
 ///if output base is over 36, prints in custom "any-base" notation,
 ///otherwise, applies precision and converts from exponential notation if not too small
-fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
+#[inline(never)] fn flt_to_str(mut num: Float, obase: Integer, oprec: Integer) -> String {
 	//handle special cases
 	if !num.is_normal() {
 		let mut ret = String::new();
@@ -632,6 +640,7 @@ impl<T: ToString> From<T> for Macro {
 	}
 }
 impl Macro {
+	//requires distinction between end of current rep and complete exhaustion
 	#[inline(always)] fn at_end(&self) -> bool {
 		self.v.get(self.i).is_none()
 	}
@@ -713,7 +722,7 @@ Only if a write/read on an IO stream fails
 # Panics
 Probably never™
 */
-pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
+#[cold] #[inline(never)] pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
 	let (mut input, mut output, mut error) = io;
 	//temporary state
 	let mut cmdstk: Vec<Macro> = vec!(cmds.into());	//stack of macros to execute, enables pseudorecursive macro calls
@@ -728,8 +737,9 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 	while !cmdstk.is_empty() {	//main parsing loop, last().unwrap() is safe
 
 		let mut cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();	//get next command
+		let sig = CMD_SIGS.get(&cmd).copied().unwrap_or_default();	//get correct command signature
 
-		let (reg, rnum): (&mut Register, Integer) = if USES_REG.contains(&cmd) {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
+		let (reg, rnum): (&mut Register, Integer) = if sig & 0x80 != 0 {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
 			let i = if let Some(i) = st.rptr.take() {i}	//take index from reg ptr
 			else if let Some(c) = cmdstk.last_mut().unwrap().next() {Integer::from(c as u32)}	//steal next command char as index
 			else {
@@ -747,10 +757,10 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 		}
 		else {(&mut reg_dummy, Integer::ZERO)};
 
-		let (sig, adi) = CMD_SIGS.get(&cmd).unwrap_or(&(Nil, 0));	//get correct command signature
+		let adi = sig & 0xf;	//adicity is low nibble
 
-		if st.mstk.len() < *adi as usize {	//check stack depth
-			writeln!(error, "! Command '{cmd}' needs {} argument{}", adi, sig.plural())?;
+		if st.mstk.len() < adi as usize {	//check stack depth
+			writeln!(error, "! Command '{cmd}' needs {} argument{}", adi, plural(sig))?;
 			continue;
 		}
 
@@ -766,9 +776,8 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 		let mut strv = false;	//use string variant of overloaded command (not stridsvagn :/)
 
 		if
-		match sig {	//check and destructure Objs
-			Nil => false,
-			Ax => match &a {
+		match sig & 0x7f {	//check and destructure Objs
+			AX => match &a {
 				Num(x) => {
 					na = x;
 					false
@@ -779,21 +788,21 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 					false
 				}
 			},
-			An => match &a {
+			AN => match &a {
 				Num(x) => {
 					na = x;
 					false
 				},
 				_ => true
 			},
-			As => match &a {
+			AS => match &a {
 				Str(x) => {
 					sa = x;
 					false
 				},
 				_ => true
 			},
-			AxBx => match (&a, &b) {
+			AX_BX => match (&a, &b) {
 				(Num(x), Num(y)) => {
 					(na, nb) = (x, y);
 					false
@@ -805,7 +814,7 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				},
 				_ => true
 			},
-			AxBn => match (&a, &b) {
+			AX_BN => match (&a, &b) {
 				(Num(x), Num(y)) => {
 					(na, nb) = (x, y);
 					false
@@ -817,21 +826,21 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				},
 				_ => true
 			},
-			AnBn => match (&a, &b) {
+			AN_BN => match (&a, &b) {
 				(Num(x), Num(y)) => {
 					(na, nb) = (x, y);
 					false
 				},
 				_ => true
 			},
-			AsBn => match (&a, &b) {
+			AS_BN => match (&a, &b) {
 				(Str(x), Num(y)) => {
 					(sa, nb) = (x, y);
 					false
 				},
 				_ => true
 			},
-			AxBxCx => match (&a, &b, &c) {
+			AX_BX_CX => match (&a, &b, &c) {
 				(Num(x), Num(y), Num(z)) => {
 					(na, nb, nc) = (x, y, z);
 					false
@@ -843,9 +852,10 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				},
 				_ => true
 			},
+			_ => false
 		}
 		{
-			writeln!(error, "! Wrong argument type{} for command '{cmd}': {}", sig.plural(), sig.correct())?;
+			writeln!(error, "! Wrong argument type{} for command '{cmd}': {}", plural(sig), correct(sig))?;
 			match adi {	//push Objs back
 				1 => {st.mstk.push(a);},
 				2 => {st.mstk.push(a); st.mstk.push(b);},
@@ -854,12 +864,13 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 			}
 			continue;
 		}
+
 		//COMMAND LOGIC BELOW
 		//semantic errors returned as Option<String>, faulty command is mentioned unless prepended with NUL
 		if let Some(semerr) = match cmd {
-			/*------------------
+			/* v v v v v v v v v
 				OBJECT INPUT
-			------------------*/
+			v v v v v v v v v */
 			//standard number input, force with single quote to use letters
 			'0'..='9'|'.'|'_'|'\''|'@' => {
 				if st.par.i()>36_u8 {
@@ -958,9 +969,11 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 					cmd = cmdstk.last_mut().unwrap().next().unwrap_or(']');	//closing bracket(s) may be omitted
 				}
 			},
-			/*--------------
-				PRINTING
-			--------------*/
+			/* ^ ^ ^ ^ ^ ^ ^ ^ ^
+				OBJECT INPUT
+			v^v^v^v^v^v^v^v^v^v^
+				  PRINTING
+			v v v v v v v v v */
 			//print top with newline
 			'p' => {
 				match st.mstk.last() {
@@ -1022,10 +1035,12 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				}
 				None
 			},
-			/*----------------
-				ARITHMETIC
-				+str manip
-			----------------*/
+			/* ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+				      PRINTING
+			v^v^v^v^v^v^v^v^v^v^v^v^v^v^
+				     ARITHMETIC
+				+string manipulation
+			v v v v v v v v v v v v v */
 			//add or concatenate strings
 			'+' => {
 				if !strv {st.mstk.push(Num(Float::with_val(st.w, na + nb)));}
@@ -1418,17 +1433,20 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 					}
 				}
 			},
-
-			/*------------------------
-				STACK MANIPULATION
-			------------------------*/
+			/* ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+				     ARITHMETIC
+				+string manipulation
+			v^v^v^v^v^v^v^v^v^v^v^v^v^v^
+				 STACK MANIPULATION
+			v v v v v v v v v v v v v */
 			//clear stack
 			'c' => {
 				if inv {	//shrink all growables (except register arrays)
 					st.mstk.shrink_to_fit();
-					st.regs = st.regs.drain().filter(|(_, reg)| !reg.v.is_empty()||reg.th.is_some()).collect();	//keep registers that are in use, collect creates a new map
+					st.regs.retain(|_, reg| !reg.v.is_empty() || reg.th.is_some());	//only keep registers that are in use
+					st.regs.shrink_to_fit();
 					for (_, reg) in st.regs.iter_mut() {
-						reg.v.shrink_to_fit();	//shrink register stacks
+						reg.v.shrink_to_fit();	//register stacks
 					}
 					st.par.0.shrink_to_fit();
 				}
@@ -1522,9 +1540,11 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				st.mstk.push(Num(Float::with_val(st.w, st.mstk.len())));
 				None
 			},
-			/*----------------
-				PARAMETERS
-			----------------*/
+			/* ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+				STACK MANIPULATION
+			v^v^v^v^v^v^v^v^v^v^v^v^v^
+				    PARAMETERS
+			v v v v v v v v v v v v */
 			//set output precision
 			'k' => {
 				if let Err(e) = st.par.set_k(round(na)) {
@@ -1596,9 +1616,11 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				st.par.destroy();
 				None
 			},
-			/*---------------
+			/* ^ ^ ^ ^ ^ ^ ^ ^
+				PARAMETERS
+			v^v^v^v^v^v^v^v^v^
 				REGISTERS
-			---------------*/
+			v v v v v v v v */
 			//save to top of register
 			's' => {
 				if !inv {	//single save
@@ -1760,9 +1782,11 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				);
 				None
 			},
-			/*------------
-				MACROS
-			------------*/
+			/* ^ ^ ^ ^ ^ ^ ^ ^
+				REGISTERS
+			v^v^v^v^v^v^v^v^v^
+				  MACROS
+			v v v v v v v v */
 			//convert least significant 32 bits to one-char string or first char of string to number
 			'a' => {
 				if !strv {
@@ -2015,9 +2039,11 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				}
 				None
 			},
-			/*----------
-				MISC
-			----------*/
+			/* ^ ^ ^ ^ ^ ^
+				MACROS
+			v^v^v^v^v^v^v^
+				 MISC
+			v v v v v v */
 			//execute file as script
 			'&' => {
 				if !safe {
@@ -2106,6 +2132,9 @@ pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Re
 				if cmd.is_whitespace() || cmd=='\0' || cmd=='!' {None}	//ignore these
 				else {Some(format!("\0Invalid command: {cmd} (U+{:04X})", cmd as u32))}
 			},
+			/* ^ ^ ^ ^ ^
+				MISC
+			^ ^ ^ ^ ^ */
 		}
 		{
 			//print semantic error
