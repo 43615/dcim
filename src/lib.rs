@@ -2,10 +2,16 @@ use std::io::{Write, BufRead};
 use std::time::{SystemTime, Duration, Instant};
 use std::thread as th;
 use std::collections::HashMap;
-use rug::{Integer, integer::Order, Complete, Float, float::{Round, Constant, Special}, ops::Pow, rand::RandState};
+use rug::{Integer, integer::Order, Complete,
+		  Float, float::{Round, Constant, Special},
+		  ops::Pow, rand::RandState};
 use rand::{RngCore, rngs::OsRng};
 use phf::phf_map;
 use regex::{Regex, RegexBuilder};
+
+macro_rules! nope {
+    () => {unsafe{::std::hint::unreachable_unchecked();}};
+}
 
 ///Basic object: either number or string
 #[derive(Clone)]
@@ -40,7 +46,7 @@ pub struct Register {
 │└┴┴───── variant
 └──────── uses register
 */
-//const NIL: u8 = 0x00;
+const NIL: u8 = 0x00;
 const NIL_R: u8 = 0x80;
 const AX: u8 = 0x01;
 const AX_R: u8 = 0x81;
@@ -68,7 +74,7 @@ const AX_BX_CX: u8 = 0x03;
 
 ///correction messages
 #[inline(always)] const fn correct(x: u8) -> &'static str {
-	match x & 0x7f {	//ignore register usage
+	match x & 0x7f {	//mask out register usage
 		AN => "must be a number",
 		AS => "must be a string",
 		AX_BX => "must be two numbers or two strings",
@@ -76,7 +82,7 @@ const AX_BX_CX: u8 = 0x03;
 		AN_BN => "must be two numbers",
 		AS_BN => "1st must be a string, 2nd must be a number",
 		AX_BX_CX => "must be three numbers or three strings",
-		_ => ""
+		_ => nope!()
 	}
 }
 
@@ -320,10 +326,10 @@ macro_rules! csci {
 macro_rules! crec {
 	($base:literal, $numer:literal, $denom:literal) => {
 		|prec: u32| CONSTANTS.get($base).unwrap()(prec) * $numer / $denom
-	};
+	}
 }
 
-///Library of [`Float`] constants/conversion factors.
+///Library of [`Float`] constants/conversion factors. Useful with [`get_constant`].
 ///
 ///Stores functions to allow on-demand value generation with variable precision.
 ///
@@ -459,13 +465,13 @@ pub const CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 	"time" => cval!(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs()),
 	"timens" => cval!(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos()),
 	"pid" => cval!(std::process::id()),
-	"author" => cval!(43615_u16)
+	"author" => cval!(43615_u16),
 };
 
-///calculate value with given precision, apply scale prefix and power suffix
+///Calculate value with given precision, apply scale prefix and power suffix
 ///
 ///`safe` toggle disables terminating queries
-#[inline(never)] fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
+#[inline(never)] pub fn get_constant(prec: u32, query: &str, safe: bool) -> Option<Float> {
 	let mut q = query.to_string();
 	let mut scale = String::new();
 	while q.starts_with(|c: char| c.is_ascii_digit()||c=='-') {
@@ -593,16 +599,16 @@ pub const CONSTANTS: phf::Map<&'static str, fn(u32) -> Float> = phf_map! {
 				else {	//reassemble scientific notation
 					if mneg {bytes[0] = b'_';}	//negative sign
 					trim_0s(bytes);
-					bytes.push(b'@');    //add unified exponent symbol
+					bytes.push(b'@');	//add unified exponent symbol
 					epart[0]=b'_';
-					bytes.append(&mut epart);    //and exponent itself
+					bytes.append(&mut epart);	//and exponent itself
 				}
 			}
 			else {	//just reassemble
 				if mneg {bytes[0] = b'_';}	//negative sign
 				trim_0s(bytes);
-				bytes.push(b'@');    //add unified exponent symbol
-				bytes.append(&mut epart);    //and exponent itself
+				bytes.push(b'@');	//add unified exponent symbol
+				bytes.append(&mut epart);	//and exponent itself
 			}
 		}
 		else {	//in normal notation
@@ -737,7 +743,7 @@ Probably never™
 	while !cmdstk.is_empty() {	//main parsing loop, last().unwrap() is safe
 
 		let mut cmd = cmdstk.last_mut().unwrap().next().unwrap_or_default();	//get next command
-		let sig = CMD_SIGS.get(&cmd).copied().unwrap_or_default();	//get correct command signature
+		let sig = CMD_SIGS.get(&cmd).copied().unwrap_or(NIL);	//get correct command signature
 
 		let (reg, rnum): (&mut Register, Integer) = if sig & 0x80 != 0 {	//get register reference, before the other checks since it's syntactically significant ("sq" etc)
 			let i = if let Some(i) = st.rptr.take() {i}	//take index from reg ptr
@@ -775,8 +781,9 @@ Probably never™
 		let [mut sa, mut sb, mut sc] = [&sx_dummy; 3];	//string pointers
 		let mut strv = false;	//use string variant of overloaded command (not stridsvagn :/)
 
-		if
-		match sig & 0x7f {	//check and destructure Objs
+		if	//check and destructure Obj types:
+		match sig & 0x7f {	//mask out register usage
+			NIL => false,
 			AX => match &a {
 				Num(x) => {
 					na = x;
@@ -852,7 +859,7 @@ Probably never™
 				},
 				_ => true
 			},
-			_ => false
+			_ => nope!()
 		}
 		{
 			writeln!(error, "! Wrong argument type{} for command '{cmd}': {}", plural(sig), correct(sig))?;
@@ -1357,11 +1364,10 @@ Probably never™
 								Err("Inverse hyperbolic tangent of value outside (-1,1)")
 							},
 
-							//impossible
-							_ => Err("")
+							_ => nope!()
 						}
 					}.map_err(|e| e.into()),
-					_ => {
+					_ => {	//out of range
 						Err(format!("Function # {int} doesn't exist"))
 					}
 				}
@@ -1443,7 +1449,7 @@ Probably never™
 			'c' => {
 				if inv {	//shrink all growables (except register arrays)
 					st.mstk.shrink_to_fit();
-					st.regs.retain(|_, reg| !reg.v.is_empty() || reg.th.is_some());	//only keep registers that are in use
+					st.regs.retain(|_, r| !r.v.is_empty() || r.th.is_some());	//only keep registers that are in use
 					st.regs.shrink_to_fit();
 					for (_, reg) in st.regs.iter_mut() {
 						reg.v.shrink_to_fit();	//register stacks
@@ -1867,7 +1873,7 @@ Probably never™
 								(lb == la && sb.chars().zip(sa.chars()).any(|(cb, ca)| cb > ca))
 							},
 
-							_ => {false}	//impossible
+							_ => nope!()
 						}
 						{
 							if cmdstk.last().unwrap().is_done() {
@@ -1912,7 +1918,7 @@ Probably never™
 				let int = round(nb);
 				if int>=0_u8 {
 					if cmdstk.last().unwrap().is_done() {
-						cmdstk.pop();    //optimize tail call
+						cmdstk.pop();	//optimize tail call
 					}
 					if int > 0_u8 {
 						cmdstk.push(Macro {
@@ -1944,10 +1950,10 @@ Probably never™
 						State {	//snapshot of current state
 							mstk: st.mstk.clone(),
 							ro_buf: st.ro_buf.clone(),
-							rptr: None,    //always unset at this point anyway
+							rptr: None,	//always unset at this point anyway
 							par: st.par.clone(),
 							w: st.w,
-							regs: {    //processing to remove JoinHandles (aren't Clone nor would it make sense)
+							regs: {	//processing to remove JoinHandles (aren't Clone nor would it make sense)
 								let mut m: HashMap<Integer, Register> = HashMap::new();
 								for (ri, r) in st.regs.iter() {
 									m.insert(ri.clone(), Register {
@@ -1957,7 +1963,7 @@ Probably never™
 								}
 								m
 							},
-							.. Default::default()    //rng needs to be new
+							.. Default::default()	//rng needs to be new
 						}
 					};
 
@@ -2033,7 +2039,7 @@ Probably never™
 				}
 				else {
 					if cmdstk.last().unwrap().is_done() {
-						cmdstk.pop();    //optimize tail call
+						cmdstk.pop();	//optimize tail call
 					}
 					cmdstk.push(prompt_in.into());
 				}

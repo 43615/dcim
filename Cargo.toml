@@ -1,6 +1,6 @@
 [package]
 name = "dcim"
-version = "2.3.3"
+version = "2.3.4"
 edition = "2021"
 authors = ["43615"]
 description = "dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language"
@@ -8,14 +8,11 @@ documentation = "https://github.com/43615/dcim/wiki"
 repository = "https://github.com/43615/dcim"
 license-file = "LICENSE"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [profile.release]
 lto = "fat"
 incremental = true
 codegen-units = 1
 panic = "abort"
-
 
 [dependencies]
 rand = "=0.8.5"
