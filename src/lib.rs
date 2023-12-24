@@ -2,15 +2,17 @@ use std::io::{Write, BufRead};
 use std::time::{SystemTime, Duration, Instant};
 use std::thread as th;
 use std::collections::HashMap;
-use rug::{Integer, integer::Order, Complete,
-		  Float, float::{Round, Constant, Special},
-		  ops::Pow, rand::RandState};
+use rug::{
+	Integer, integer::Order, Complete,
+	Float, float::{Round, Constant, Special},
+	ops::Pow, rand::RandState
+};
 use rand::{RngCore, rngs::OsRng};
 use phf::phf_map;
 use regex::{Regex, RegexBuilder};
 
 macro_rules! nope {
-    () => {unsafe{::std::hint::unreachable_unchecked();}};
+	() => {unsafe{::std::hint::unreachable_unchecked();}};
 }
 
 ///Basic object: either number or string
@@ -648,11 +650,11 @@ impl<T: ToString> From<T> for Macro {
 impl Macro {
 	//requires distinction between end of current rep and complete exhaustion
 	#[inline(always)] fn at_end(&self) -> bool {
-		self.v.get(self.i).is_none()
+		self.i >= self.v.len()
 	}
 
-	#[inline(always)] fn is_done(&self) -> bool {
-		self.at_end() && self.reps==0_u8
+	#[inline(always)] fn exhausted(&self) -> bool {
+		self.at_end() && self.reps.is_zero()
 	}
 
 	#[inline(always)] fn repeat(&mut self) {
@@ -662,16 +664,16 @@ impl Macro {
 }
 
 ///Bundle of generic IO streams (input, output, error), for brevity.
-pub type IOTriple = (
-	Box<dyn BufRead>,
-	Box<dyn Write>,
-	Box<dyn Write>
+pub struct IOTriple (
+	pub Box<dyn BufRead>,
+	pub Box<dyn Write>,
+	pub Box<dyn Write>
 );
 
 ///Default IO triple using [`std::io::stdin`], [`std::io::stdout`], and [`std::io::stderr`].
 #[macro_export] macro_rules! std_io {
 	() => {
-		(
+		$crate::IOTriple(
 			::std::boxed::Box::new(::std::io::BufReader::new(::std::io::stdin())),
 			::std::boxed::Box::new(::std::io::stdout()),
 			::std::boxed::Box::new(::std::io::stderr())
@@ -681,7 +683,7 @@ pub type IOTriple = (
 ///Non-functional IO triple using [`std::io::empty`] and [`std::io::sink`].
 #[macro_export] macro_rules! no_io {
 	() => {
-		(
+		$crate::IOTriple(
 			::std::boxed::Box::new(::std::io::BufReader::new(::std::io::empty())),
 			::std::boxed::Box::new(::std::io::sink()),
 			::std::boxed::Box::new(::std::io::sink())
@@ -728,8 +730,8 @@ Only if a write/read on an IO stream fails
 # Panics
 Probably never™
 */
-#[cold] #[inline(never)] pub fn exec(st: &mut State, io: IOTriple, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
-	let (mut input, mut output, mut error) = io;
+#[cold] #[inline(never)] pub fn exec(st: &mut State, io: &mut IOTriple, safe: bool, cmds: &str) -> std::io::Result<ExecDone> {
+	let (input, output, error) = (&mut *io.0, &mut *io.1, &mut *io.2);
 	//temporary state
 	let mut cmdstk: Vec<Macro> = vec!(cmds.into());	//stack of macros to execute, enables pseudorecursive macro calls
 	let mut inv = false;	//negates comparisons or switches to alternative behavior
@@ -1834,7 +1836,7 @@ Probably never™
 			//execute string as macro
 			'x' => {
 				if strv {
-					if cmdstk.last().unwrap().is_done() {
+					if cmdstk.last().unwrap().exhausted() {
 						cmdstk.pop();	//optimize tail call
 					}
 					cmdstk.push(sa.into());
@@ -1876,7 +1878,7 @@ Probably never™
 							_ => nope!()
 						}
 						{
-							if cmdstk.last().unwrap().is_done() {
+							if cmdstk.last().unwrap().exhausted() {
 								cmdstk.pop();	//optimize tail call
 							}
 							cmdstk.push(mac.into());
@@ -1897,7 +1899,7 @@ Probably never™
 				match reg.v.last() {
 					Some(RegObj{o: Str(mac), ..}) => {
 						if inv != strv {
-							if cmdstk.last().unwrap().is_done() {
+							if cmdstk.last().unwrap().exhausted() {
 								cmdstk.pop();	//optimize tail call
 							}
 							cmdstk.push(mac.into());
@@ -1917,7 +1919,7 @@ Probably never™
 			'X' => {
 				let int = round(nb);
 				if int>=0_u8 {
-					if cmdstk.last().unwrap().is_done() {
+					if cmdstk.last().unwrap().exhausted() {
 						cmdstk.pop();	//optimize tail call
 					}
 					if int > 0_u8 {
@@ -1971,7 +1973,8 @@ Probably never™
 
 					//start thread
 					let handle = th::spawn(move || {
-						let _ = exec(&mut snap, no_io!(), true, &cmds);
+						let mut no_io = no_io!();
+						let _ = exec(&mut snap, &mut no_io, true, &cmds);
 						snap.mstk
 					});
 
@@ -2038,7 +2041,7 @@ Probably never™
 					st.mstk.push(Str(prompt_in));
 				}
 				else {
-					if cmdstk.last().unwrap().is_done() {
+					if cmdstk.last().unwrap().exhausted() {
 						cmdstk.pop();	//optimize tail call
 					}
 					cmdstk.push(prompt_in.into());
@@ -2064,7 +2067,7 @@ Probably never™
 								st.mstk.push(Str(script_nc));
 							}
 							else {
-								if cmdstk.last().unwrap().is_done() {
+								if cmdstk.last().unwrap().exhausted() {
 									cmdstk.pop();	//optimize tail call
 								}
 								cmdstk.push(script_nc.into());
@@ -2161,13 +2164,13 @@ Probably never™
 		if cmd=='!' {inv = true;}	//invert next command
 
 		if cmdstk.last().unwrap().at_end() {	//end of current rep
-			if cmdstk.last().unwrap().is_done() {	//no more reps
+			if cmdstk.last().unwrap().exhausted() {	//no more reps
 				cmdstk.pop();	//return to parent
 			}
 			else {
 				cmdstk.last_mut().unwrap().repeat();	//start next rep
 			}
-			inv = false;	//don't carry over to other macros
+			inv = false;	//don't carry over across $
 		}
 	}
 	Ok(Finished)

@@ -128,12 +128,13 @@ fn main() {
 ///infinite prompt-eval loop
 fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
 	let prompt = prompt.unwrap_or("> ".into());
+	let mut std_io = std_io!();
 	loop {
 		let mut buf = String::new();
 		print!("{prompt}");
 		stdout().flush().unwrap();
 		stdin().read_line(&mut buf).unwrap();
-		match exec(st, std_io!(), safe, buf.trim()) {
+		match exec(st, &mut std_io, safe, buf.trim()) {
 			Ok(Quit(i)) => {std::process::exit(i);}	//'q' called, exit
 			Ok(Finished) | Err(_) => {} //cmds finished or io error, proceed
 		}
@@ -142,12 +143,13 @@ fn inter_mode(st: &mut State, prompt: Option<String>, safe: bool) {
 
 ///takes input from cmd args
 fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool, safe: bool) {
+	let mut std_io = std_io!();
 	if exprs.is_empty() {
 		eprintln!("! No expression provided");
 	}
 	else {
 		for expr in exprs {
-			match exec(st, std_io!(), safe, &expr) {
+			match exec(st, &mut std_io, safe, &expr) {
 				Ok(Quit(i)) => {std::process::exit(i);}
 				Ok(Finished) | Err(_) => {}
 			}
@@ -160,6 +162,7 @@ fn expr_mode(st: &mut State, exprs: Vec<String>, inter: bool, safe: bool) {
 
 ///takes input from file contents, removes #comments
 fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
+	let mut std_io = std_io!();
 	if files.is_empty() {
 		eprintln!("! No file name provided");
 	}
@@ -172,7 +175,7 @@ fn file_mode(st: &mut State, files: Vec<String>, inter: bool, safe: bool) {
 						script_nc.push_str(line.split_once('#').unwrap_or((line,"")).0);	//remove comment on every line
 						script_nc.push('\n');
 					}
-					match exec(st, std_io!(), safe, &script_nc) {
+					match exec(st, &mut std_io, safe, &script_nc) {
 						Ok(Quit(i)) => {std::process::exit(i);}
 						Ok(Finished) | Err(_) => {}
 					}
