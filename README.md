@@ -9,6 +9,8 @@
 ```
 ### *dc improved - Expanded rewrite of a classic RPN calculator / esoteric programming language*
 
+### I currently consider this project to be completed (or rather not expandable any further without breakage). A more generalized and elegant fresh reimagining is in the works.
+
 This readme only mentions changes compared to GNU dc. If you're unfamiliar with its core principles, read its man page or [the Wikipedia article](https://en.wikipedia.org/wiki/dc_(computer_program)).
 
 [**Complete documentation in the wiki**](https://github.com/43615/dcim/wiki)
