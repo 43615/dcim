@@ -28,7 +28,8 @@ Platform-specific quirks:
 
 ## Windows
 ### Prebuilt x86-64 exe
-[Download here.](https://43615.xyz/sharing/AJsJSuDz8) Hosted on my NAS, not guaranteed to be available or up-to-date. I strongly recommend building it yourself if you can spare the trouble.
+Not currently provided.
+~~[Download here.](https://43615.xyz/sharing/AJsJSuDz8) Hosted on my NAS, not guaranteed to be available or up-to-date. I strongly recommend building it yourself if you can spare the trouble.~~
 
 ### Building
 `gmp-mpfr-sys` requires a speical environment to link to C libraries, follow the instructions [here](https://docs.rs/gmp-mpfr-sys/latest/gmp_mpfr_sys/#building-on-windows). After building it in MinGW once, the artifacts should remain and new dc:im versions can be built natively until I update it to a new version of `gmp-mpfr-sys`.
